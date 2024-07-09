@@ -35,7 +35,7 @@ def get_ingredients_gpt(url_list): # Not currently working
         verified = openai.ChatCompletion.create(
             model="gpt-4",
             messages=[
-                {"role": "user", "content": "Please verify that the following text seperates each distinct ingredient by a comma: " + completion.choices[0].message.content + " \n. If it does not, please insert commas where appropriate and return the list of comma separated ingredients. Do not include any other text."}
+                {"role": "user", "content": "Please verify that the following text separates each distinct ingredient by a comma: " + completion.choices[0].message.content + " \n. If it does not, please insert commas where appropriate and return the list of comma separated ingredients. Do not include any other text."}
             ],
             # frequency_penalty=2.0,
         )  
@@ -58,7 +58,7 @@ def get_ingredients_gpt_txt(txt):
     )
 
     verified = openai.ChatCompletion.create(
-        model="gpt-4",
+        model="gpt-3.5-turbo-16k",
         messages=[
             {"role": "user", "content": "Please verify that the following text separates each distinct ingredient by a comma, and that the format of AMOUNT UNIT: INGREDIENT, AMOUNT UNIT: INGREDIENT , etc. was followed: " + completion.choices[0].message.content + " \n. If it does not, please insert commas where appropriate and return ONLY the list of comma separated ingredients. DO NOT include any other text."}
         ],
