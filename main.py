@@ -161,8 +161,8 @@ def reserve_time_slot(driver):
     #     print("Element not found")
     #     time.sleep(20)       
 def login(driver):
-    login_button = driver.find_element(By.XPATH, "/html/body/div/header/div[2]/div/ul/li[1]/a[1]")
-    login_button.click()
+    # login_button = driver.find_element(By.XPATH, "/html/body/div/header/div[2]/div/ul/li[1]/a[1]")
+    # login_button.click()
     random_time()
 
     # Get the current working directory
@@ -176,14 +176,15 @@ def login(driver):
     if os.path.exists(config_file_path):
         file = open(config_file_path, "r")
         login_info = file.read().split("\n")
-        email = driver.find_element(By.ID, "email")
+        email = driver.find_element(By.ID, "email-input")
         email.send_keys(login_info[0])
         random_time()
-        password = driver.find_element(By.ID, "password")
+        password = driver.find_element(By.ID, "password-input")
         password.send_keys(login_info[1])
         random_time()
         # login_button = driver.find_element(By.XPATH, "/html/body/div[1]/div/div/div/div/div[2]/form/fieldset/div[3]/button")
-        login_button = driver.find_element(By.CSS_SELECTOR, '[data-cy="login-button"]')
+        
+        login_button = driver.find_element(By.XPATH, '//button[@type="submit"]')
         login_button.click()
         random_time()
     else:
@@ -198,6 +199,7 @@ if __name__ == '__main__':
     url_list = [
         "https://skinnyspatula.com/salmon-gnocchi/",
     ]
+
     ingredient_list_array = ['1 tablespoon: olive oil', '1 medium: shallot', '2 large: garlic cloves', '¼ teaspoon: red chilli flakes', '75 ml (⅓ cup): dry white wine', '2 tablespoons: tomato paste', '1 teaspoon: Italian seasoning mix', '200 ml (1 cup): water', '100 g (3.5 oz): fresh spinach', '180 g (6.5 oz): cream cheese', '500 g (1 lb): gnocchi', '225 g (½ lb): hot smoked salmon']
     # initialize the ingredient list
     IL = IngredientList()
@@ -229,38 +231,38 @@ if __name__ == '__main__':
 
     # command to install chromedriver on ubuntu:
     
-    # chrome_binary_path = '/usr/bin/google-chrome'
-    # driver = uc.Chrome(executable_path=chrome_binary_path, se_subprocess=True, version_main=116)
-    # # driver.get('https://nowsecure.nl')
-    # driver.get("https://heb.com")
-    # random_time()
-    # driver.maximize_window()
+    chrome_binary_path = '/usr/bin/google-chrome'
+    driver = uc.Chrome(executable_path=chrome_binary_path, se_subprocess=True, version_main=116)
+    # driver.get('https://nowsecure.nl')
+    driver.get("https://www.heb.com/my-account/login")
+    random_time()
+    driver.maximize_window()
 
-    # random_time()
-
-    # # perform HEB site operations
-    # login(driver)
-    # time.sleep(10) # necessary incase verification email sent
-    # random_time()
-    # driver.maximize_window()
-    # clear_cart(driver)
-    # random_time()
+    random_time()
+    
+    # perform HEB site operations
+    login(driver)
+    time.sleep(10) # necessary incase verification email sent
+    random_time()
+    driver.maximize_window()
+    clear_cart(driver)
+    random_time()
 
     # # reserve a time slot
-    # reserve_time_slot(driver)
+    reserve_time_slot(driver)
 
     
-    # # add all ingredients to the cart
-    # while IL.get_ingredients():
-    #     add_ingredient(IL.remove_last_ingredient(), driver)
-    #     random_time()
+    # add all ingredients to the cart
+    while IL.get_ingredients():
+        add_ingredient(IL.remove_last_ingredient(), driver)
+        random_time()
 
 
     # testing pop
         # add all ingredients to the cart
-    while IL.get_ingredients():
-        print("pop returns: ", IL.remove_last_ingredient())
-        print()
+    # while IL.get_ingredients():
+    #     print("pop returns: ", IL.remove_last_ingredient())
+    #     print()
     # for ing in IL.get_ingredients():
     #     print("ing: ", ing)
     #     print("pop returns: ", IL.remove_last_ingredient())
