@@ -7,6 +7,7 @@ from selenium.common.exceptions import NoSuchElementException
 
 from classes.IngredientList import IngredientList
 from classes.Ingredient import Ingredient
+from read_email import fetch_verification_code
 
 import os
 import time
@@ -187,6 +188,22 @@ def login(driver):
         login_button = driver.find_element(By.XPATH, '//button[@type="submit"]')
         login_button.click()
         random_time()
+        if check_exists_by_xpath("//*[@id='otpCode-input']", driver): 
+            print("verification code needed")
+        # time.sleep(60)
+        # check if the verification code is needed by checking for placeholder="Verification Code" attribute on the input element
+        if check_exists_by_xpath("//*[@id='otpCode-input']", driver): 
+            verification_code = fetch_verification_code()
+            print("verification code: ", verification_code)
+            verification_input = driver.find_element(By.XPATH, "//*[@id='otpCode-input']")
+            verification_input.send_keys(verification_code)
+            random_time()
+            verify_button = driver.find_element(By.XPATH, "//button[@type='submit']")
+            verify_button.click()
+            random_time() 
+
+
+
     else:
         print(f"{filename} not found in the current directory.")
 if __name__ == '__main__':
@@ -230,9 +247,19 @@ if __name__ == '__main__':
     # IL.show_list()
 
     # command to install chromedriver on ubuntu:
+
+    # Create an instance of ChromeOptions
+    options = uc.ChromeOptions()
+    options.add_argument("--disable-notifications")
+    prefs = {
+    "profile.default_content_setting_values.notifications": 2,
+    "credentials_enable_service": False,  # Disables save password prompt
+    "profile.password_manager_enabled": False  # Disables save password prompt
+    }
+    options.add_experimental_option("prefs", prefs)
     
     chrome_binary_path = '/usr/bin/google-chrome'
-    driver = uc.Chrome(executable_path=chrome_binary_path, se_subprocess=True, version_main=116)
+    driver = uc.Chrome(executable_path=chrome_binary_path, se_subprocess=True, version_main=116, options=options)
     # driver.get('https://nowsecure.nl')
     driver.get("https://www.heb.com/my-account/login")
     random_time()
@@ -242,7 +269,6 @@ if __name__ == '__main__':
     
     # perform HEB site operations
     login(driver)
-    time.sleep(10) # necessary incase verification email sent
     random_time()
     driver.maximize_window()
     clear_cart(driver)
