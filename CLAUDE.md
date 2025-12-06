@@ -94,11 +94,14 @@ source venv/bin/activate
 python testing/test_recipe_grabber.py
 python testing/test_connection.py
 python testing/test_database.py
+python main.py 
 ```
 
 **Note:** All test scripts should be placed in the `testing/` directory for consistency and organization.
 
 ## Testing Cycle for Main Program
+
+**💡 NEW:** The program now has improved error handling with automatic pause and debug capture when errors occur. See [docs/SOFT_STOP_GUIDE.md](docs/SOFT_STOP_GUIDE.md) for details.
 
 When testing the main program with web scraping functionality, follow this systematic debugging cycle:
 
@@ -134,6 +137,8 @@ Monitor the terminal for:
 - Any logged warnings or error messages
 
 ### 3. Check the Debug Logs
+
+**Note:** Debug logs are only created when running `python main.py`. They are NOT created when running other test scripts like `test_recipe_grabber.py` or `test_database.py`.
 
 Navigate to the `debug_logs/` directory:
 
@@ -256,10 +261,3 @@ python main.py
 - **Enable verbose logging:** Set logging level to DEBUG for more detailed output
 - **Save working sessions:** Keep debug logs from successful runs for comparison
 
-## Pricing
-
-Claude API pricing (as of December 2024):
-- Input: $3.00 per million tokens
-- Output: $15.00 per million tokens
-
-Much more cost-effective than GPT-4 for this use case!
