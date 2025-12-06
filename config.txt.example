@@ -1,0 +1,21 @@
+# Configuration File Template
+# Copy this file to config.txt and fill in your actual credentials
+# Format: KEY=VALUE
+
+# HEB Account Credentials
+EMAIL=your-email@example.com
+PASSWORD=your-heb-password
+
+# OpenAI API (if using GPT)
+OPENAI_ORG=your-openai-org-id
+OPENAI_API_KEY=your-openai-key
+
+# Claude API (currently used)
+CLAUDE_API_KEY=your-claude-api-key-here
+
+# PostgreSQL Database Configuration
+DATABASE_HOST=localhost
+DATABASE_PORT=5432
+DATABASE_NAME=auto_grocier
+DATABASE_USER=grocier_user
+DATABASE_PASSWORD=your_secure_password
