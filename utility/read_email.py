@@ -28,3 +28,19 @@ def fetch_verification_code():
                     # return the first number in the array because it is the verification code
                     return numbers[0]
 
+# Test block - only runs when this file is executed directly
+if __name__ == "__main__":
+    print("Testing email verification code fetcher...")
+    print(f"Email user: {email_user}")
+    print(f"Email password set: {'Yes' if email_password else 'No'}")
+    print("\nFetching verification code (waiting 10 seconds)...")
+    
+    try:
+        code = fetch_verification_code()
+        if code:
+            print(f"✅ Successfully retrieved verification code: {code}")
+        else:
+            print("❌ No verification code found")
+            print("Make sure you have an unread email from support@accounts.heb.com")
+    except Exception as e:
+        print(f"❌ Error: {e}")

@@ -1,6 +1,6 @@
 import requests
 from bs4 import BeautifulSoup
-from chatgpt3 import get_ingredients_gpt_txt
+from claude import get_ingredients_gpt_txt
 
 
 url_list = [
