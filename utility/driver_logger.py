@@ -178,8 +178,8 @@ class DriverLogger:
         import time
         
         try:
-            print("\n⏸️  Pausing for 2 seconds to capture browser state...")
-            time.sleep(2)  # Wait 2 seconds before capturing
+            # Try to capture immediately without waiting, as Ctrl+C may have disrupted the connection
+            print("\n📸 Capturing browser state immediately...")
             
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
             filename = f"{timestamp}_interrupted_{context}.json"
@@ -194,23 +194,32 @@ class DriverLogger:
             
             # Add driver info if available
             if driver:
+                # Try to get driver info, but don't wait if connection is lost
                 try:
                     interrupt_data["current_url"] = driver.current_url
                     interrupt_data["page_title"] = driver.title
+                    print(f"✓ Current URL: {driver.current_url}")
                 except Exception as e:
                     print(f"⚠️  Could not get driver info: {e}")
+                    interrupt_data["driver_error"] = str(e)
                 
-                # Save screenshot and HTML at time of interrupt
-                print("📸 Capturing browser state...")
+                # Try to save screenshot first (faster than HTML)
                 try:
-                    self.save_html_snapshot(driver, "interrupted", context)
-                except Exception as e:
-                    print(f"⚠️  Failed to save HTML: {e}")
-                
-                try:
-                    self.save_screenshot(driver, "interrupted", context)
+                    screenshot_path = self.save_screenshot(driver, "interrupted", context)
+                    if screenshot_path:
+                        interrupt_data["screenshot"] = screenshot_path
                 except Exception as e:
                     print(f"⚠️  Failed to save screenshot: {e}")
+                    interrupt_data["screenshot_error"] = str(e)
+                
+                # Then try to save HTML
+                try:
+                    html_path = self.save_html_snapshot(driver, "interrupted", context)
+                    if html_path:
+                        interrupt_data["html_snapshot"] = html_path
+                except Exception as e:
+                    print(f"⚠️  Failed to save HTML: {e}")
+                    interrupt_data["html_error"] = str(e)
             
             # Save to JSON file
             with open(filepath, 'w', encoding='utf-8') as f:

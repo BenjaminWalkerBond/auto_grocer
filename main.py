@@ -3,7 +3,9 @@ import undetected_chromedriver as uc
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
-from selenium.common.exceptions import NoSuchElementException    
+from selenium.common.exceptions import NoSuchElementException
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC    
 
 from classes.IngredientList import IngredientList
 from classes.Ingredient import Ingredient
@@ -13,13 +15,52 @@ from utility.driver_logger import DriverLogger, logged_driver_function
 import os
 import time
 import random
+import signal
+import sys
 from recipe_grabber import populate_ingredient_list
 from recipe_grabber import clean_ingredient
 
 # Initialize the logger globally
 logger = DriverLogger(log_dir="debug_logs")
 
+# Global variable to hold the driver for signal handling
+_global_driver = None
+_global_mode = None
+
+
+def signal_handler(signum, frame):
+    """
+    Handle Ctrl+C (SIGINT) by capturing browser state immediately.
+    This runs before the KeyboardInterrupt exception is raised.
+    """
+    global _global_driver, _global_mode
     
+    print("\n\n⚠️  Interrupt signal received (Ctrl+C)")
+    print("📸 Attempting to capture browser state immediately...")
+    
+    if _global_driver:
+        try:
+            # Try to capture screenshot immediately
+            logger.save_screenshot(_global_driver, "interrupted", _global_mode or "unknown")
+            print(f"✓ Screenshot saved to: {logger.session_dir}")
+        except Exception as e:
+            print(f"⚠️  Could not capture screenshot in signal handler: {e}")
+        
+        try:
+            # Try to capture HTML immediately
+            logger.save_html_snapshot(_global_driver, "interrupted", _global_mode or "unknown")
+            print(f"✓ HTML snapshot saved to: {logger.session_dir}")
+        except Exception as e:
+            print(f"⚠️  Could not capture HTML in signal handler: {e}")
+    
+    print("\n⏸️  Browser will remain open for inspection.")
+    print("Press Ctrl+C again to force quit, or close the terminal to exit.\n")
+    
+    # Don't raise KeyboardInterrupt immediately - let the program decide what to do
+    # This gives time to inspect the browser
+    signal.signal(signal.SIGINT, signal.SIG_DFL)  # Reset to default handler for second Ctrl+C
+
+
 def check_exists_by_xpath(xpath,driver):
     try:
         driver.find_element(By.XPATH, xpath)
@@ -27,57 +68,205 @@ def check_exists_by_xpath(xpath,driver):
         return False
     return True
 def random_time():
-    time.sleep(random.randint(2, 3))
-def add_ingredient(ingredient, driver):
-    """Add an ingredient to the HEB cart"""
+    """Sleep for a random amount of time to simulate human behavior"""
+    time.sleep(random.uniform(2.0, 3.5))
+
+def human_like_delay():
+    """Very short random delay to simulate human reaction time"""
+    time.sleep(random.uniform(0.3, 0.8))
+
+def scroll_to_element(driver, element):
+    """Scroll to an element in a human-like way"""
     try:
-        # Find search bar
-        search_bar = driver.find_element(By.ID, "search-input")
-        
-        # Clear the search bar properly - use multiple methods to ensure it's cleared
-        search_bar.clear()
-        # Also select all and delete as backup
-        search_bar.send_keys(Keys.CONTROL + "a")
-        search_bar.send_keys(Keys.DELETE)
-        random_time()
-        
-        # Enter the search term
-        if ingredient.get_tag() == "vegetable" or ingredient.get_tag() == "fruit":
-            search_bar.send_keys("organic ", ingredient.get_name())
-        else:
-            search_bar.send_keys(ingredient.get_name())
-        random_time()
-        
-        # Submit search
-        search_bar.send_keys(Keys.ENTER)
-        random_time()
-        
-        # Wait for search results and add to cart
-        if(check_exists_by_xpath('//*[@id="search_product_grid"]/div[2]/div/div[1]/div/div/div/div/div/button', driver)):
-            add_to_cart_button = driver.find_element(By.XPATH,'//*[@id="search_product_grid"]/div[2]/div/div[1]/div/div/div/div/div/button')
-            
-            # Try normal click first, fall back to JavaScript if blocked
-            try:
-                add_to_cart_button.click()
-            except:
-                driver.execute_script("arguments[0].click();", add_to_cart_button)
-            
-            # Wait a moment for the item to be added
-            random_time()
-        else:
-            print(f"    ⚠️  Add to cart button not found for: {ingredient.get_name()}")
-            return 0
+        # Scroll element into view
+        driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", element)
+        human_like_delay()
     except Exception as e:
-        logger.log_failure(
-            driver=driver,
-            function_name="add_ingredient",
-            error=e,
-            additional_info={
-                "ingredient": ingredient.get_name(),
-                "ingredient_tag": ingredient.get_tag()
-            }
-        )
-        raise
+        print(f"    ⚠️  Could not scroll to element: {e}")
+
+def move_mouse_to_element(driver, element):
+    """Simulate moving mouse to an element"""
+    try:
+        from selenium.webdriver.common.action_chains import ActionChains
+        actions = ActionChains(driver)
+        actions.move_to_element(element).perform()
+        human_like_delay()
+    except Exception as e:
+        print(f"    ⚠️  Could not move mouse: {e}")
+
+def human_like_typing(element, text):
+    """Type text with random delays between keystrokes"""
+    for char in text:
+        element.send_keys(char)
+        time.sleep(random.uniform(0.05, 0.15))
+    human_like_delay()
+def add_ingredient(ingredient, driver):
+    """Add an ingredient to the HEB cart with human-like behavior"""
+    max_retries = 3
+    retry_count = 0
+    
+    while retry_count < max_retries:
+        try:
+            # Find search bar
+            search_bar = driver.find_element(By.ID, "search-input")
+            
+            # Human-like behavior: scroll to search bar first
+            scroll_to_element(driver, search_bar)
+            
+            # Clear the search bar properly - use multiple methods to ensure it's cleared
+            search_bar.clear()
+            human_like_delay()
+            
+            # Also select all and delete as backup
+            search_bar.send_keys(Keys.CONTROL + "a")
+            human_like_delay()
+            search_bar.send_keys(Keys.DELETE)
+            human_like_delay()
+            
+            # Enter the search term with human-like typing
+            search_term = ""
+            if ingredient.get_tag() == "vegetable" or ingredient.get_tag() == "fruit":
+                search_term = f"organic {ingredient.get_name()}"
+            else:
+                search_term = ingredient.get_name()
+            
+            print(f"    🔍 Searching for: {search_term}")
+            human_like_typing(search_bar, search_term)
+            
+            # Random delay before submitting
+            time.sleep(random.uniform(0.5, 1.0))
+            
+            # Submit search
+            search_bar.send_keys(Keys.ENTER)
+            
+            # Wait for results to load with random human-like delay
+            time.sleep(random.uniform(2.5, 4.0))
+            
+            # Try multiple selectors for the add to cart button
+            # Based on actual HEB button structure: data-qe-id="addToCart"
+            button_selectors = [
+                '//button[@data-qe-id="addToCart"]',  # Most reliable - data attribute
+                '//button[contains(@class, "AddByQuantityButton")]',  # Specific button class
+                '//button[contains(., "Add to cart")]',  # Contains text "Add to cart"
+                '//button[@type="button" and contains(@class, "Button_button")]//div[contains(text(), "Add to cart")]/..',  # Full path to button
+                '//*[@id="search_product_grid"]//button[@data-qe-id="addToCart"]',  # Within search results
+                '//button[@data-component="button" and contains(., "Add to cart")]'  # Data component attribute
+            ]
+            
+            add_to_cart_button = None
+            for i, selector in enumerate(button_selectors):
+                try:
+                    if check_exists_by_xpath(selector, driver):
+                        add_to_cart_button = driver.find_element(By.XPATH, selector)
+                        print(f"    ✓ Found button using selector #{i+1}")
+                        break
+                except Exception as e:
+                    continue
+            
+            if add_to_cart_button:
+                print(f"    ✓ Found add to cart button (attempt {retry_count + 1}/{max_retries})")
+                
+                # Human-like behavior: scroll to button and move mouse
+                scroll_to_element(driver, add_to_cart_button)
+                move_mouse_to_element(driver, add_to_cart_button)
+                
+                # Random small delay before clicking
+                time.sleep(random.uniform(0.3, 0.7))
+                
+                # Try multiple click methods in order
+                click_successful = False
+                
+                # Method 1: Regular Selenium click
+                try:
+                    add_to_cart_button.click()
+                    click_successful = True
+                    print(f"    ✓ Clicked with Selenium")
+                except Exception as e:
+                    print(f"    ⚠️  Selenium click failed: {e}")
+                
+                # Method 2: ActionChains click (more human-like)
+                if not click_successful:
+                    try:
+                        from selenium.webdriver.common.action_chains import ActionChains
+                        actions = ActionChains(driver)
+                        actions.move_to_element(add_to_cart_button).pause(random.uniform(0.2, 0.5)).click().perform()
+                        click_successful = True
+                        print(f"    ✓ Clicked with ActionChains")
+                    except Exception as e:
+                        print(f"    ⚠️  ActionChains click failed: {e}")
+                
+                # Method 3: JavaScript click (last resort)
+                if not click_successful:
+                    try:
+                        driver.execute_script("arguments[0].click();", add_to_cart_button)
+                        click_successful = True
+                        print(f"    ✓ Clicked with JavaScript")
+                    except Exception as e:
+                        print(f"    ⚠️  JavaScript click failed: {e}")
+                
+                if click_successful:
+                    # Wait to see if item was added
+                    time.sleep(random.uniform(1.5, 2.5))
+                    print(f"    ✅ Added {ingredient.get_name()} to cart")
+                    return 1
+                else:
+                    print(f"    ⚠️  All click methods failed")
+                    retry_count += 1
+                    if retry_count < max_retries:
+                        wait_time = random.uniform(3, 5)
+                        print(f"    ⏳ Waiting {wait_time:.1f}s before retry {retry_count + 1}/{max_retries}")
+                        time.sleep(wait_time)
+                        continue
+            else:
+                print(f"    ⚠️  Add to cart button not found for: {ingredient.get_name()} (attempt {retry_count + 1}/{max_retries})")
+                retry_count += 1
+                
+                if retry_count < max_retries:
+                    wait_time = random.uniform(2, 4)
+                    print(f"    ⏳ Waiting {wait_time:.1f}s before retry {retry_count + 1}/{max_retries}")
+                    time.sleep(wait_time)
+                    # Try scrolling down to see if more results load
+                    driver.execute_script("window.scrollBy(0, 300);")
+                    time.sleep(random.uniform(1, 2))
+                    continue
+        
+        except Exception as e:
+            print(f"    ❌ Error on attempt {retry_count + 1}/{max_retries}: {e}")
+            retry_count += 1
+            if retry_count < max_retries:
+                time.sleep(random.uniform(2, 4))
+                continue
+    
+    # All retries exhausted - capture debug info and pause
+    print(f"\n    ❌ Failed to add {ingredient.get_name()} after {max_retries} attempts")
+    
+    # Capture screenshot and HTML for debugging
+    try:
+        logger.save_screenshot(driver, f"button_not_found_{ingredient.get_name()}", _global_mode or "unknown")
+        logger.save_html_snapshot(driver, f"button_not_found_{ingredient.get_name()}", _global_mode or "unknown")
+        print(f"    📸 Debug screenshot saved to: {logger.session_dir}")
+    except Exception as e:
+        print(f"    ⚠️  Could not save debug info: {e}")
+    
+    # Pause and ask user what to do
+    print(f"\n    ⏸️  PAUSED - Browser is still open for inspection")
+    print(f"    Options:")
+    print(f"      [Enter] - Skip this ingredient and continue")
+    print(f"      [r] - Retry this ingredient")
+    print(f"      [q] - Quit the program")
+    choice = input(f"    Your choice: ").strip().lower()
+    
+    if choice == 'q':
+        print("\n    🛑 User requested quit")
+        driver.quit()
+        exit(0)
+    elif choice == 'r':
+        print(f"    🔄 Retrying {ingredient.get_name()}...")
+        return add_ingredient(ingredient, driver)  # Recursive retry
+    else:
+        print(f"    ⏭️  Skipping {ingredient.get_name()}")
+        return 0
+
 def clear_cart(driver):
     """Clear all items from the HEB shopping cart"""
     try:
@@ -189,18 +378,19 @@ def reserve_time_slot(driver):
                 # check if day.accesible_name contains open 
                 if "Free" in time.get_attribute("aria-label"):
                     print("found a free time!")
+                    # Click the label to select the radio button
                     time.click()
+                    random_time()
                     break
                 print(time.accessible_name) 
 
 
-            # Define the specific word you're looking for
-            search_word = "Save"
-            # Construct an XPath to find elements containing the search word
-            xpath = f"//*[contains(text(), '{search_word}')]"
-
-            confirm_reserve = driver.find_element(By.XPATH, xpath)
+            # Wait for the "Select this time" button to become enabled after selecting a timeslot
+            print("  ⏳ Waiting for 'Select this time' button to be enabled...")
+            wait = WebDriverWait(driver, 10)
+            confirm_reserve = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, '[data-qe-id="fulfillmentSchedule"]')))
             
+            print("  ✓ Clicking 'Select this time' button...")
             # Try to click using JavaScript if normal click fails (due to overlays/prompts)
             try:
                 confirm_reserve.click()
@@ -209,14 +399,19 @@ def reserve_time_slot(driver):
                 driver.execute_script("arguments[0].click();", confirm_reserve)
             
             random_time()
-            close_modal_button = driver.find_element(By.CSS_SELECTOR, '[aria-label="Close Modal"]')
             
-            # Use JavaScript click for modal close button too
+            # Close the modal if it's still open
             try:
-                close_modal_button.click()
+                close_modal_button = driver.find_element(By.CSS_SELECTOR, '[aria-label="Close Modal"]')
+                try:
+                    close_modal_button.click()
+                    print("  ✓ Closed reservation modal")
+                except:
+                    print("  ℹ️  Normal click failed on modal, using JavaScript click...")
+                    driver.execute_script("arguments[0].click();", close_modal_button)
+                    print("  ✓ Closed reservation modal")
             except:
-                print("  ℹ️  Normal click failed on modal, using JavaScript click...")
-                driver.execute_script("arguments[0].click();", close_modal_button)
+                print("  ℹ️  Modal already closed or not found")
         else: 
             print("No evening slots available")
     
@@ -231,9 +426,6 @@ def reserve_time_slot(driver):
             }
         )
         raise
-
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 
 def login(driver):
     """Login to HEB website using credentials from config.txt"""
@@ -724,6 +916,13 @@ if __name__ == '__main__':
     
     # Match Chrome version 116 that's installed
     driver = uc.Chrome(version_main=116, options=options, use_subprocess=True)
+    
+    # Set global variables for signal handler
+    _global_driver = driver
+    _global_mode = MODE
+    
+    # Register signal handler for Ctrl+C
+    signal.signal(signal.SIGINT, signal_handler)
     
     # DON'T navigate to sign-in page - let login() handle navigation
     # driver.get("https://www.heb.com/sign-in")  # <- REMOVE THIS LINE
