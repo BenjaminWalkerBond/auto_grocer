@@ -34,12 +34,28 @@ PASSWORD=your-password
 OPENAI_ORG=your-openai-org-id
 OPENAI_API_KEY=your-openai-key
 CLAUDE_API_KEY=your-claude-api-key-here
+MODE=test
 ```
 
 The config file supports:
 - Comments (lines starting with #)
 - KEY=VALUE format
 - Empty lines are ignored
+
+### Program Mode (in config.txt)
+
+The `MODE` key in `config.txt` controls how the program runs:
+
+| Mode | Description |
+|------|-------------|
+| `test` | Adds ingredients to cart but does NOT checkout. Browser stays open for inspection. |
+| `checkout_with_prompt` | Adds ingredients, reserves time slot, then prompts you before final checkout. |
+| `auto_checkout` | Fully automated — adds ingredients, reserves slot, and completes checkout. **Will charge your payment method!** |
+
+Example:
+```
+MODE=checkout_with_prompt
+```
 
 ### Option 2: Environment Variable
 Set the `ANTHROPIC_API_KEY` environment variable:
@@ -103,6 +119,20 @@ python main.py
 
 **💡 NEW:** The program now has improved error handling with automatic pause and debug capture when errors occur. See [docs/SOFT_STOP_GUIDE.md](docs/SOFT_STOP_GUIDE.md) for details.
 
+### Test Mode Overview
+
+Test mode (`MODE=test` in `config.txt`) runs the full automation pipeline **without completing checkout**. It is the safest way to verify the program works end-to-end. The flow is:
+
+1. **Login** — Authenticates with HEB using credentials from `config.txt`, handling email verification and passkey prompts automatically.
+2. **Clear cart** — Navigates to the cart and removes any existing items.
+3. **Reserve time slot** — Opens the reservation modal, selects a free curbside pickup date and timeslot.
+4. **Add ingredients** — Searches for each ingredient on heb.com and clicks "Add to cart". Ingredients tagged as `vegetable` or `fruit` are prefixed with "organic".
+5. **Stop** — Prints a completion message and **keeps the browser open** so you can manually inspect the cart contents. Press Enter in the terminal to close the browser.
+
+All steps are wrapped with `self_healing_call`, which uses the Claude API to automatically rewrite broken Selenium functions on failure (up to 3 retries per function). Screenshots and page HTML are sent to Claude for context. Rewritten functions are saved to `updated_functions/` for later review.
+
+No payment is processed. No order is placed.
+
 When testing the main program with web scraping functionality, follow this systematic debugging cycle:
 
 ### 1. Run the Program in Test Mode
@@ -111,14 +141,12 @@ When testing the main program with web scraping functionality, follow this syste
 # Activate virtual environment first (REQUIRED!)
 source venv/bin/activate
 
-# Ensure MODE is set to 'test' in main.py (line 644):
-# MODE = 'test'  # Change this to switch modes
+# Ensure MODE is set to 'test' in config.txt:
+# MODE=test
 
 # Run main program
 python main.py
 ```
-
-**Note:** The program uses a MODE variable in `main.py` (around line 644). Set it to `'test'` for test mode, `'checkout_with_prompt'` for manual checkout, or `'auto_checkout'` for automatic checkout.
 
 ### 2. Watch Terminal Output Closely
 
