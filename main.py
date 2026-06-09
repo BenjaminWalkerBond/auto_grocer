@@ -1,3 +1,4 @@
+
 import selenium
 import undetected_chromedriver as uc
 from selenium import webdriver
@@ -19,6 +20,7 @@ import signal
 import sys
 from recipe_grabber import populate_ingredient_list
 from recipe_grabber import clean_ingredient
+from utility.self_healing import self_healing_call, dismiss_modals
 
 # Initialize the logger globally
 logger = DriverLogger(log_dir="debug_logs")
@@ -26,28 +28,28 @@ logger = DriverLogger(log_dir="debug_logs")
 # Global variable to hold the driver for signal handling
 _global_driver = None
 _global_mode = None
+_interrupted = False
 
 
 def signal_handler(signum, frame):
     """
-    Handle Ctrl+C (SIGINT) by capturing browser state immediately.
-    This runs before the KeyboardInterrupt exception is raised.
+    Handle Ctrl+C (SIGINT) by capturing browser state and stopping the main loop.
+    Chrome runs in its own process group, so it stays alive.
     """
-    global _global_driver, _global_mode
+    global _global_driver, _global_mode, _interrupted
+    _interrupted = True
     
     print("\n\n⚠️  Interrupt signal received (Ctrl+C)")
     print("📸 Attempting to capture browser state immediately...")
     
     if _global_driver:
         try:
-            # Try to capture screenshot immediately
             logger.save_screenshot(_global_driver, "interrupted", _global_mode or "unknown")
             print(f"✓ Screenshot saved to: {logger.session_dir}")
         except Exception as e:
             print(f"⚠️  Could not capture screenshot in signal handler: {e}")
         
         try:
-            # Try to capture HTML immediately
             logger.save_html_snapshot(_global_driver, "interrupted", _global_mode or "unknown")
             print(f"✓ HTML snapshot saved to: {logger.session_dir}")
         except Exception as e:
@@ -56,8 +58,6 @@ def signal_handler(signum, frame):
     print("\n⏸️  Browser will remain open for inspection.")
     print("Press Ctrl+C again to force quit, or close the terminal to exit.\n")
     
-    # Don't raise KeyboardInterrupt immediately - let the program decide what to do
-    # This gives time to inspect the browser
     signal.signal(signal.SIGINT, signal.SIG_DFL)  # Reset to default handler for second Ctrl+C
 
 
@@ -107,8 +107,25 @@ def add_ingredient(ingredient, driver):
     
     while retry_count < max_retries:
         try:
-            # Find search bar
-            search_bar = driver.find_element(By.ID, "search-input")
+            # Make sure we're on a page where the search bar is interactable
+            # (not blocked by a modal or stuck on cart page)
+            if "/cart" in driver.current_url:
+                print("    📍 On cart page, navigating to homepage for search...")
+                driver.get("https://www.heb.com/")
+                time.sleep(random.uniform(2.0, 3.0))
+            
+            # Close any open modals that might be blocking
+            try:
+                modal_close = driver.find_element(By.CSS_SELECTOR, '[data-qe-id="modalClose"]')
+                driver.execute_script("arguments[0].click();", modal_close)
+                time.sleep(1)
+                print("    ℹ️  Closed a blocking modal")
+            except:
+                pass
+            
+            # Find search bar and wait for it to be interactable
+            wait = WebDriverWait(driver, 10)
+            search_bar = wait.until(EC.element_to_be_clickable((By.ID, "search-input")))
             
             # Human-like behavior: scroll to search bar first
             scroll_to_element(driver, search_bar)
@@ -270,24 +287,40 @@ def add_ingredient(ingredient, driver):
 def clear_cart(driver):
     """Clear all items from the HEB shopping cart"""
     try:
-        cart_button = driver.find_element(By.XPATH, "/html/body/div/header/div[1]/div[2]/a[2]")
-        cart_button.click()
-        random_time()
-        if (check_exists_by_xpath("/html/body/div[1]/main/div/div/div[1]/div/section[2]/div[2]/button", driver)):
-            clear_cart_button = driver.find_element(By.XPATH,"/html/body/div[1]/main/div/div/div[1]/div/section[2]/div[2]/button")
+        # First, close any modal that might be intercepting clicks
+        try:
+            close_button = driver.find_element(By.CSS_SELECTOR, "button[aria-label='close']")
+            if close_button.is_displayed():
+                close_button.click()
+                random_time()
+        except:
+            pass
+        
+        # Look for the "Empty cart" button directly on the cart page
+        from selenium.webdriver.support.wait import WebDriverWait
+        from selenium.webdriver.support import expected_conditions as EC
+        wait = WebDriverWait(driver, 10)
+        
+        try:
+            # Wait for and click the empty cart button using the visible text
+            empty_cart_button = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Empty cart')]")))
+            empty_cart_button.click()
             random_time()
-            # scroll down half the page to make sure the button is visible
-            driver.execute_script("window.scrollTo(0, document.body.scrollHeight/2);")
-            clear_cart_button.click()
-            random_time()
-            confirm_empty = driver.find_element(By.XPATH, "/html/body/div[3]/div/div/div/div[2]/button[2]")
+            
+            # Confirm the empty cart action
+            confirm_empty = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Empty')]")))
             confirm_empty.click()
             random_time()
-            home = driver.find_element(By.XPATH, "//html/body/div/header/div[1]/div[2]/a[1]")
-            home.click()
+            
+            # Navigate back to home
+            home_link = driver.find_element(By.CSS_SELECTOR, "a[href='/']")
+            home_link.click()
             random_time()
-        else:
+            
+        except Exception as e:
+            # If we can't find empty cart button, the cart might already be empty
             return 0
+            
     except Exception as e:
         logger.log_failure(
             driver=driver,
@@ -296,125 +329,298 @@ def clear_cart(driver):
             additional_info={"step": "clearing cart"}
         )
         raise
+
 def reserve_time_slot(driver):
-    """Reserve a delivery time slot on HEB website"""
+    """Reserve a curbside pickup time slot on HEB website.
+
+    Flow:
+    1. Navigate to cart page
+    2. Click 'Choose a time' button to open reservation modal
+    3. Ensure 'Curbside' tab is selected
+    4. Pick the first available (Free, non-Full) date
+    5. Pick the first available free timeslot
+    6. Click 'Select this time' to confirm
+    """
     try:
-        # Construct an XPath to find elements containing the search word
-        xpath = f"//*[contains(text(), 'Change time')]"
-        if not check_exists_by_xpath(xpath, driver):
-            # try:
-            # navigate to the cart
-            # cart_button = driver.find_element(By.XPATH, "/html/body/div/header/div[1]/div[2]/a[2]")
-            # cart_button = driver.find_element(By.CSS_SELECTOR, '[href="/cart/"]')
-            # cart_button.click()
+        wait = WebDriverWait(driver, 15)
+
+        # STEP 1: Navigate to cart if not already there
+        print("  Step 1: Navigating to cart...")
+        if "/cart" not in driver.current_url:
             driver.get("https://www.heb.com/cart/")
-        random_time()
-        # click the reserve time slot button
-        reserve_button = driver.find_element(By.CSS_SELECTOR, '[data-qe-id="chooseReservationTime"]')
-        reserve_button.click()
-        random_time()
-        # tomorrow = driver.find_element(By.XPATH, "/html/body/div[3]/div/div/div/div/div/div/div/div[2]/div[2]/button[2]")
-        # # find the evening slots sections by searching for all elements with the same class and an h3 tag with the text "Evening"
-        # evening_slots_header = driver.find_element(By.XPATH, "//div[@class='sc-cyxg30-0 bQqawu']/div/h3[text()='Evening']")
-
-        # Define the specific days you're looking for
-        days = ["Today", "Tomorrow","Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-
-        # Iterate through the days list and search for matching elements
-        # for day in days:
-        #     # Construct an XPath to find elements containing both the day and "Free"
-        #     # xpath = f"//button[descendant-or-self::text() = {day}, '{day}') and contains(descendant-or-self::text(), 'Free')]"
-        #     xpath = f"//*[text() = {day}, '{day}']"
-            
-        #     # Find all matching elements with the specified XPath
-        #     matching_elements = driver.find_elements(By.XPATH, xpath)
-
-        #     if matching_elements:
-        #         # Click the first matching element found
-        #         print("found a free day!")
-        #         matching_elements[0].click()
-        #         time.sleep(3)
-        #         break  # Exit the loop once a match is found
-
-        # TERRIBLE IMPLEMENTATION I WAS FORCED TO USE BECAUSE I COULDNT GET ABOVE WORKING
-        matching_elements = []
-        for day in days:
-            xpath = f"//*[contains(text(), '{day}')]"
-            matching_elements += driver.find_elements(By.XPATH, xpath)
-        print(matching_elements)
-
-
-        if matching_elements:
-            print("in matching elements")
-            for match in matching_elements:
-                free_element = match.find_elements(By.XPATH, "//*[contains(text(), 'Free')]")
-                if free_element:
-                    match.find_element(By.XPATH, "..").find_element(By.XPATH, "..").find_element(By.XPATH, "..").click()
-
-                    random_time()
-
-                    xpath = f"//*[contains(text(), 'Evening')]"
-                    if check_exists_by_xpath(xpath, driver):
-                        print("found a free day!")
-                        break
-
-        random_time()
-        # Define the specific word you're looking for
-        search_word = "Evening"
-
-        # Construct an XPath to find elements containing the search word
-        xpath = f"//*[contains(text(), '{search_word}')]"
-
-        if check_exists_by_xpath(xpath, driver):
-            # Find all matching elements on the page
-            evening_slots_header = driver.find_element(By.XPATH, xpath)
-            print(evening_slots_header)
-            # # go up two levels to get the container for the evening slots
-            evening_slots_container = (evening_slots_header.find_element(By.XPATH, "..")).find_element(By.XPATH, "..")
-
-            evening_slots_container = evening_slots_container.find_elements(By.TAG_NAME, "button")
-
-            for time in evening_slots_container:
-                # check if day.accesible_name contains open 
-                if "Free" in time.get_attribute("aria-label"):
-                    print("found a free time!")
-                    # Click the label to select the radio button
-                    time.click()
-                    random_time()
-                    break
-                print(time.accessible_name) 
-
-
-            # Wait for the "Select this time" button to become enabled after selecting a timeslot
-            print("  ⏳ Waiting for 'Select this time' button to be enabled...")
-            wait = WebDriverWait(driver, 10)
-            confirm_reserve = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, '[data-qe-id="fulfillmentSchedule"]')))
-            
-            print("  ✓ Clicking 'Select this time' button...")
-            # Try to click using JavaScript if normal click fails (due to overlays/prompts)
-            try:
-                confirm_reserve.click()
-            except:
-                print("  ℹ️  Normal click failed, using JavaScript click...")
-                driver.execute_script("arguments[0].click();", confirm_reserve)
-            
             random_time()
-            
-            # Close the modal if it's still open
+
+        # Check if time is already reserved
+        if check_exists_by_xpath("//*[contains(text(), 'Change time')]", driver):
+            print("  ✓ Time slot already reserved")
+            return True
+
+        # STEP 2: Click the 'Choose pickup time' button from the cart page
+        print("  Step 2: Opening reservation modal...")
+        try:
+            # Look for the specific button with icon and text "Choose pickup time"
+            reserve_button = wait.until(EC.element_to_be_clickable(
+                (By.XPATH, '//button[contains(., "Choose pickup time") or .//span[contains(text(), "Choose pickup time")]]')
+            ))
+            reserve_button.click()
+            print("    ✓ Clicked 'Choose pickup time' button")
+        except:
             try:
-                close_modal_button = driver.find_element(By.CSS_SELECTOR, '[aria-label="Close Modal"]')
-                try:
-                    close_modal_button.click()
-                    print("  ✓ Closed reservation modal")
-                except:
-                    print("  ℹ️  Normal click failed on modal, using JavaScript click...")
-                    driver.execute_script("arguments[0].click();", close_modal_button)
-                    print("  ✓ Closed reservation modal")
+                # Fallback: look for button in the curbside fulfillment section
+                reserve_button = wait.until(EC.element_to_be_clickable(
+                    (By.XPATH, '//button[contains(@aria-label, "Choose pickup time") or contains(@aria-label, "pickup time")]')
+                ))
+                reserve_button.click()
+                print("    ✓ Clicked pickup time button")
             except:
-                print("  ℹ️  Modal already closed or not found")
-        else: 
-            print("No evening slots available")
-    
+                raise Exception("Could not find pickup time selection button")
+        
+        random_time()
+
+        # STEP 3: Make sure the Curbside tab is selected
+        print("  Step 3: Ensuring Curbside tab is selected...")
+        try:
+            # Look for curbside tab or pickup option
+            curbside_elements = driver.find_elements(By.XPATH, '//*[contains(text(), "Curbside") or contains(text(), "CURBSIDE") or contains(@id, "CURBSIDE")]')
+            for element in curbside_elements:
+                if element.tag_name in ['button', 'a'] or element.get_attribute('role') == 'tab':
+                    if element.get_attribute("aria-selected") != "true":
+                        element.click()
+                        random_time()
+                        print("    ✓ Selected Curbside option")
+                    else:
+                        print("    ✓ Curbside already selected")
+                    break
+        except Exception as e:
+            print(f"    ⚠️  Could not check/click Curbside tab: {e}")
+
+        # Wait for modal/page to load
+        time.sleep(3)
+        
+        # STEP 4: Select a free date
+        print("  Step 4: Selecting a free date...")
+        
+        # Look for date selection elements with various approaches
+        date_elements = []
+        
+        # Try to find radio buttons for dates
+        date_radios = driver.find_elements(By.XPATH, '//input[@type="radio" and (contains(@name, "date") or contains(@aria-label, "date") or contains(@value, "2025"))]')
+        if date_radios:
+            print(f"    Found {len(date_radios)} date radio buttons")
+            date_elements = date_radios
+        
+        # Try to find clickable date buttons or labels
+        if not date_elements:
+            date_buttons = driver.find_elements(By.XPATH, '//button[contains(@aria-label, "date") or contains(text(), "Jan") or contains(text(), "Feb") or contains(text(), "Mar") or contains(text(), "Apr") or contains(text(), "May") or contains(text(), "Jun") or contains(text(), "Jul") or contains(text(), "Aug") or contains(text(), "Sep") or contains(text(), "Oct") or contains(text(), "Nov") or contains(text(), "Dec")]')
+            if date_buttons:
+                print(f"    Found {len(date_buttons)} date buttons")
+                date_elements = date_buttons
+        
+        # Try to find any elements with date-related data attributes
+        if not date_elements:
+            date_elements = driver.find_elements(By.CSS_SELECTOR, '[data-testid*="date"], [data-qe-id*="date"], [aria-label*="date"], [class*="date"]')
+            if date_elements:
+                print(f"    Found {len(date_elements)} date-related elements")
+
+        date_selected = False
+        for element in date_elements:
+            try:
+                # Get text content and attributes to check availability
+                element_text = element.get_attribute('textContent') or element.text or ''
+                aria_label = element.get_attribute('aria-label') or ''
+                value = element.get_attribute('value') or ''
+                combined_text = f"{element_text} {aria_label} {value}".lower()
+                
+                # Skip if element is disabled or marked as full
+                if element.get_attribute('disabled') or 'full' in combined_text or 'unavailable' in combined_text:
+                    print(f"    ⏭️  Skipping (unavailable): {element_text or aria_label}")
+                    continue
+                
+                # Check if it's already selected
+                if element.get_attribute('checked') == 'true' or element.get_attribute('aria-checked') == 'true' or 'selected' in element.get_attribute('class') or '':
+                    print(f"    ✓ Date already selected: {element_text or aria_label}")
+                    date_selected = True
+                    break
+                
+                # Try to click the element
+                try:
+                    if element.tag_name == 'input':
+                        # For radio inputs, click directly
+                        driver.execute_script("arguments[0].click();", element)
+                    else:
+                        # For buttons or other clickable elements
+                        element.click()
+                    
+                    print(f"    📅 Selected date: {element_text or aria_label}")
+                    random_time()
+                    date_selected = True
+                    break
+                except Exception as click_error:
+                    print(f"    ⚠️  Could not click date element: {click_error}")
+                    continue
+                    
+            except Exception as e:
+                print(f"    ⚠️  Error processing date element: {e}")
+                continue
+
+        if not date_selected:
+            # Final fallback: try to click any radio button or clickable element
+            all_clickable = driver.find_elements(By.XPATH, '//input[@type="radio"] | //button[not(@disabled)]')
+            for element in all_clickable[:5]:  # Try first 5 elements
+                try:
+                    driver.execute_script("arguments[0].click();", element)
+                    print("    📅 Selected first available option")
+                    date_selected = True
+                    break
+                except:
+                    continue
+                    
+        if not date_selected:
+            raise Exception(
+                f"No available dates found. Found {len(date_elements)} date elements but none were selectable. "
+                f"The page layout may have changed or no dates are available."
+            )
+
+        # STEP 5: Select a timeslot
+        print("  Step 5: Selecting a free timeslot...")
+        time.sleep(2)  # Wait for timeslots to load after date selection
+
+        # Look for timeslot elements
+        timeslot_elements = []
+        
+        # Try to find radio buttons for timeslots
+        timeslot_radios = driver.find_elements(By.XPATH, '//input[@type="radio" and (contains(@name, "time") or contains(@aria-label, "time") or contains(@aria-label, "slot"))]')
+        if timeslot_radios:
+            print(f"    Found {len(timeslot_radios)} timeslot radio buttons")
+            timeslot_elements = timeslot_radios
+        
+        # Try to find clickable timeslot buttons
+        if not timeslot_elements:
+            timeslot_buttons = driver.find_elements(By.XPATH, '//button[contains(@aria-label, "time") or contains(text(), "AM") or contains(text(), "PM") or contains(text(), ":")]')
+            if timeslot_buttons:
+                print(f"    Found {len(timeslot_buttons)} timeslot buttons")
+                timeslot_elements = timeslot_buttons
+        
+        # Try to find any elements with timeslot-related data attributes
+        if not timeslot_elements:
+            timeslot_elements = driver.find_elements(By.CSS_SELECTOR, '[data-testid*="time"], [data-qe-id*="time"], [aria-label*="time"], [class*="time"]')
+            if timeslot_elements:
+                print(f"    Found {len(timeslot_elements)} time-related elements")
+
+        timeslot_selected = False
+        for element in timeslot_elements:
+            try:
+                element_text = element.get_attribute('textContent') or element.text or ''
+                aria_label = element.get_attribute('aria-label') or ''
+                combined_text = f"{element_text} {aria_label}".lower()
+                
+                # Skip if disabled or full
+                if element.get_attribute('disabled') or 'full' in combined_text or 'unavailable' in combined_text:
+                    continue
+                
+                # Look for free timeslots or ones with pricing
+                if 'free' in combined_text or '$0' in combined_text or ('am' in combined_text or 'pm' in combined_text):
+                    try:
+                        if element.tag_name == 'input':
+                            driver.execute_script("arguments[0].click();", element)
+                        else:
+                            element.click()
+                        
+                        print(f"    🕐 Selected timeslot: {element_text or aria_label}")
+                        human_like_delay()
+                        timeslot_selected = True
+                        break
+                    except Exception as click_error:
+                        print(f"    ⚠️  Could not click timeslot: {click_error}")
+                        continue
+                        
+            except Exception as e:
+                continue
+
+        if not timeslot_selected:
+            # Fallback: try any available radio button or clickable element
+            remaining_clickable = driver.find_elements(By.XPATH, '//input[@type="radio"][not(@disabled)] | //button[not(@disabled)]')
+            for element in remaining_clickable[:5]:
+                try:
+                    driver.execute_script("arguments[0].click();", element)
+                    print("    🕐 Selected first available timeslot")
+                    timeslot_selected = True
+                    break
+                except:
+                    continue
+
+        if not timeslot_selected:
+            raise Exception(
+                f"No free timeslots found. Found {len(timeslot_elements)} timeslot elements but none were selectable. "
+                f"The page layout may have changed or no timeslots are available."
+            )
+
+        # STEP 6: Click confirmation button
+        print("  Step 6: Clicking confirmation button...")
+        
+        confirm_selectors = [
+            '//button[contains(text(), "Select this time")]',
+            '//button[contains(text(), "Confirm")]',
+            '//button[contains(text(), "Save")]',
+            '//button[contains(text(), "Schedule")]',
+            '//button[contains(@aria-label, "confirm")]',
+            '//button[contains(@data-qe-id, "fulfill")]',
+            '//button[contains(@data-qe-id, "schedule")]',
+            '//button[contains(@data-qe-id, "save")]'
+        ]
+        
+        confirm_button = None
+        for selector in confirm_selectors:
+            try:
+                confirm_button = wait.until(EC.element_to_be_clickable((By.XPATH, selector)))
+                break
+            except:
+                continue
+        
+        if confirm_button:
+            try:
+                confirm_button.click()
+                print("    ✓ Clicked confirmation button")
+            except:
+                driver.execute_script("arguments[0].click();", confirm_button)
+                print("    ✓ Clicked confirmation button (JS)")
+        else:
+            # Look for any prominent button that might be the confirmation
+            all_buttons = driver.find_elements(By.TAG_NAME, 'button')
+            for button in all_buttons:
+                if not button.get_attribute('disabled'):
+                    button_text = (button.text or '').lower()
+                    if any(word in button_text for word in ['select', 'confirm', 'save', 'continue', 'next']):
+                        try:
+                            button.click()
+                            print(f"    ✓ Clicked button: {button.text}")
+                            break
+                        except:
+                            continue
+            else:
+                print("    ⚠️  Could not find confirmation button, proceeding anyway")
+
+        print("  ✓ Time slot reservation process completed!")
+        random_time()
+
+        # Wait for any modal to close or page to update
+        time.sleep(3)
+
+        # Try to close any remaining modal
+        try:
+            close_elements = driver.find_elements(By.XPATH, '//button[contains(@aria-label, "close") or contains(@aria-label, "Close") or contains(text(), "×")]')
+            for close_elem in close_elements:
+                try:
+                    close_elem.click()
+                    print("  ✓ Closed modal")
+                    break
+                except:
+                    continue
+        except:
+            print("  ℹ️  No modal to close or already closed")
+
+        return True
+
     except Exception as e:
         logger.log_failure(
             driver=driver,
@@ -425,6 +631,17 @@ def reserve_time_slot(driver):
                 "url": driver.current_url
             }
         )
+        # Try to close modal on failure
+        try:
+            close_buttons = driver.find_elements(By.XPATH, '//button[contains(@aria-label, "close") or contains(text(), "×")]')
+            for btn in close_buttons:
+                try:
+                    btn.click()
+                    break
+                except:
+                    continue
+        except:
+            pass
         raise
 
 def login(driver):
@@ -570,6 +787,25 @@ def login(driver):
             verify_button.click()
             random_time()
         
+        # STEP 8: Handle passkey registration prompt if it appears
+        # After login/verification, HEB may prompt to set up a passkey
+        # We skip this for now and continue with email verification
+        print("  Step 9: Checking for passkey registration prompt...")
+        try:
+            # Check if we landed on the passkey registration page
+            if "passkey_registration" in driver.current_url:
+                print("  ⚠️  Passkey registration prompt detected - clicking 'Not now'...")
+                not_now_button = wait.until(EC.element_to_be_clickable(
+                    (By.XPATH, "//button[contains(text(), 'Not now')]")
+                ))
+                not_now_button.click()
+                random_time()
+                print("  ✓ Skipped passkey registration")
+            else:
+                print("  ✓ No passkey prompt detected")
+        except Exception as e:
+            print(f"  ℹ️  Passkey check: {e}")
+        
         print("✓ Login successful!\n")
         return True
     
@@ -635,31 +871,48 @@ def test_mode(driver, ingredient_list):
     
     try:
         # Login
-        login(driver)
+        self_healing_call(login, driver, driver=driver)
         random_time()
         driver.maximize_window()
         
+        # Dismiss any post-login modals (delivery fee promos, etc.)
+        dismiss_modals(driver)
+        
         # Clear cart
-        clear_cart(driver)
+        self_healing_call(clear_cart, driver, driver=driver)
         random_time()
 
         # Reserve time slot
         print("\n📅 Attempting to reserve time slot...")
-        reserve_time_slot(driver)
-        print("✓ Time slot reserved")
+        try:
+            slot_reserved = self_healing_call(reserve_time_slot, driver, driver=driver)
+            if slot_reserved:
+                print("✓ Time slot reserved")
+        except Exception as e:
+            print(f"⚠️  Could not reserve time slot - continuing anyway ({type(e).__name__})")
+        random_time()
+
+        # Navigate to homepage before searching for ingredients
+        print("\n🏠 Navigating to homepage for ingredient search...")
+        driver.get("https://www.heb.com/")
         random_time()
 
         # Add all ingredients to cart
         print(f"\n🛒 Adding {len(ingredient_list.get_ingredients())} ingredients to cart...")
-        while ingredient_list.get_ingredients():
+        while ingredient_list.get_ingredients() and not _interrupted:
             ingredient = ingredient_list.remove_last_ingredient()
             print(f"  Adding: {ingredient.get_name()}")
-            add_ingredient(ingredient, driver)
+            self_healing_call(add_ingredient, ingredient, driver, driver=driver)
             random_time()
         
-        print("\n✓ All ingredients added to cart!")
+        if _interrupted:
+            remaining = len(ingredient_list.get_ingredients())
+            print(f"\n⚠️  Interrupted! {remaining} ingredient(s) not added.")
+        else:
+            print("\n✓ All ingredients added to cart!")
+        
         print("\n" + "="*60)
-        print("🧪 TEST MODE COMPLETE")
+        print("🧪 TEST MODE COMPLETE" if not _interrupted else "🧪 TEST MODE INTERRUPTED")
         print("="*60)
         print("Browser left open for manual inspection.")
         print("Review the cart and close the browser when done.\n")
@@ -698,27 +951,46 @@ def checkout_with_prompt(driver, ingredient_list):
     
     try:
         # Login
-        login(driver)
+        self_healing_call(login, driver, driver=driver)
         random_time()
         driver.maximize_window()
         
+        # Dismiss any post-login modals (delivery fee promos, etc.)
+        dismiss_modals(driver)
+        
         # Clear cart
-        clear_cart(driver)
+        self_healing_call(clear_cart, driver, driver=driver)
         random_time()
 
         # Reserve time slot
         print("\n📅 Attempting to reserve time slot...")
-        reserve_time_slot(driver)
-        print("✓ Time slot reserved")
+        try:
+            slot_reserved = self_healing_call(reserve_time_slot, driver, driver=driver)
+            if slot_reserved:
+                print("✓ Time slot reserved")
+        except Exception as e:
+            print(f"⚠️  Could not reserve time slot - continuing anyway ({type(e).__name__})")
+        random_time()
+
+        # Navigate to homepage before searching for ingredients
+        print("\n🏠 Navigating to homepage for ingredient search...")
+        driver.get("https://www.heb.com/")
         random_time()
 
         # Add all ingredients to cart
         print(f"\n🛒 Adding {len(ingredient_list.get_ingredients())} ingredients to cart...")
-        while ingredient_list.get_ingredients():
+        while ingredient_list.get_ingredients() and not _interrupted:
             ingredient = ingredient_list.remove_last_ingredient()
             print(f"  Adding: {ingredient.get_name()}")
-            add_ingredient(ingredient, driver)
+            self_healing_call(add_ingredient, ingredient, driver, driver=driver)
             random_time()
+        
+        if _interrupted:
+            remaining = len(ingredient_list.get_ingredients())
+            print(f"\n⚠️  Interrupted! {remaining} ingredient(s) not added.")
+            print("Browser left open for inspection.")
+            input("Press Enter to close the browser and exit...")
+            return
         
         print("\n✓ All ingredients added to cart!")
         
@@ -730,7 +1002,7 @@ def checkout_with_prompt(driver, ingredient_list):
         
         if response in ['yes', 'y']:
             print("\n💳 Proceeding with checkout...")
-            checkout(driver)
+            self_healing_call(checkout, driver, driver=driver)
             print("\n✓ Order placed successfully!")
         else:
             print("\n❌ Checkout cancelled by user.")
@@ -778,33 +1050,52 @@ def auto_checkout(driver, ingredient_list):
     
     try:
         # Login
-        login(driver)
+        self_healing_call(login, driver, driver=driver)
         random_time()
         driver.maximize_window()
         
+        # Dismiss any post-login modals (delivery fee promos, etc.)
+        dismiss_modals(driver)
+        
         # Clear cart
-        clear_cart(driver)
+        self_healing_call(clear_cart, driver, driver=driver)
         random_time()
 
         # Reserve time slot
         print("\n📅 Attempting to reserve time slot...")
-        reserve_time_slot(driver)
-        print("✓ Time slot reserved")
+        try:
+            slot_reserved = self_healing_call(reserve_time_slot, driver, driver=driver)
+            if slot_reserved:
+                print("✓ Time slot reserved")
+        except Exception as e:
+            print(f"⚠️  Could not reserve time slot - continuing anyway ({type(e).__name__})")
+        random_time()
+
+        # Navigate to homepage before searching for ingredients
+        print("\n🏠 Navigating to homepage for ingredient search...")
+        driver.get("https://www.heb.com/")
         random_time()
 
         # Add all ingredients to cart
         print(f"\n🛒 Adding {len(ingredient_list.get_ingredients())} ingredients to cart...")
-        while ingredient_list.get_ingredients():
+        while ingredient_list.get_ingredients() and not _interrupted:
             ingredient = ingredient_list.remove_last_ingredient()
             print(f"  Adding: {ingredient.get_name()}")
-            add_ingredient(ingredient, driver)
+            self_healing_call(add_ingredient, ingredient, driver, driver=driver)
             random_time()
+        
+        if _interrupted:
+            remaining = len(ingredient_list.get_ingredients())
+            print(f"\n⚠️  Interrupted! {remaining} ingredient(s) not added.")
+            print("Browser left open for inspection.")
+            input("Press Enter to close the browser and exit...")
+            return
         
         print("\n✓ All ingredients added to cart!")
         
         # Automatically checkout
         print("\n💳 Automatically processing checkout...")
-        checkout(driver)
+        self_healing_call(checkout, driver, driver=driver)
         
         print("\n" + "="*60)
         print("✅ ORDER PLACED SUCCESSFULLY!")
@@ -832,8 +1123,11 @@ if __name__ == '__main__':
     # CONFIGURATION
     # ============================================================
     
-    # MODE SELECTION: Choose one of: 'test', 'checkout_with_prompt', 'auto_checkout'
-    MODE = 'test'  # Change this to switch modes
+    # MODE SELECTION: Read from config.txt (KEY: MODE)
+    # Valid values: 'test', 'checkout_with_prompt', 'auto_checkout'
+    from claude import parse_config
+    _config = parse_config(os.path.join(os.path.dirname(__file__), 'config.txt'))
+    MODE = _config.get('MODE', 'test').strip()
     
     # ============================================================
     # INGREDIENT SOURCE SELECTION
@@ -915,7 +1209,12 @@ if __name__ == '__main__':
     options.add_argument("--password-store=basic")
     
     # Match Chrome version 116 that's installed
-    driver = uc.Chrome(version_main=116, options=options, use_subprocess=True)
+    # Temporarily ignore SIGINT so chromedriver inherits SIG_IGN and won't die on Ctrl+C.
+    # This keeps the browser + driver connection alive when the user interrupts.
+    original_sigint = signal.getsignal(signal.SIGINT)
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    driver = uc.Chrome(version_main=116, options=options, use_subprocess=False)
+    signal.signal(signal.SIGINT, original_sigint)  # restore default before registering ours
     
     # Set global variables for signal handler
     _global_driver = driver
