@@ -1,6 +1,6 @@
 import requests
 from bs4 import BeautifulSoup
-from claude import get_ingredients_gpt_txt
+from claude import extract_ingredients
 
 
 url_list = [
@@ -40,7 +40,7 @@ for url in url_list:
 # # Remove newlines and extra spaces in the text
 # text = " ".join(text.split())
 
-# ingredients = get_ingredients_gpt_txt(text)
+# ingredients = extract_ingredients(text)
 # # print the ingredients from the list, each on a new line
 # for ingredient in ingredients:
 #     # format the print statement print a new line after each ingredient
