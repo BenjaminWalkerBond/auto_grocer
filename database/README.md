@@ -7,32 +7,44 @@ This project uses PostgreSQL to store ingredients, recipes, and tags. The databa
 
 ## Prerequisites
 
-### 1. Install PostgreSQL
+### 1. Install PostgreSQL (Windows)
 
-**Ubuntu/Debian:**
-```bash
-sudo apt update
-sudo apt install postgresql postgresql-contrib
+PostgreSQL 15 is already installed locally on this machine at
+`C:\Program Files\PostgreSQL\15` and runs as the Windows service
+`postgresql-x64-15` on port **5432**.
+
+> If you ever need to (re)install, download the installer from
+> [postgresql.org](https://www.postgresql.org/download/windows/). The installer
+> adds `psql.exe` under `C:\Program Files\PostgreSQL\15\bin`.
+
+Verify the service is running (PowerShell):
+```powershell
+Get-Service postgresql-x64-15
 ```
 
-**macOS:**
-```bash
-brew install postgresql
-brew services start postgresql
-```
-
-**Windows:**
-Download and install from [postgresql.org](https://www.postgresql.org/download/windows/)
+> Note: a PostgreSQL 17 service (`postgresql-x64-17`) also exists on port
+> **5433**. This project uses the **15 / 5432** instance, which matches
+> `config.txt`.
 
 ### 2. Create Database and User
 
-```bash
-# Connect to PostgreSQL
-sudo -u postgres psql
+The repo ships an idempotent bootstrap script. From the project root, run it as
+the `postgres` superuser (you'll be prompted for the postgres password):
 
-# In PostgreSQL prompt:
-CREATE DATABASE auto_grocier;
-CREATE USER grocier_user WITH PASSWORD 'your_secure_password';
+```powershell
+& 'C:\Program Files\PostgreSQL\15\bin\psql.exe' -U postgres -h localhost -p 5432 -f database/bootstrap_local.sql
+```
+
+This creates the `grocier_user` role and the `auto_grocier` database with the
+correct privileges. Equivalent manual steps if you prefer doing it by hand:
+
+```powershell
+& 'C:\Program Files\PostgreSQL\15\bin\psql.exe' -U postgres -h localhost -p 5432
+```
+```sql
+-- In the psql prompt:
+CREATE USER grocier_user WITH PASSWORD 'grocier_pass_123';
+CREATE DATABASE auto_grocier OWNER grocier_user;
 GRANT ALL PRIVILEGES ON DATABASE auto_grocier TO grocier_user;
 \q
 ```
@@ -41,14 +53,14 @@ GRANT ALL PRIVILEGES ON DATABASE auto_grocier TO grocier_user;
 
 ## Configuration
 
-Update `config.txt` with your database credentials:
+Update `config.txt` with your database credentials (already set on this machine):
 
 ```
 DATABASE_HOST=localhost
 DATABASE_PORT=5432
 DATABASE_NAME=auto_grocier
 DATABASE_USER=grocier_user
-DATABASE_PASSWORD=your_secure_password
+DATABASE_PASSWORD=grocier_pass_123
 ```
 
 ---
@@ -57,13 +69,17 @@ DATABASE_PASSWORD=your_secure_password
 
 ### 1. Install Python Dependencies
 
-```bash
-# Activate your virtual environment
-source venv/bin/activate
+```powershell
+# Activate your virtual environment (PowerShell)
+.\venv\Scripts\Activate.ps1
 
 # Install requirements
 pip install -r requirements.txt
 ```
+
+> Git Bash users: use `source venv/Scripts/activate` instead.
+> To run a one-off command without activating, prefix it with the venv
+> interpreter: `venv\Scripts\python.exe database\setup_database.py`.
 
 This will install:
 - `sqlalchemy` - ORM for database operations
@@ -71,9 +87,9 @@ This will install:
 
 ### 2. Initialize Database
 
-```bash
+```powershell
 # Run the complete setup (recommended)
-python database/setup_database.py
+python database\setup_database.py
 ```
 
 This will:
@@ -83,18 +99,18 @@ This will:
 
 **OR** run steps individually:
 
-```bash
+```powershell
 # Step 1: Initialize schema
-python database/init_db.py
+python database\init_db.py
 
 # Step 2: Seed tags
-python database/seed_tags.py
+python database\seed_tags.py
 ```
 
 ### 3. Verify Installation
 
-```bash
-python database/test_database.py
+```powershell
+python database\test_database.py
 ```
 
 This will create sample data and test all CRUD operations.
@@ -262,17 +278,19 @@ engine = create_engine(
 
 ### Reset Database
 
-```bash
-# Connect to PostgreSQL
-sudo -u postgres psql
-
-# Drop and recreate
+```powershell
+# Connect to PostgreSQL as the superuser
+& 'C:\Program Files\PostgreSQL\15\bin\psql.exe' -U postgres -h localhost -p 5432
+```
+```sql
+-- Drop and recreate (in the psql prompt)
 DROP DATABASE auto_grocier;
-CREATE DATABASE auto_grocier;
+CREATE DATABASE auto_grocier OWNER grocier_user;
 \q
-
+```
+```powershell
 # Re-run setup
-python database/setup_database.py
+python database\setup_database.py
 ```
 
 ---
@@ -283,8 +301,8 @@ When schema changes are needed:
 
 1. Make changes to `database/models.py`
 2. Run migration:
-   ```bash
-   python database/init_db.py
+   ```powershell
+   python database\init_db.py
    ```
 3. For production, consider using Alembic for proper migrations
 
@@ -302,13 +320,13 @@ When schema changes are needed:
 ## Backup and Restore
 
 ### Backup
-```bash
-pg_dump -U grocier_user -d auto_grocier -F c -f backup.dump
+```powershell
+& 'C:\Program Files\PostgreSQL\15\bin\pg_dump.exe' -U grocier_user -h localhost -p 5432 -d auto_grocier -F c -f backup.dump
 ```
 
 ### Restore
-```bash
-pg_restore -U grocier_user -d auto_grocier backup.dump
+```powershell
+& 'C:\Program Files\PostgreSQL\15\bin\pg_restore.exe' -U grocier_user -h localhost -p 5432 -d auto_grocier backup.dump
 ```
 
 ---

@@ -59,7 +59,7 @@ from utility.graphql_checkout import (
 )
 
 _PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-_CONFIG_PATH = os.path.join(_PROJECT_ROOT, "config.txt")
+_CONFIG_PATH = os.path.join(_PROJECT_ROOT, ".env")
 
 # Set to True to permit the place_order tool to actually submit a paid order.
 # Left False by default so checkout can never charge accidentally.
@@ -214,7 +214,7 @@ def search_products(query: str, limit: int = 10, store_id: str = "") -> dict:
     Args:
         query: Search term, e.g. "organic spinach" or "chicken breast".
         limit: Maximum number of results to return.
-        store_id: Optional HEB store id. Defaults to STORE_ID in config.txt.
+        store_id: Optional HEB store id. Defaults to STORE_ID in .env.
     """
     if not _is_authed():
         return _NOT_AUTHED
@@ -544,7 +544,7 @@ def list_timeslots(store_id: str = "") -> dict:
     captured yet - run the maintenance workflow and refresh_session.
 
     Args:
-        store_id: Optional HEB store id. Defaults to STORE_ID in config.txt.
+        store_id: Optional HEB store id. Defaults to STORE_ID in .env.
     """
     if not _is_authed():
         return _NOT_AUTHED
@@ -561,7 +561,7 @@ def reserve_timeslot(slot_id: str, store_id: str = "") -> dict:
 
     Args:
         slot_id: The time slot id to reserve (from list_timeslots).
-        store_id: Optional HEB store id. Defaults to STORE_ID in config.txt.
+        store_id: Optional HEB store id. Defaults to STORE_ID in .env.
     """
     if not _is_authed():
         return _NOT_AUTHED

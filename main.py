@@ -66,6 +66,55 @@ def signal_handler(signum, frame):
     signal.signal(signal.SIGINT, signal.SIG_DFL)  # Reset to default handler for second Ctrl+C
 
 
+def detect_chrome_major_version():
+    """Detect the installed Google Chrome major version.
+
+    Returns the major version as an int, or None if it can't be determined
+    (in which case undetected-chromedriver falls back to its own detection).
+    Used so the chromedriver matches whatever Chrome is currently installed,
+    surviving Chrome's frequent auto-updates without manual config changes.
+    """
+    # 1) Windows registry (updates immediately on Chrome auto-update).
+    try:
+        import winreg
+        for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+            try:
+                with winreg.OpenKey(hive, r"Software\Google\Chrome\BLBeacon") as key:
+                    version, _ = winreg.QueryValueEx(key, "version")
+                    if version:
+                        return int(version.split(".")[0])
+            except OSError:
+                continue
+    except Exception:
+        pass
+
+    # 2) Read the file version of chrome.exe from common install locations.
+    candidate_paths = [
+        os.path.join(os.environ.get("PROGRAMFILES", r"C:\Program Files"),
+                     "Google", "Chrome", "Application", "chrome.exe"),
+        os.path.join(os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)"),
+                     "Google", "Chrome", "Application", "chrome.exe"),
+        os.path.join(os.environ.get("LOCALAPPDATA", ""),
+                     "Google", "Chrome", "Application", "chrome.exe"),
+    ]
+    for path in candidate_paths:
+        if path and os.path.exists(path):
+            try:
+                import subprocess
+                out = subprocess.run(
+                    ["powershell", "-NoProfile", "-Command",
+                     f"(Get-Item '{path}').VersionInfo.ProductVersion"],
+                    capture_output=True, text=True, timeout=15,
+                )
+                version = out.stdout.strip()
+                if version:
+                    return int(version.split(".")[0])
+            except Exception:
+                continue
+
+    return None
+
+
 def check_exists_by_xpath(xpath,driver):
     try:
         driver.find_element(By.XPATH, xpath)
@@ -731,17 +780,17 @@ def reserve_time_slot(driver):
         raise
 
 def login(driver):
-    """Login to HEB website using credentials from config.txt"""
+    """Login to HEB website using credentials from .env"""
     try:
         print("🔐 Starting login process...")
         
         # Get config
-        current_directory = os.getcwd()
-        filename = 'config.txt'
+        current_directory = os.path.dirname(os.path.abspath(__file__))
+        filename = '.env'
         config_file_path = os.path.join(current_directory, filename)
         
         if not os.path.exists(config_file_path):
-            print(f"❌ {filename} not found in the current directory.")
+            print(f"❌ {filename} not found in the project directory.")
             raise FileNotFoundError(f"{filename} not found")
         
         # Parse config file
@@ -1266,9 +1315,9 @@ def _graphql_choose_store(store_id):
         return store_id
 
     if chosen and str(chosen) != str(store_id):
-        config_path = os.path.join(os.path.dirname(__file__), 'config.txt')
+        config_path = os.path.join(os.path.dirname(__file__), '.env')
         if update_config_value("STORE_ID", chosen, config_path):
-            print(f"💾 Saved STORE_ID={chosen} to config.txt")
+            print(f"💾 Saved STORE_ID={chosen} to .env")
     return chosen
 
 
@@ -1624,18 +1673,28 @@ if __name__ == '__main__':
     # CONFIGURATION
     # ============================================================
     
-    # MODE SELECTION: Read from config.txt (KEY: MODE)
+    # MODE SELECTION: Read from .env (KEY: MODE)
     # Valid values: 'test', 'checkout_with_prompt', 'auto_checkout'
     from claude import parse_config
-    _config = parse_config(os.path.join(os.path.dirname(__file__), 'config.txt'))
+    _config = parse_config(os.path.join(os.path.dirname(__file__), '.env'))
     MODE = _config.get('MODE', 'test').strip()
     STORE_ID = _config.get('STORE_ID', '737').strip()
     _STORE_SEARCH_ADDRESS = _config.get('STORE_SEARCH_ADDRESS', '').strip()
+
+    # Optional Chrome major-version pin for undetected-chromedriver. Blank/unset
+    # means auto-detect the installed Chrome version (recommended). We detect it
+    # ourselves rather than relying on uc's version_main=None, which can download
+    # a mismatched (off-by-one) driver.
+    _chrome_version_raw = _config.get('CHROME_VERSION_MAIN', '').strip()
+    if _chrome_version_raw.isdigit():
+        CHROME_VERSION_MAIN = int(_chrome_version_raw)
+    else:
+        CHROME_VERSION_MAIN = detect_chrome_major_version()
     
     # ============================================================
     # INGREDIENT SOURCE SELECTION
     # ============================================================
-    # Controlled by INGREDIENT_SOURCE in config.txt:
+    # Controlled by INGREDIENT_SOURCE in .env:
     #   'hardcoded' - use the ingredient_list_array below (default)
     #   'urls'      - scrape ingredients from url_list
     #   'database'  - ask the user which recipes they want this week and load
@@ -1755,12 +1814,13 @@ if __name__ == '__main__':
     if MODE == 'update_graphql_hashes':
         options.set_capability("goog:loggingPrefs", {"performance": "ALL"})
 
-    # Match Chrome version 116 that's installed
+    # Use the Chrome version from .env (CHROME_VERSION_MAIN) or auto-detect the
+    # installed Chrome when unset (version_main=None).
     # Temporarily ignore SIGINT so chromedriver inherits SIG_IGN and won't die on Ctrl+C.
     # This keeps the browser + driver connection alive when the user interrupts.
     original_sigint = signal.getsignal(signal.SIGINT)
     signal.signal(signal.SIGINT, signal.SIG_IGN)
-    driver = uc.Chrome(version_main=116, options=options, use_subprocess=False)
+    driver = uc.Chrome(version_main=CHROME_VERSION_MAIN, options=options, use_subprocess=False)
     signal.signal(signal.SIGINT, original_sigint)  # restore default before registering ours
     
     # Set global variables for signal handler

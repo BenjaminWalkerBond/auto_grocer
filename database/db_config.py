@@ -1,13 +1,19 @@
 """
 Database configuration module.
-Loads database connection parameters from config.txt or environment variables.
+Loads database connection parameters from the project-root .env file or
+environment variables.
 """
 import os
+
+try:
+    from dotenv import load_dotenv
+except ImportError:  # pragma: no cover - dotenv is a declared dependency
+    load_dotenv = None
 
 
 def parse_config(config_path):
     """
-    Parse the config.txt file and return a dictionary of key-value pairs.
+    Parse a .env-style file and return a dictionary of key-value pairs.
     Supports KEY=VALUE format and ignores comments (lines starting with #).
     """
     config_dict = {}
@@ -31,8 +37,10 @@ def parse_config(config_path):
     return config_dict
 
 
-# Find the absolute path of config.txt
-config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config.txt')
+# Single source of truth: the project-root .env file.
+config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
+if load_dotenv is not None:
+    load_dotenv(config_path)
 config = parse_config(config_path)
 
 

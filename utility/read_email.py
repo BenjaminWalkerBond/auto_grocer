@@ -5,7 +5,9 @@ import os
 import time
 import re
 
-load_dotenv()
+# Load the project-root .env regardless of the current working directory.
+_ENV_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
+load_dotenv(_ENV_PATH)
 
 email_user = os.getenv('EMAIL_USER')
 email_password = os.getenv('EMAIL_PASS')

@@ -2,13 +2,18 @@ import os
 import json
 import anthropic
 
+try:
+    from dotenv import load_dotenv
+except ImportError:  # pragma: no cover - dotenv is a declared dependency
+    load_dotenv = None
+
 # Claude model used across the project. Update here if the model is retired.
 MODEL = "claude-sonnet-4-5-20250929"
 
 
 def parse_config(config_path):
     """
-    Parse the config.txt file and return a dictionary of key-value pairs.
+    Parse a .env-style file and return a dictionary of key-value pairs.
     Supports KEY=VALUE format and ignores comments (lines starting with #).
     """
     config_dict = {}
@@ -32,22 +37,27 @@ def parse_config(config_path):
     return config_dict
 
 
-# Find the absolute path of the file called config.txt in the current directory
-file_path = os.path.join(os.path.dirname(__file__), 'config.txt')
+# Single source of truth: the project-root .env file.
+ENV_PATH = os.path.join(os.path.dirname(__file__), '.env')
 
-# Parse the config file
-config = parse_config(file_path)
+# Load .env into the process environment so every module (pydantic settings,
+# read_email's IMAP login, etc.) sees the same configuration.
+if load_dotenv is not None:
+    load_dotenv(ENV_PATH)
 
-# Get Claude API key from config or environment variable
+# Parse the .env file into a dict for direct lookups.
+config = parse_config(ENV_PATH)
+
+# Get Claude API key from .env or environment variable
 claude_api_key = config.get('CLAUDE_API_KEY') or os.environ.get("ANTHROPIC_API_KEY")
 
 if not claude_api_key:
     print("ERROR: No Claude API key found.")
-    print("Please add CLAUDE_API_KEY=your-key-here to config.txt")
+    print("Please add CLAUDE_API_KEY=your-key-here to .env")
     print("or set the ANTHROPIC_API_KEY environment variable")
     print("See CLAUDE_SETUP.md for instructions.")
 else:
-    print(f"✓ Claude API key loaded successfully: {claude_api_key[:20]}...")
+    print(f"[OK] Claude API key loaded successfully: {claude_api_key[:20]}...")
 
 # Initialize the Anthropic client
 client = anthropic.Anthropic(api_key=claude_api_key) if claude_api_key else None
@@ -64,7 +74,7 @@ def extract_ingredients(txt):
         A list containing comma-separated ingredients with their measurements
     """
     if client is None:
-        raise Exception("Claude API client not initialized. Please add your Claude API key to config.txt (line 5) or set the ANTHROPIC_API_KEY environment variable. See CLAUDE_SETUP.md for instructions.")
+        raise Exception("Claude API client not initialized. Please add your Claude API key to .env (CLAUDE_API_KEY) or set the ANTHROPIC_API_KEY environment variable. See CLAUDE_SETUP.md for instructions.")
     
     ingredient_list = []
 
@@ -118,7 +128,7 @@ def get_recipe_metadata_txt(txt):
         scraped <meta> tags.
     """
     if client is None:
-        raise Exception("Claude API client not initialized. Please add your Claude API key to config.txt or set the ANTHROPIC_API_KEY environment variable.")
+        raise Exception("Claude API client not initialized. Please add your Claude API key to .env (CLAUDE_API_KEY) or set the ANTHROPIC_API_KEY environment variable.")
 
     # Truncate to stay within a reasonable prompt size
     max_chars = 100000
@@ -172,7 +182,7 @@ def match_recipes_txt(user_text, recipes):
         On failure returns {'matched_ids': [], 'unmatched': []}.
     """
     if client is None:
-        raise Exception("Claude API client not initialized. Please add your Claude API key to config.txt or set the ANTHROPIC_API_KEY environment variable.")
+        raise Exception("Claude API client not initialized. Please add your Claude API key to .env (CLAUDE_API_KEY) or set the ANTHROPIC_API_KEY environment variable.")
 
     catalog = json.dumps(recipes, ensure_ascii=False)
     try:

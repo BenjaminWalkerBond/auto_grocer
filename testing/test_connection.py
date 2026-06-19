@@ -63,7 +63,7 @@ try:
         print("Troubleshooting:")
         print("  1. Is PostgreSQL running?")
         print("  2. Does the database exist?")
-        print("  3. Are credentials in config.txt correct?")
+        print("  3. Are credentials in .env correct?")
         print("  4. Check DATABASE_HOST, DATABASE_PORT, DATABASE_NAME, DATABASE_USER, DATABASE_PASSWORD")
         sys.exit(1)
         
@@ -73,7 +73,7 @@ except Exception as e:
     print("Common issues:")
     print("  - PostgreSQL not installed or not running")
     print("  - Database 'auto_grocier' doesn't exist")
-    print("  - Wrong credentials in config.txt")
+    print("  - Wrong credentials in .env")
     print("  - psycopg2-binary not installed (run: pip install psycopg2-binary)")
     import traceback
     traceback.print_exc()
