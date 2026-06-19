@@ -397,74 +397,39 @@ def change_store_via_ui(driver, search_text):
             continue
 
     # STEP 3: Type the search text into the store search input (fires StoreSearch).
-    #
-    # IMPORTANT: scope the input lookup to the open store/fulfillment dialog.
-    # The header has a GLOBAL product-search box (input[type="search"]); if we
-    # match that by mistake we type the zip into product search and land on a
-    # "No results found" page instead of searching for a store. So we only
-    # accept inputs that live inside a modal/dialog, and we reject the known
-    # product-search box explicitly.
     print("  Step 3: Searching stores by location...")
-    dialog_scopes = [
-        '[role="dialog"]',
-        '[aria-modal="true"]',
-        '[data-qe-id="fulfillmentModal"]',
-        '[data-qe-id="storeSearchModal"]',
-        '.modal',
-    ]
-    scoped_input_selectors = [
-        'input[placeholder*="zip" i]',
-        'input[placeholder*="address" i]',
-        'input[placeholder*="city" i]',
-        'input[placeholder*="store" i]',
-        '[data-qe-id="storeSearchInput"]',
-        'input[type="search"]',
-    ]
-
-    def _looks_like_product_search(el):
-        """Heuristic: is this the global header product-search box, not store search?"""
-        try:
-            attrs = " ".join(
-                str(el.get_attribute(a) or "")
-                for a in ("placeholder", "name", "id", "aria-label", "data-qe-id")
-            ).lower()
-        except Exception:  # noqa: BLE001
-            return False
-        if any(k in attrs for k in ("store", "zip", "address", "city", "location")):
-            return False
-        return any(k in attrs for k in ("search products", "product", "query", "globalsearch", "headersearch"))
-
+    
+    # The modal is open with a visible search input
+    # Based on the HTML, look for input fields within the dialog
     search_input = None
-    # Prefer an input found INSIDE an open dialog/modal.
-    for scope in dialog_scopes:
-        try:
-            container = driver.find_element(By.CSS_SELECTOR, scope)
-        except Exception:  # noqa: BLE001
-            continue
-        for sel in scoped_input_selectors:
+    
+    # Try to find the search input within the modal dialog
+    try:
+        # Wait for the modal to be present
+        time.sleep(1)
+        
+        # Try various selectors for the store search input
+        input_selectors = [
+            '//div[@role="dialog"]//input[@type="text"]',
+            '//div[@role="dialog"]//input[@placeholder]',
+            '//input[contains(@placeholder, "address")]',
+            '//input[contains(@placeholder, "zip")]',
+            '//input[contains(@placeholder, "city")]',
+        ]
+        
+        for sel in input_selectors:
             try:
-                candidate = container.find_element(By.CSS_SELECTOR, sel)
-            except Exception:  # noqa: BLE001
+                search_input = wait.until(EC.presence_of_element_located((By.XPATH, sel)))
+                if search_input.is_displayed():
+                    print(f"    ✓ Found store search input via {sel}")
+                    break
+                else:
+                    search_input = None
+            except Exception:
                 continue
-            if candidate.is_displayed() and not _looks_like_product_search(candidate):
-                search_input = candidate
-                print(f"    ✓ Found store search input in {scope} via {sel}")
-                break
-        if search_input is not None:
-            break
-
-    # Fall back to a page-level store-specific input, but NEVER the generic
-    # product-search box.
-    if search_input is None:
-        for sel in scoped_input_selectors[:-1]:  # drop input[type="search"]
-            try:
-                candidate = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, sel)))
-            except Exception:  # noqa: BLE001
-                continue
-            if not _looks_like_product_search(candidate):
-                search_input = candidate
-                print(f"    ✓ Found store search input (page level) via {sel}")
-                break
+                
+    except Exception:
+        pass
 
     if search_input is None:
         raise Exception(
@@ -483,6 +448,8 @@ def change_store_via_ui(driver, search_text):
     # STEP 4: Select the first store result (fires SelectPickupFulfillment).
     print("  Step 4: Selecting the first store result...")
     select_selectors = [
+        (By.XPATH, '//button[contains(., "Selected Store")]'),
+        (By.XPATH, '//button[contains(., "Select Store")]'),
         (By.XPATH, '//button[contains(., "Make my store") or contains(., "Select") or contains(., "Shop this store")]'),
         (By.CSS_SELECTOR, '[data-qe-id="selectStoreButton"]'),
         (By.XPATH, '//button[contains(@aria-label, "Select") and contains(@aria-label, "store")]'),
@@ -503,11 +470,9 @@ def change_store_via_ui(driver, search_text):
 
 def reserve_time_slot(driver):
     """Reserve a curbside pickup time slot on HEB website.
-
-    Based on actual HEB page structure (Jun 2026):
-    - Dates: <label data-testid="fulfillment_date" for="date-button-YYYY-MM-DD">
-    - Timeslots: <input type="radio" data-qe-id="timeslotRadioButton" aria-label="Time slot available from...">
-    - No separate confirm button — selecting a timeslot auto-confirms via page JS
+    
+    Updated to handle the modal-based date/time selection interface.
+    The modal appears when clicking "Choose pickup time" button.
     """
     try:
         wait = WebDriverWait(driver, 15)
@@ -523,22 +488,56 @@ def reserve_time_slot(driver):
             print("  ✓ Time slot already reserved")
             return True
 
-        # STEP 2: Click the 'Choose pickup time' button from the cart page
-        print("  Step 2: Opening reservation modal...")
+        # STEP 2: Wait for modal to be gone if it's blocking
+        print("  Step 2: Waiting for any blocking modals to clear...")
         try:
+            # Wait for modal cover to disappear if present
+            WebDriverWait(driver, 10).until(
+                EC.invisibility_of_element_located((By.CSS_SELECTOR, '.ModalContainers_modalCover__1tKfw, [data-component="modal-cover-container"]'))
+            )
+            time.sleep(1)
+        except:
+            # Modal cover not present or already gone
+            pass
+
+        # STEP 3: Click the 'Choose pickup time' button from the cart page
+        print("  Step 3: Opening reservation modal...")
+        try:
+            # Wait for button to be clickable and not obscured
             reserve_button = wait.until(EC.element_to_be_clickable(
-                (By.XPATH, '//button[contains(., "Choose pickup time") or contains(., "Choose a time")]')
+                (By.CSS_SELECTOR, 'button[data-qe-id="chooseReservationTime"], button[aria-label*="Choose reservation time"]')
             ))
-            reserve_button.click()
+            
+            # Scroll button into view
+            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", reserve_button)
+            time.sleep(1)
+            
+            # Try to click
+            try:
+                reserve_button.click()
+            except:
+                # Use JavaScript click if regular click fails
+                driver.execute_script("arguments[0].click();", reserve_button)
+            
             print("    ✓ Clicked 'Choose pickup time' button")
         except:
-            raise Exception("Could not find 'Choose pickup time' button")
+            # Try alternative selectors
+            try:
+                reserve_button = wait.until(EC.element_to_be_clickable(
+                    (By.XPATH, '//button[contains(., "Choose pickup time") or contains(., "Choose a time") or contains(@aria-label, "Choose")]')
+                ))
+                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", reserve_button)
+                time.sleep(1)
+                driver.execute_script("arguments[0].click();", reserve_button)
+                print("    ✓ Clicked 'Choose pickup time' button (fallback)")
+            except:
+                raise Exception("Could not find 'Choose pickup time' button")
 
         random_time()
-        time.sleep(2)  # Wait for modal to fully load
+        time.sleep(3)  # Wait for modal to fully load
 
-        # STEP 3: Ensure Curbside tab is selected (check for tab with "Curbside" text)
-        print("  Step 3: Ensuring Curbside tab is selected...")
+        # STEP 4: Ensure Curbside tab is selected
+        print("  Step 4: Ensuring Curbside tab is selected...")
         try:
             curbside_tabs = driver.find_elements(By.XPATH, '//button[contains(text(), "Curbside")] | //*[@role="tab" and contains(text(), "Curbside")]')
             for tab in curbside_tabs:
@@ -554,42 +553,66 @@ def reserve_time_slot(driver):
 
         time.sleep(2)
 
-        # STEP 4: Select a free date
-        # Dates are <label data-testid="fulfillment_date" for="date-button-YYYY-MM-DD">
-        # The selected one has class "DateButton_selected__3ZpWR"
-        # Free ones contain <div class="DateButton_price__...DateButton_free__...">Free</div>
-        print("  Step 4: Selecting a free date...")
-        date_labels = driver.find_elements(By.CSS_SELECTOR, '[data-testid="fulfillment_date"]')
-        print(f"    Found {len(date_labels)} date options")
+        # STEP 5: Select a date
+        print("  Step 5: Selecting a date...")
+        date_buttons = []
+        
+        # Try different possible selectors
+        selectors = [
+            'button[id^="date-button-"]',
+            'input[type="radio"][name*="date"]',
+            'button[aria-label*="date"]',
+            'label[for^="date-button-"]',
+            '[role="button"][id*="date"]',
+        ]
+        
+        for selector in selectors:
+            date_buttons = driver.find_elements(By.CSS_SELECTOR, selector)
+            if date_buttons:
+                print(f"    Found {len(date_buttons)} date options using selector: {selector}")
+                break
+        
+        if not date_buttons:
+            # Fallback: look for any clickable elements in the modal that might be dates
+            date_buttons = driver.find_elements(By.XPATH, 
+                '//button[contains(@class, "date") or contains(@class, "Date")] | '
+                '//div[contains(@class, "date") or contains(@class, "Date")]//button'
+            )
+            if date_buttons:
+                print(f"    Found {len(date_buttons)} date options using fallback xpath")
 
         date_selected = False
-        for label in date_labels:
+        for btn in date_buttons:
             try:
-                classes = label.get_attribute('class') or ''
-                text_content = label.get_attribute('textContent') or ''
-
-                # Check if already selected
-                if 'selected' in classes.lower() or 'Selected' in classes:
-                    print(f"    ✓ Date already selected: {text_content.strip()[:30]}")
+                if not btn.is_displayed() or not btn.is_enabled():
+                    continue
+                
+                text_content = btn.get_attribute('textContent') or btn.get_attribute('innerText') or ''
+                aria_label = btn.get_attribute('aria-label') or ''
+                
+                if 'Free' in text_content or 'Free' in aria_label or btn.get_attribute('aria-disabled') != 'true':
+                    try:
+                        btn.click()
+                    except:
+                        driver.execute_script("arguments[0].click();", btn)
+                    
+                    print(f"    📅 Selected date: {text_content.strip()[:50] if text_content else aria_label[:50]}")
                     date_selected = True
-                    break
-
-                # Check if it's free (has "Free" text) and click it
-                if 'Free' in text_content:
-                    label.click()
-                    print(f"    📅 Selected free date: {text_content.strip()[:30]}")
                     random_time()
-                    date_selected = True
                     break
             except Exception as e:
                 continue
 
-        if not date_selected:
-            # Fallback: click the first date label
-            if date_labels:
+        if not date_selected and date_buttons:
+            try:
+                date_buttons[0].click()
+                print("    📅 Selected first available date")
+                date_selected = True
+                random_time()
+            except:
                 try:
-                    date_labels[0].click()
-                    print("    📅 Selected first available date")
+                    driver.execute_script("arguments[0].click();", date_buttons[0])
+                    print("    📅 Selected first available date (via JS)")
                     date_selected = True
                     random_time()
                 except:
@@ -597,31 +620,52 @@ def reserve_time_slot(driver):
 
         if not date_selected:
             raise Exception(
-                f"No free dates found. Found {len(date_labels)} date elements with selector "
-                f"'[data-testid=\"fulfillment_date\"]'. The page layout may have changed."
+                f"No dates found or could not select date. Tried multiple selectors, found {len(date_buttons)} elements."
             )
 
-        time.sleep(2)  # Wait for timeslots to load
+        time.sleep(2)
 
-        # STEP 5: Select a timeslot
-        # Timeslots are <input type="radio" data-qe-id="timeslotRadioButton"
-        #   aria-label="Time slot available from X to Y for $Z. Click to select this timeslot.">
-        print("  Step 5: Selecting a free timeslot...")
-        timeslot_radios = driver.find_elements(By.CSS_SELECTOR, '[data-qe-id="timeslotRadioButton"]')
-        print(f"    Found {len(timeslot_radios)} timeslot radio buttons")
+        # STEP 6: Select a timeslot
+        print("  Step 6: Selecting a timeslot...")
+        timeslot_elements = []
+        
+        timeslot_selectors = [
+            'input[type="radio"][data-qe-id="timeslotRadioButton"]',
+            'input[type="radio"][name*="timeslot"]',
+            'input[type="radio"][name*="time"]',
+            'button[data-qe-id*="timeslot"]',
+            '[role="radio"][aria-label*="time"]',
+        ]
+        
+        for selector in timeslot_selectors:
+            timeslot_elements = driver.find_elements(By.CSS_SELECTOR, selector)
+            if timeslot_elements:
+                print(f"    Found {len(timeslot_elements)} timeslot options using selector: {selector}")
+                break
+        
+        if not timeslot_elements:
+            timeslot_elements = driver.find_elements(By.XPATH,
+                '//input[@type="radio"] | '
+                '//button[contains(@class, "time") or contains(@class, "Time")] | '
+                '//div[contains(@class, "timeslot")]//input[@type="radio"]'
+            )
+            if timeslot_elements:
+                print(f"    Found {len(timeslot_elements)} timeslot options using fallback xpath")
 
         timeslot_selected = False
-        for radio in timeslot_radios:
+        for slot in timeslot_elements:
             try:
-                aria_label = radio.get_attribute('aria-label') or ''
-                disabled = radio.get_attribute('disabled')
-
+                disabled = slot.get_attribute('disabled') or slot.get_attribute('aria-disabled') == 'true'
                 if disabled:
                     continue
 
-                # Click the first available (non-disabled) timeslot
-                driver.execute_script("arguments[0].click();", radio)
-                slot_desc = aria_label[:60] if aria_label else "unknown slot"
+                try:
+                    driver.execute_script("arguments[0].click();", slot)
+                except:
+                    slot.click()
+                
+                aria_label = slot.get_attribute('aria-label') or ''
+                slot_desc = aria_label[:60] if aria_label else "timeslot"
                 print(f"    🕐 Selected timeslot: {slot_desc}")
                 timeslot_selected = True
                 break
@@ -630,28 +674,32 @@ def reserve_time_slot(driver):
 
         if not timeslot_selected:
             raise Exception(
-                f"No free timeslots found. Found {len(timeslot_radios)} timeslot elements with selector "
-                f"'[data-qe-id=\"timeslotRadioButton\"]'. The page layout may have changed."
+                f"No timeslots found or could not select. Found {len(timeslot_elements)} elements."
             )
 
-        # STEP 6: Wait for selection to register, then close modal
-        # HEB's timeslot modal auto-confirms when you select a radio button
-        # (no separate confirm button exists on the page)
-        print("  Step 6: Waiting for timeslot selection to register...")
+        # STEP 7: Wait for selection to register
+        print("  Step 7: Waiting for timeslot selection to register...")
         time.sleep(3)
 
         # Try to close the modal if it's still open
         try:
-            close_btn = driver.find_element(By.CSS_SELECTOR, '[aria-label="close"], [aria-label="Close"]')
-            close_btn.click()
-            print("    ✓ Closed modal")
+            close_btns = driver.find_elements(By.CSS_SELECTOR, 
+                '[aria-label="close"], [aria-label="Close"], button[class*="close"], button[class*="Close"]'
+            )
+            for btn in close_btns:
+                try:
+                    if btn.is_displayed():
+                        btn.click()
+                        print("    ✓ Closed modal")
+                        break
+                except:
+                    continue
         except:
-            # Modal may have closed automatically
             pass
 
         time.sleep(2)
 
-        # Verify reservation took effect by checking for "Change time" text
+        # Verify reservation
         if check_exists_by_xpath("//*[contains(text(), 'Change time')]", driver):
             print("  ✓ Time slot successfully reserved!")
         else:
