@@ -7,7 +7,7 @@ from classes.IngredientList import IngredientList
 # import classes.Ingredient as Ingredient
 from classes.Ingredient import Ingredient
 
-from claude import get_ingredients_gpt_txt
+from claude import extract_ingredients
 from claude import get_recipe_metadata_txt
 from urllib.parse import urlparse
 
@@ -133,7 +133,7 @@ def populate_ingredient_list(url_list):
         text = " ".join(text.split())
         text = text.lower()
 
-        ingredient_list_array = get_ingredients_gpt_txt(text)
+        ingredient_list_array = extract_ingredients(text)
         print("ingredient_list_array: ", ingredient_list_array)
         for ingredient in ingredient_list_array:
             print("Ingredient: ", ingredient)

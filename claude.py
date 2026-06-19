@@ -53,47 +53,7 @@ else:
 client = anthropic.Anthropic(api_key=claude_api_key) if claude_api_key else None
 
 
-def get_ingredients_gpt(url_list):  # Not currently working
-    """
-    Extract ingredients from URLs using Claude Sonnet.
-    Note: This function doesn't actually fetch the URL content - it expects the caller to do that.
-    """
-    if client is None:
-        raise Exception("Claude API client not initialized. Please add your Claude API key to config.txt (line 5) or set the ANTHROPIC_API_KEY environment variable. See CLAUDE_SETUP.md for instructions.")
-    
-    ingredient_list = []
-
-    for url in url_list:
-        message = client.messages.create(
-            model=MODEL,
-            max_tokens=1024,
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"Please grab the ingredients from this url and return them in a comma seperated list: {url}\n"
-                }
-            ]
-        )
-        
-        print("claude response: " + message.content[0].text)
-        
-        verified = client.messages.create(
-            model=MODEL,
-            max_tokens=1024,
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"Please verify that the following text separates each distinct ingredient by a comma: {message.content[0].text}\n. If it does not, please insert commas where appropriate and return the list of comma separated ingredients. Do not include any other text."
-                }
-            ]
-        )
-
-        ingredient_list.append(verified.content[0].text)
-    
-    return ingredient_list
-
-
-def get_ingredients_gpt_txt(txt):
+def extract_ingredients(txt):
     """
     Extract ingredients from text using Claude Sonnet.
     
@@ -251,9 +211,7 @@ def match_recipes_txt(user_text, recipes):
         return {"matched_ids": [], "unmatched": []}
 
 
-# url_list = [
-#     "https://www.cookingclassy.com/skillet-seared-salmon-with-garlic-lemon-butter-sauce/",
-# ]
+# text = "...recipe page text..."
 
 # test the function
-# print(get_ingredients_gpt(url_list))
+# print(extract_ingredients(text))
