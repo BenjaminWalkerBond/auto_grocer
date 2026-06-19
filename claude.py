@@ -1,5 +1,9 @@
 import os
+import json
 import anthropic
+
+# Claude model used across the project. Update here if the model is retired.
+MODEL = "claude-sonnet-4-5-20250929"
 
 
 def parse_config(config_path):
@@ -61,7 +65,7 @@ def get_ingredients_gpt(url_list):  # Not currently working
 
     for url in url_list:
         message = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model=MODEL,
             max_tokens=1024,
             messages=[
                 {
@@ -74,7 +78,7 @@ def get_ingredients_gpt(url_list):  # Not currently working
         print("claude response: " + message.content[0].text)
         
         verified = client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model=MODEL,
             max_tokens=1024,
             messages=[
                 {
@@ -115,7 +119,7 @@ def get_ingredients_gpt_txt(txt):
         print(f"Warning: Text truncated from {char_count} to {max_chars} characters")
 
     message = client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model=MODEL,
         max_tokens=2048,
         messages=[
             {
@@ -126,7 +130,7 @@ def get_ingredients_gpt_txt(txt):
     )
 
     verified = client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model=MODEL,
         max_tokens=2048,
         messages=[
             {
@@ -140,11 +144,111 @@ def get_ingredients_gpt_txt(txt):
     return ingredient_list
 
 
-def get_recipe_gpt_txt(txt):
+def get_recipe_metadata_txt(txt):
     """
-    Placeholder function for future recipe extraction.
+    Extract a recipe's canonical dish name and a short description from page text
+    using Claude Sonnet.
+
+    Args:
+        txt: The text content from a recipe webpage
+
+    Returns:
+        dict with keys 'title' (str) and 'description' (str). On any failure,
+        returns {'title': '', 'description': ''} so callers can fall back to
+        scraped <meta> tags.
     """
-    return 0
+    if client is None:
+        raise Exception("Claude API client not initialized. Please add your Claude API key to config.txt or set the ANTHROPIC_API_KEY environment variable.")
+
+    # Truncate to stay within a reasonable prompt size
+    max_chars = 100000
+    if len(txt) > max_chars:
+        txt = txt[:max_chars]
+
+    try:
+        message = client.messages.create(
+            model=MODEL,
+            max_tokens=512,
+            messages=[
+                {
+                    "role": "user",
+                    "content": (
+                        "From the following recipe webpage text, identify the dish. "
+                        "Respond with ONLY a JSON object (no markdown, no extra text) "
+                        "with exactly two keys: \"title\" (the canonical dish name, e.g. "
+                        "\"Penne alla Vodka\") and \"description\" (1-2 sentences describing "
+                        "the dish, its main ingredients, and cuisine so it can be matched "
+                        f"against a natural-language request). Text:\n{txt}\n"
+                    ),
+                }
+            ],
+        )
+        raw = message.content[0].text.strip()
+        # Strip code fences if present
+        if raw.startswith("```"):
+            raw = raw.strip("`")
+            raw = raw[raw.find("{"):]
+        data = json.loads(raw)
+        return {
+            "title": (data.get("title") or "").strip(),
+            "description": (data.get("description") or "").strip(),
+        }
+    except Exception as e:
+        print(f"Warning: get_recipe_metadata_txt failed: {e}")
+        return {"title": "", "description": ""}
+
+
+def match_recipes_txt(user_text, recipes):
+    """
+    Given a user's natural-language request and a list of known recipes, decide
+    which recipes the user is asking for.
+
+    Args:
+        user_text: e.g. "I want palak paneer, chicken buffalo wraps, and penne alla vodka"
+        recipes: list of dicts with keys 'id', 'title', 'description'
+
+    Returns:
+        dict with keys 'matched_ids' (list[int]) and 'unmatched' (list[str]).
+        On failure returns {'matched_ids': [], 'unmatched': []}.
+    """
+    if client is None:
+        raise Exception("Claude API client not initialized. Please add your Claude API key to config.txt or set the ANTHROPIC_API_KEY environment variable.")
+
+    catalog = json.dumps(recipes, ensure_ascii=False)
+    try:
+        message = client.messages.create(
+            model=MODEL,
+            max_tokens=1024,
+            messages=[
+                {
+                    "role": "user",
+                    "content": (
+                        "You are matching a user's meal request to a catalog of recipes. "
+                        "The user request is:\n"
+                        f"\"{user_text}\"\n\n"
+                        "The recipe catalog (JSON array of {id, title, description}) is:\n"
+                        f"{catalog}\n\n"
+                        "For each distinct dish the user asks for, find the single best "
+                        "matching recipe id from the catalog (allow for synonyms, typos and "
+                        "loose wording). Respond with ONLY a JSON object (no markdown) with "
+                        "two keys: \"matched_ids\" (array of integer recipe ids that match) "
+                        "and \"unmatched\" (array of strings for requested dishes with no "
+                        "good match). Do not invent ids that are not in the catalog."
+                    ),
+                }
+            ],
+        )
+        raw = message.content[0].text.strip()
+        if raw.startswith("```"):
+            raw = raw.strip("`")
+            raw = raw[raw.find("{"):]
+        data = json.loads(raw)
+        matched_ids = [int(i) for i in data.get("matched_ids", [])]
+        unmatched = [str(u) for u in data.get("unmatched", [])]
+        return {"matched_ids": matched_ids, "unmatched": unmatched}
+    except Exception as e:
+        print(f"Warning: match_recipes_txt failed: {e}")
+        return {"matched_ids": [], "unmatched": []}
 
 
 # url_list = [

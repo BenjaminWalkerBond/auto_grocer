@@ -12,7 +12,7 @@ import textwrap
 import traceback
 import datetime
 import time
-from claude import client
+from claude import client, MODEL
 
 
 # Directory to save rewritten functions
@@ -279,7 +279,7 @@ def self_healing_call(func, *args, max_retries=3, html_context=None, driver=None
             message_content = _build_message_content(prompt, screenshot_b64)
 
             response = client.messages.create(
-                model="claude-sonnet-4-20250514",
+                model=MODEL,
                 max_tokens=4096,
                 messages=[{"role": "user", "content": message_content}],
             )
