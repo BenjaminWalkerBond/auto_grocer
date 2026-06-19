@@ -19,6 +19,15 @@ requests==2.31.0
 selenium==4.12.0
 sniffio==1.3.0
 sortedcontainers==2.4.0
+# --- GraphQL mode (texas_grocery_mcp) dependencies ---
+httpx>=0.27.0
+pydantic>=2.7.0
+pydantic-settings>=2.2.0
+structlog>=24.1.0
+tenacity>=8.2.0
+keyring>=25.0.0
+cryptography>=42.0.0
+fastmcp>=2.0.0
 soupsieve==2.5
 sqlalchemy>=2.0.0
 tqdm==4.66.1

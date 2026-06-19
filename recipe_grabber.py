@@ -8,6 +8,68 @@ from classes.IngredientList import IngredientList
 from classes.Ingredient import Ingredient
 
 from claude import get_ingredients_gpt_txt
+from claude import get_recipe_metadata_txt
+from urllib.parse import urlparse
+
+
+def extract_recipe_metadata(url):
+    """
+    Extract title, description, and source domain for a recipe URL.
+
+    Strategy:
+      1. Fast path: read Open Graph / standard <meta> tags and <title> via
+         BeautifulSoup (no API cost).
+      2. Fallback: if title or description is missing, ask Claude to derive a
+         canonical dish name + short description from the page text.
+
+    Args:
+        url: Recipe URL
+
+    Returns:
+        dict with keys 'title', 'description', 'source_domain'.
+    """
+    source_domain = urlparse(url).netloc
+
+    title = ""
+    description = ""
+
+    try:
+        response = requests.get(url, timeout=30)
+        soup = BeautifulSoup(response.content, "html.parser")
+
+        def meta(attr, value):
+            tag = soup.find("meta", attrs={attr: value})
+            if tag and tag.get("content"):
+                return tag["content"].strip()
+            return ""
+
+        title = meta("property", "og:title") or meta("name", "twitter:title")
+        if not title and soup.title and soup.title.string:
+            title = soup.title.string.strip()
+
+        description = (
+            meta("property", "og:description")
+            or meta("name", "description")
+            or meta("name", "twitter:description")
+        )
+
+        # Fallback to Claude if either field is missing
+        if not title or not description:
+            text = " ".join(soup.get_text().split())
+            meta_from_ai = get_recipe_metadata_txt(text)
+            if not title:
+                title = meta_from_ai.get("title", "")
+            if not description:
+                description = meta_from_ai.get("description", "")
+    except Exception as e:
+        print(f"Warning: extract_recipe_metadata failed for {url}: {e}")
+
+    return {
+        "title": title,
+        "description": description,
+        "source_domain": source_domain,
+    }
+
 
 
 def clean_ingredient(ingredient):

@@ -21,6 +21,9 @@ import sys
 from recipe_grabber import populate_ingredient_list
 from recipe_grabber import clean_ingredient
 from utility.self_healing import self_healing_call, dismiss_modals
+from utility.graphql_auth import export_selenium_session_to_authjson
+from utility.graphql_cart import graphql_cart_sync
+from utility.graphql_store import select_store_interactive, update_config_value
 
 # Initialize the logger globally
 logger = DriverLogger(log_dir="debug_logs")
@@ -29,6 +32,8 @@ logger = DriverLogger(log_dir="debug_logs")
 _global_driver = None
 _global_mode = None
 _interrupted = False
+# Default location used to prefill the store-search prompt (set from config).
+_STORE_SEARCH_ADDRESS = ""
 
 
 def signal_handler(signum, frame):
@@ -330,16 +335,179 @@ def clear_cart(driver):
         )
         raise
 
+def change_store_via_ui(driver, search_text):
+    """Drive HEB's store-change UI to trigger StoreSearch + SelectPickupFulfillment.
+
+    This is used by the ``update_graphql_hashes`` capture mode so the GraphQL
+    requests for store search and store change appear in the browser's network
+    log (and their persisted-query hashes can be captured). It does NOT need to
+    permanently change the store — it only needs to exercise those two requests.
+
+    Args:
+        driver: Selenium WebDriver instance.
+        search_text: A zip code or city/state to search stores by.
+
+    Returns:
+        True if the store search/selection UI was exercised.
+    """
+    wait = WebDriverWait(driver, 15)
+
+    # STEP 1: Open the fulfillment / store selector from the header.
+    print("  Step 1: Opening the store/fulfillment selector...")
+    driver.get("https://www.heb.com/")
+    random_time()
+
+    opener_selectors = [
+        (By.CSS_SELECTOR, '[data-qe-id="headerFulfillmentButton"]'),
+        (By.CSS_SELECTOR, '[data-qe-id="fulfillmentSelector"]'),
+        (By.XPATH, '//button[contains(., "Curbside") or contains(., "Pickup") or contains(., "store")]'),
+        (By.XPATH, '//button[contains(@aria-label, "store") or contains(@aria-label, "fulfillment")]'),
+    ]
+    opened = False
+    for by, sel in opener_selectors:
+        try:
+            btn = wait.until(EC.element_to_be_clickable((by, sel)))
+            driver.execute_script("arguments[0].click();", btn)
+            opened = True
+            print(f"    ✓ Opened selector via {sel}")
+            break
+        except Exception:
+            continue
+    if not opened:
+        raise Exception(
+            "Could not find the store/fulfillment selector button. "
+            "The header layout may have changed."
+        )
+    random_time()
+
+    # STEP 2: Find a "change store" affordance if present.
+    change_selectors = [
+        (By.XPATH, '//button[contains(., "Change store") or contains(., "Change my store")]'),
+        (By.XPATH, '//a[contains(., "Change store")]'),
+        (By.XPATH, '//button[contains(., "Find a store") or contains(., "store near")]'),
+    ]
+    for by, sel in change_selectors:
+        try:
+            el = driver.find_element(by, sel)
+            driver.execute_script("arguments[0].click();", el)
+            print(f"    ✓ Clicked change-store via {sel}")
+            random_time()
+            break
+        except Exception:
+            continue
+
+    # STEP 3: Type the search text into the store search input (fires StoreSearch).
+    #
+    # IMPORTANT: scope the input lookup to the open store/fulfillment dialog.
+    # The header has a GLOBAL product-search box (input[type="search"]); if we
+    # match that by mistake we type the zip into product search and land on a
+    # "No results found" page instead of searching for a store. So we only
+    # accept inputs that live inside a modal/dialog, and we reject the known
+    # product-search box explicitly.
+    print("  Step 3: Searching stores by location...")
+    dialog_scopes = [
+        '[role="dialog"]',
+        '[aria-modal="true"]',
+        '[data-qe-id="fulfillmentModal"]',
+        '[data-qe-id="storeSearchModal"]',
+        '.modal',
+    ]
+    scoped_input_selectors = [
+        'input[placeholder*="zip" i]',
+        'input[placeholder*="address" i]',
+        'input[placeholder*="city" i]',
+        'input[placeholder*="store" i]',
+        '[data-qe-id="storeSearchInput"]',
+        'input[type="search"]',
+    ]
+
+    def _looks_like_product_search(el):
+        """Heuristic: is this the global header product-search box, not store search?"""
+        try:
+            attrs = " ".join(
+                str(el.get_attribute(a) or "")
+                for a in ("placeholder", "name", "id", "aria-label", "data-qe-id")
+            ).lower()
+        except Exception:  # noqa: BLE001
+            return False
+        if any(k in attrs for k in ("store", "zip", "address", "city", "location")):
+            return False
+        return any(k in attrs for k in ("search products", "product", "query", "globalsearch", "headersearch"))
+
+    search_input = None
+    # Prefer an input found INSIDE an open dialog/modal.
+    for scope in dialog_scopes:
+        try:
+            container = driver.find_element(By.CSS_SELECTOR, scope)
+        except Exception:  # noqa: BLE001
+            continue
+        for sel in scoped_input_selectors:
+            try:
+                candidate = container.find_element(By.CSS_SELECTOR, sel)
+            except Exception:  # noqa: BLE001
+                continue
+            if candidate.is_displayed() and not _looks_like_product_search(candidate):
+                search_input = candidate
+                print(f"    ✓ Found store search input in {scope} via {sel}")
+                break
+        if search_input is not None:
+            break
+
+    # Fall back to a page-level store-specific input, but NEVER the generic
+    # product-search box.
+    if search_input is None:
+        for sel in scoped_input_selectors[:-1]:  # drop input[type="search"]
+            try:
+                candidate = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, sel)))
+            except Exception:  # noqa: BLE001
+                continue
+            if not _looks_like_product_search(candidate):
+                search_input = candidate
+                print(f"    ✓ Found store search input (page level) via {sel}")
+                break
+
+    if search_input is None:
+        raise Exception(
+            "Could not find a dedicated store-search input. The store/"
+            "fulfillment modal may not have opened (refusing to type into the "
+            "global product-search box)."
+        )
+
+    search_input.clear()
+    human_like_typing(search_input, str(search_text))
+    time.sleep(random.uniform(0.5, 1.0))
+    search_input.send_keys(Keys.ENTER)
+    random_time()
+    random_time()
+
+    # STEP 4: Select the first store result (fires SelectPickupFulfillment).
+    print("  Step 4: Selecting the first store result...")
+    select_selectors = [
+        (By.XPATH, '//button[contains(., "Make my store") or contains(., "Select") or contains(., "Shop this store")]'),
+        (By.CSS_SELECTOR, '[data-qe-id="selectStoreButton"]'),
+        (By.XPATH, '//button[contains(@aria-label, "Select") and contains(@aria-label, "store")]'),
+    ]
+    for by, sel in select_selectors:
+        try:
+            el = wait.until(EC.element_to_be_clickable((by, sel)))
+            driver.execute_script("arguments[0].click();", el)
+            print(f"    ✓ Selected a store via {sel}")
+            random_time()
+            return True
+        except Exception:
+            continue
+
+    # Even if final selection failed, StoreSearch likely fired.
+    print("    ⚠️  Could not click a store-select button; StoreSearch may still be captured.")
+    return True
+
 def reserve_time_slot(driver):
     """Reserve a curbside pickup time slot on HEB website.
 
-    Flow:
-    1. Navigate to cart page
-    2. Click 'Choose a time' button to open reservation modal
-    3. Ensure 'Curbside' tab is selected
-    4. Pick the first available (Free, non-Full) date
-    5. Pick the first available free timeslot
-    6. Click 'Select this time' to confirm
+    Based on actual HEB page structure (Jun 2026):
+    - Dates: <label data-testid="fulfillment_date" for="date-button-YYYY-MM-DD">
+    - Timeslots: <input type="radio" data-qe-id="timeslotRadioButton" aria-label="Time slot available from...">
+    - No separate confirm button — selecting a timeslot auto-confirms via page JS
     """
     try:
         wait = WebDriverWait(driver, 15)
@@ -358,266 +526,136 @@ def reserve_time_slot(driver):
         # STEP 2: Click the 'Choose pickup time' button from the cart page
         print("  Step 2: Opening reservation modal...")
         try:
-            # Look for the specific button with icon and text "Choose pickup time"
             reserve_button = wait.until(EC.element_to_be_clickable(
-                (By.XPATH, '//button[contains(., "Choose pickup time") or .//span[contains(text(), "Choose pickup time")]]')
+                (By.XPATH, '//button[contains(., "Choose pickup time") or contains(., "Choose a time")]')
             ))
             reserve_button.click()
             print("    ✓ Clicked 'Choose pickup time' button")
         except:
-            try:
-                # Fallback: look for button in the curbside fulfillment section
-                reserve_button = wait.until(EC.element_to_be_clickable(
-                    (By.XPATH, '//button[contains(@aria-label, "Choose pickup time") or contains(@aria-label, "pickup time")]')
-                ))
-                reserve_button.click()
-                print("    ✓ Clicked pickup time button")
-            except:
-                raise Exception("Could not find pickup time selection button")
-        
-        random_time()
+            raise Exception("Could not find 'Choose pickup time' button")
 
-        # STEP 3: Make sure the Curbside tab is selected
+        random_time()
+        time.sleep(2)  # Wait for modal to fully load
+
+        # STEP 3: Ensure Curbside tab is selected (check for tab with "Curbside" text)
         print("  Step 3: Ensuring Curbside tab is selected...")
         try:
-            # Look for curbside tab or pickup option
-            curbside_elements = driver.find_elements(By.XPATH, '//*[contains(text(), "Curbside") or contains(text(), "CURBSIDE") or contains(@id, "CURBSIDE")]')
-            for element in curbside_elements:
-                if element.tag_name in ['button', 'a'] or element.get_attribute('role') == 'tab':
-                    if element.get_attribute("aria-selected") != "true":
-                        element.click()
-                        random_time()
-                        print("    ✓ Selected Curbside option")
-                    else:
-                        print("    ✓ Curbside already selected")
-                    break
+            curbside_tabs = driver.find_elements(By.XPATH, '//button[contains(text(), "Curbside")] | //*[@role="tab" and contains(text(), "Curbside")]')
+            for tab in curbside_tabs:
+                if tab.get_attribute("aria-selected") != "true":
+                    tab.click()
+                    random_time()
+                    print("    ✓ Selected Curbside tab")
+                else:
+                    print("    ✓ Curbside tab already selected")
+                break
         except Exception as e:
-            print(f"    ⚠️  Could not check/click Curbside tab: {e}")
+            print(f"    ⚠️  Could not check Curbside tab: {e}")
 
-        # Wait for modal/page to load
-        time.sleep(3)
-        
+        time.sleep(2)
+
         # STEP 4: Select a free date
+        # Dates are <label data-testid="fulfillment_date" for="date-button-YYYY-MM-DD">
+        # The selected one has class "DateButton_selected__3ZpWR"
+        # Free ones contain <div class="DateButton_price__...DateButton_free__...">Free</div>
         print("  Step 4: Selecting a free date...")
-        
-        # Look for date selection elements with various approaches
-        date_elements = []
-        
-        # Try to find radio buttons for dates
-        date_radios = driver.find_elements(By.XPATH, '//input[@type="radio" and (contains(@name, "date") or contains(@aria-label, "date") or contains(@value, "2025"))]')
-        if date_radios:
-            print(f"    Found {len(date_radios)} date radio buttons")
-            date_elements = date_radios
-        
-        # Try to find clickable date buttons or labels
-        if not date_elements:
-            date_buttons = driver.find_elements(By.XPATH, '//button[contains(@aria-label, "date") or contains(text(), "Jan") or contains(text(), "Feb") or contains(text(), "Mar") or contains(text(), "Apr") or contains(text(), "May") or contains(text(), "Jun") or contains(text(), "Jul") or contains(text(), "Aug") or contains(text(), "Sep") or contains(text(), "Oct") or contains(text(), "Nov") or contains(text(), "Dec")]')
-            if date_buttons:
-                print(f"    Found {len(date_buttons)} date buttons")
-                date_elements = date_buttons
-        
-        # Try to find any elements with date-related data attributes
-        if not date_elements:
-            date_elements = driver.find_elements(By.CSS_SELECTOR, '[data-testid*="date"], [data-qe-id*="date"], [aria-label*="date"], [class*="date"]')
-            if date_elements:
-                print(f"    Found {len(date_elements)} date-related elements")
+        date_labels = driver.find_elements(By.CSS_SELECTOR, '[data-testid="fulfillment_date"]')
+        print(f"    Found {len(date_labels)} date options")
 
         date_selected = False
-        for element in date_elements:
+        for label in date_labels:
             try:
-                # Get text content and attributes to check availability
-                element_text = element.get_attribute('textContent') or element.text or ''
-                aria_label = element.get_attribute('aria-label') or ''
-                value = element.get_attribute('value') or ''
-                combined_text = f"{element_text} {aria_label} {value}".lower()
-                
-                # Skip if element is disabled or marked as full
-                if element.get_attribute('disabled') or 'full' in combined_text or 'unavailable' in combined_text:
-                    print(f"    ⏭️  Skipping (unavailable): {element_text or aria_label}")
-                    continue
-                
-                # Check if it's already selected
-                if element.get_attribute('checked') == 'true' or element.get_attribute('aria-checked') == 'true' or 'selected' in element.get_attribute('class') or '':
-                    print(f"    ✓ Date already selected: {element_text or aria_label}")
+                classes = label.get_attribute('class') or ''
+                text_content = label.get_attribute('textContent') or ''
+
+                # Check if already selected
+                if 'selected' in classes.lower() or 'Selected' in classes:
+                    print(f"    ✓ Date already selected: {text_content.strip()[:30]}")
                     date_selected = True
                     break
-                
-                # Try to click the element
-                try:
-                    if element.tag_name == 'input':
-                        # For radio inputs, click directly
-                        driver.execute_script("arguments[0].click();", element)
-                    else:
-                        # For buttons or other clickable elements
-                        element.click()
-                    
-                    print(f"    📅 Selected date: {element_text or aria_label}")
+
+                # Check if it's free (has "Free" text) and click it
+                if 'Free' in text_content:
+                    label.click()
+                    print(f"    📅 Selected free date: {text_content.strip()[:30]}")
                     random_time()
                     date_selected = True
                     break
-                except Exception as click_error:
-                    print(f"    ⚠️  Could not click date element: {click_error}")
-                    continue
-                    
             except Exception as e:
-                print(f"    ⚠️  Error processing date element: {e}")
                 continue
 
         if not date_selected:
-            # Final fallback: try to click any radio button or clickable element
-            all_clickable = driver.find_elements(By.XPATH, '//input[@type="radio"] | //button[not(@disabled)]')
-            for element in all_clickable[:5]:  # Try first 5 elements
+            # Fallback: click the first date label
+            if date_labels:
                 try:
-                    driver.execute_script("arguments[0].click();", element)
-                    print("    📅 Selected first available option")
+                    date_labels[0].click()
+                    print("    📅 Selected first available date")
                     date_selected = True
-                    break
+                    random_time()
                 except:
-                    continue
-                    
+                    pass
+
         if not date_selected:
             raise Exception(
-                f"No available dates found. Found {len(date_elements)} date elements but none were selectable. "
-                f"The page layout may have changed or no dates are available."
+                f"No free dates found. Found {len(date_labels)} date elements with selector "
+                f"'[data-testid=\"fulfillment_date\"]'. The page layout may have changed."
             )
+
+        time.sleep(2)  # Wait for timeslots to load
 
         # STEP 5: Select a timeslot
+        # Timeslots are <input type="radio" data-qe-id="timeslotRadioButton"
+        #   aria-label="Time slot available from X to Y for $Z. Click to select this timeslot.">
         print("  Step 5: Selecting a free timeslot...")
-        time.sleep(2)  # Wait for timeslots to load after date selection
-
-        # Look for timeslot elements
-        timeslot_elements = []
-        
-        # Try to find radio buttons for timeslots
-        timeslot_radios = driver.find_elements(By.XPATH, '//input[@type="radio" and (contains(@name, "time") or contains(@aria-label, "time") or contains(@aria-label, "slot"))]')
-        if timeslot_radios:
-            print(f"    Found {len(timeslot_radios)} timeslot radio buttons")
-            timeslot_elements = timeslot_radios
-        
-        # Try to find clickable timeslot buttons
-        if not timeslot_elements:
-            timeslot_buttons = driver.find_elements(By.XPATH, '//button[contains(@aria-label, "time") or contains(text(), "AM") or contains(text(), "PM") or contains(text(), ":")]')
-            if timeslot_buttons:
-                print(f"    Found {len(timeslot_buttons)} timeslot buttons")
-                timeslot_elements = timeslot_buttons
-        
-        # Try to find any elements with timeslot-related data attributes
-        if not timeslot_elements:
-            timeslot_elements = driver.find_elements(By.CSS_SELECTOR, '[data-testid*="time"], [data-qe-id*="time"], [aria-label*="time"], [class*="time"]')
-            if timeslot_elements:
-                print(f"    Found {len(timeslot_elements)} time-related elements")
+        timeslot_radios = driver.find_elements(By.CSS_SELECTOR, '[data-qe-id="timeslotRadioButton"]')
+        print(f"    Found {len(timeslot_radios)} timeslot radio buttons")
 
         timeslot_selected = False
-        for element in timeslot_elements:
+        for radio in timeslot_radios:
             try:
-                element_text = element.get_attribute('textContent') or element.text or ''
-                aria_label = element.get_attribute('aria-label') or ''
-                combined_text = f"{element_text} {aria_label}".lower()
-                
-                # Skip if disabled or full
-                if element.get_attribute('disabled') or 'full' in combined_text or 'unavailable' in combined_text:
+                aria_label = radio.get_attribute('aria-label') or ''
+                disabled = radio.get_attribute('disabled')
+
+                if disabled:
                     continue
-                
-                # Look for free timeslots or ones with pricing
-                if 'free' in combined_text or '$0' in combined_text or ('am' in combined_text or 'pm' in combined_text):
-                    try:
-                        if element.tag_name == 'input':
-                            driver.execute_script("arguments[0].click();", element)
-                        else:
-                            element.click()
-                        
-                        print(f"    🕐 Selected timeslot: {element_text or aria_label}")
-                        human_like_delay()
-                        timeslot_selected = True
-                        break
-                    except Exception as click_error:
-                        print(f"    ⚠️  Could not click timeslot: {click_error}")
-                        continue
-                        
+
+                # Click the first available (non-disabled) timeslot
+                driver.execute_script("arguments[0].click();", radio)
+                slot_desc = aria_label[:60] if aria_label else "unknown slot"
+                print(f"    🕐 Selected timeslot: {slot_desc}")
+                timeslot_selected = True
+                break
             except Exception as e:
                 continue
 
         if not timeslot_selected:
-            # Fallback: try any available radio button or clickable element
-            remaining_clickable = driver.find_elements(By.XPATH, '//input[@type="radio"][not(@disabled)] | //button[not(@disabled)]')
-            for element in remaining_clickable[:5]:
-                try:
-                    driver.execute_script("arguments[0].click();", element)
-                    print("    🕐 Selected first available timeslot")
-                    timeslot_selected = True
-                    break
-                except:
-                    continue
-
-        if not timeslot_selected:
             raise Exception(
-                f"No free timeslots found. Found {len(timeslot_elements)} timeslot elements but none were selectable. "
-                f"The page layout may have changed or no timeslots are available."
+                f"No free timeslots found. Found {len(timeslot_radios)} timeslot elements with selector "
+                f"'[data-qe-id=\"timeslotRadioButton\"]'. The page layout may have changed."
             )
 
-        # STEP 6: Click confirmation button
-        print("  Step 6: Clicking confirmation button...")
-        
-        confirm_selectors = [
-            '//button[contains(text(), "Select this time")]',
-            '//button[contains(text(), "Confirm")]',
-            '//button[contains(text(), "Save")]',
-            '//button[contains(text(), "Schedule")]',
-            '//button[contains(@aria-label, "confirm")]',
-            '//button[contains(@data-qe-id, "fulfill")]',
-            '//button[contains(@data-qe-id, "schedule")]',
-            '//button[contains(@data-qe-id, "save")]'
-        ]
-        
-        confirm_button = None
-        for selector in confirm_selectors:
-            try:
-                confirm_button = wait.until(EC.element_to_be_clickable((By.XPATH, selector)))
-                break
-            except:
-                continue
-        
-        if confirm_button:
-            try:
-                confirm_button.click()
-                print("    ✓ Clicked confirmation button")
-            except:
-                driver.execute_script("arguments[0].click();", confirm_button)
-                print("    ✓ Clicked confirmation button (JS)")
-        else:
-            # Look for any prominent button that might be the confirmation
-            all_buttons = driver.find_elements(By.TAG_NAME, 'button')
-            for button in all_buttons:
-                if not button.get_attribute('disabled'):
-                    button_text = (button.text or '').lower()
-                    if any(word in button_text for word in ['select', 'confirm', 'save', 'continue', 'next']):
-                        try:
-                            button.click()
-                            print(f"    ✓ Clicked button: {button.text}")
-                            break
-                        except:
-                            continue
-            else:
-                print("    ⚠️  Could not find confirmation button, proceeding anyway")
-
-        print("  ✓ Time slot reservation process completed!")
-        random_time()
-
-        # Wait for any modal to close or page to update
+        # STEP 6: Wait for selection to register, then close modal
+        # HEB's timeslot modal auto-confirms when you select a radio button
+        # (no separate confirm button exists on the page)
+        print("  Step 6: Waiting for timeslot selection to register...")
         time.sleep(3)
 
-        # Try to close any remaining modal
+        # Try to close the modal if it's still open
         try:
-            close_elements = driver.find_elements(By.XPATH, '//button[contains(@aria-label, "close") or contains(@aria-label, "Close") or contains(text(), "×")]')
-            for close_elem in close_elements:
-                try:
-                    close_elem.click()
-                    print("  ✓ Closed modal")
-                    break
-                except:
-                    continue
+            close_btn = driver.find_element(By.CSS_SELECTOR, '[aria-label="close"], [aria-label="Close"]')
+            close_btn.click()
+            print("    ✓ Closed modal")
         except:
-            print("  ℹ️  No modal to close or already closed")
+            # Modal may have closed automatically
+            pass
+
+        time.sleep(2)
+
+        # Verify reservation took effect by checking for "Change time" text
+        if check_exists_by_xpath("//*[contains(text(), 'Change time')]", driver):
+            print("  ✓ Time slot successfully reserved!")
+        else:
+            print("  ✓ Time slot reservation process completed (could not verify)")
 
         return True
 
@@ -633,7 +671,7 @@ def reserve_time_slot(driver):
         )
         # Try to close modal on failure
         try:
-            close_buttons = driver.find_elements(By.XPATH, '//button[contains(@aria-label, "close") or contains(text(), "×")]')
+            close_buttons = driver.find_elements(By.CSS_SELECTOR, '[aria-label="close"], [aria-label="Close"]')
             for btn in close_buttons:
                 try:
                     btn.click()
@@ -825,25 +863,57 @@ def checkout(driver):
     """
     Complete the checkout process on HEB.
     This function should be called after cart is filled and time slot is reserved.
+
+    Navigates to the cart and clicks the "Start checkout" button to reach the
+    checkout screen. It does NOT place the order (no payment/confirmation step).
     """
     try:
         print("\n🛒 Starting checkout process...")
-        
+
         # Navigate to cart
         driver.get("https://www.heb.com/cart/")
         random_time()
-        
-        # Find and click checkout button
-        checkout_button = driver.find_element(By.CSS_SELECTOR, '[data-qe-id="proceedToCheckout"]')
-        checkout_button.click()
+
+        wait = WebDriverWait(driver, 15)
+
+        # The checkout button's identifier has changed over time. Try the known
+        # selectors in order of likelihood.
+        checkout_selectors = [
+            (By.CSS_SELECTOR, '[data-qe-id="footerStartCheckout"]'),
+            (By.CSS_SELECTOR, '[data-qe-id="proceedToCheckout"]'),
+            (By.XPATH, '//button[contains(., "Start checkout") or contains(., "Proceed to checkout") or contains(., "Checkout")]'),
+        ]
+
+        checkout_button = None
+        used = None
+        for by, sel in checkout_selectors:
+            try:
+                checkout_button = wait.until(EC.element_to_be_clickable((by, sel)))
+                used = sel
+                break
+            except Exception:
+                continue
+
+        if checkout_button is None:
+            raise NoSuchElementException(
+                "Could not find the checkout button on the cart page "
+                "(tried footerStartCheckout, proceedToCheckout, and text match)."
+            )
+
+        scroll_to_element(driver, checkout_button)
+        try:
+            checkout_button.click()
+        except Exception:
+            driver.execute_script("arguments[0].click();", checkout_button)
+        print(f"    ✓ Clicked checkout button ({used})")
         random_time()
-        
+
         # TODO: Add payment and final confirmation steps here
         # For now, just confirm we're on the checkout page
         print("✓ Reached checkout page")
-        
+
         return True
-        
+
     except Exception as e:
         logger.log_failure(
             driver=driver,
@@ -1117,6 +1187,389 @@ def auto_checkout(driver, ingredient_list):
         raise
 
 
+def _graphql_login_and_export(driver, store_id):
+    """Shared setup for GraphQL modes: Selenium login then export session.
+
+    Returns nothing; raises on login failure.
+    """
+    # Reuse the existing self-healing Selenium login.
+    self_healing_call(login, driver, driver=driver)
+    random_time()
+    driver.maximize_window()
+    dismiss_modals(driver)
+
+    # Export the authenticated browser session for the GraphQL client.
+    print("\n🔐 Exporting browser session for GraphQL client...")
+    export_selenium_session_to_authjson(driver, store_id=store_id)
+
+
+def _graphql_choose_store(store_id):
+    """Offer interactive store selection; persist + return the chosen store id.
+
+    Falls back to the provided ``store_id`` on any issue.
+    """
+    try:
+        chosen = select_store_interactive(
+            default_store_id=store_id,
+            default_address=_STORE_SEARCH_ADDRESS,
+        )
+    except Exception as e:  # noqa: BLE001
+        print(f"⚠️  Store selection skipped ({e}). Using store #{store_id}.")
+        return store_id
+
+    if chosen and str(chosen) != str(store_id):
+        config_path = os.path.join(os.path.dirname(__file__), 'config.txt')
+        if update_config_value("STORE_ID", chosen, config_path):
+            print(f"💾 Saved STORE_ID={chosen} to config.txt")
+    return chosen
+
+
+def _print_graphql_report(report):
+    """Print a concise summary of a graphql_cart_sync report."""
+    added = report.get("added", [])
+    failed = report.get("failed", [])
+    print("\n" + "-"*60)
+    print(f"🛒 GraphQL cart summary: {len(added)} added, {len(failed)} failed")
+    if failed:
+        print("Failed items:")
+        for f in failed:
+            detail = f.get("detail")
+            detail_str = f" - {detail}" if detail else ""
+            print(f"  • {f['ingredient']} [{f['status']}]{detail_str}")
+    print("-"*60)
+
+
+def graphql_mode(driver, ingredient_list, store_id):
+    """GraphQL test mode: add ingredients to cart via the API, no checkout.
+
+    Args:
+        driver: Selenium WebDriver instance (used for login + auth export).
+        ingredient_list: IngredientList object with ingredients to add.
+        store_id: HEB store id to operate against.
+    """
+    print("\n" + "="*60)
+    print("⚡ RUNNING IN GRAPHQL MODE")
+    print("="*60)
+    print("This will add ingredients to the cart via HEB's GraphQL API.")
+    print("No checkout is performed. Browser stays open for inspection.\n")
+
+    try:
+        _graphql_login_and_export(driver, store_id)
+
+        # Let the user pick the closest store.
+        store_id = _graphql_choose_store(store_id)
+
+        print(f"\n⚡ Adding {len(ingredient_list.get_ingredients())} ingredients via GraphQL...")
+        report = graphql_cart_sync(ingredient_list, store_id, do_clear=True)
+        _print_graphql_report(report)
+
+        print("\n" + "="*60)
+        print("⚡ GRAPHQL MODE COMPLETE")
+        print("="*60)
+        print("Browser left open for manual inspection of the cart.")
+        input("Press Enter to close the browser and exit...")
+
+    except Exception as e:
+        logger.log_failure(
+            driver=driver,
+            function_name="graphql_mode",
+            error=e,
+            additional_info={
+                "remaining_ingredients": len(ingredient_list.get_ingredients()),
+                "mode": "graphql",
+            },
+        )
+        print(f"\n❌ GraphQL mode failed with error: {e}")
+        print("Check the debug_logs directory for details.\n")
+        raise
+
+
+def graphql_checkout_with_prompt(driver, ingredient_list, store_id):
+    """GraphQL add + Selenium timeslot + prompted Selenium checkout.
+
+    Args:
+        driver: Selenium WebDriver instance.
+        ingredient_list: IngredientList object with ingredients to add.
+        store_id: HEB store id to operate against.
+    """
+    print("\n" + "="*60)
+    print("⚡🤔 RUNNING IN GRAPHQL CHECKOUT WITH PROMPT MODE")
+    print("="*60)
+    print("Adds ingredients via GraphQL, reserves a slot, prompts before checkout.\n")
+
+    try:
+        _graphql_login_and_export(driver, store_id)
+
+        # Let the user pick the closest store.
+        store_id = _graphql_choose_store(store_id)
+
+        print(f"\n⚡ Adding {len(ingredient_list.get_ingredients())} ingredients via GraphQL...")
+        report = graphql_cart_sync(ingredient_list, store_id, do_clear=True)
+        _print_graphql_report(report)
+
+        # Timeslot reservation still uses the Selenium flow.
+        print("\n📅 Attempting to reserve time slot...")
+        try:
+            slot_reserved = self_healing_call(reserve_time_slot, driver, driver=driver)
+            if slot_reserved:
+                print("✓ Time slot reserved")
+        except Exception as e:
+            print(f"⚠️  Could not reserve time slot - continuing anyway ({type(e).__name__})")
+
+        print("\n" + "="*60)
+        print("🛒 Ready to checkout!")
+        print("="*60)
+        response = input("\nProceed with checkout? (yes/no): ").strip().lower()
+
+        if response in ['yes', 'y']:
+            print("\n💳 Proceeding with checkout...")
+            self_healing_call(checkout, driver, driver=driver)
+            print("\n✓ Order placed successfully!")
+        else:
+            print("\n❌ Checkout cancelled by user.")
+            print("Browser will remain open. Close manually when done.")
+            input("Press Enter to exit...")
+
+    except Exception as e:
+        logger.log_failure(
+            driver=driver,
+            function_name="graphql_checkout_with_prompt",
+            error=e,
+            additional_info={
+                "remaining_ingredients": len(ingredient_list.get_ingredients()),
+                "mode": "graphql_checkout_with_prompt",
+            },
+        )
+        print(f"\n❌ GraphQL checkout with prompt failed with error: {e}")
+        print("Check the debug_logs directory for details.\n")
+        raise
+
+
+def graphql_auto_checkout(driver, ingredient_list, store_id):
+    """GraphQL add + Selenium timeslot + automatic Selenium checkout.
+
+    ⚠️ WARNING: This will complete the order and charge your payment method!
+
+    Args:
+        driver: Selenium WebDriver instance.
+        ingredient_list: IngredientList object with ingredients to add.
+        store_id: HEB store id to operate against.
+    """
+    print("\n" + "="*60)
+    print("⚡🤖 RUNNING IN GRAPHQL AUTO CHECKOUT MODE")
+    print("="*60)
+    print("⚠️  WARNING: This will AUTOMATICALLY COMPLETE the order!")
+    print("⚠️  Your payment method will be charged!")
+    print("="*60 + "\n")
+
+    print("This is your last chance to cancel.")
+    response = input("Type 'CONFIRM' to proceed with automatic checkout: ").strip()
+    if response != 'CONFIRM':
+        print("\n❌ Auto checkout cancelled. Exiting...")
+        return
+
+    try:
+        _graphql_login_and_export(driver, store_id)
+
+        # Let the user pick the closest store.
+        store_id = _graphql_choose_store(store_id)
+
+        print(f"\n⚡ Adding {len(ingredient_list.get_ingredients())} ingredients via GraphQL...")
+        report = graphql_cart_sync(ingredient_list, store_id, do_clear=True)
+        _print_graphql_report(report)
+
+        # Timeslot reservation still uses the Selenium flow.
+        print("\n📅 Attempting to reserve time slot...")
+        try:
+            slot_reserved = self_healing_call(reserve_time_slot, driver, driver=driver)
+            if slot_reserved:
+                print("✓ Time slot reserved")
+        except Exception as e:
+            print(f"⚠️  Could not reserve time slot - continuing anyway ({type(e).__name__})")
+
+        print("\n💳 Automatically processing checkout...")
+        self_healing_call(checkout, driver, driver=driver)
+
+        print("\n" + "="*60)
+        print("✅ ORDER PLACED SUCCESSFULLY!")
+        print("="*60)
+        print("Check your email for order confirmation.\n")
+
+    except Exception as e:
+        logger.log_failure(
+            driver=driver,
+            function_name="graphql_auto_checkout",
+            error=e,
+            additional_info={
+                "remaining_ingredients": len(ingredient_list.get_ingredients()),
+                "mode": "graphql_auto_checkout",
+            },
+        )
+        print(f"\n❌ GraphQL auto checkout failed with error: {e}")
+        print("Check the debug_logs directory for details.\n")
+        raise
+
+
+def update_graphql_hashes(driver, store_id):
+    """Capture current HEB GraphQL persisted-query hashes from a live session.
+
+    HEB rotates its Apollo persisted-query sha256 hashes on every front-end
+    deploy, which breaks the GraphQL modes. This mode logs in, exercises the
+    cart/store flows in a real browser, sniffs the GraphQL requests out of the
+    Chrome performance log, and writes the captured hashes to the override file
+    that the GraphQL client reads at runtime.
+
+    The browser must have been started with performance logging enabled
+    (handled in the main block when MODE == 'update_graphql_hashes').
+
+    Args:
+        driver: Selenium WebDriver instance (with performance logging).
+        store_id: HEB store id used when exercising the store-change flow.
+    """
+    from utility.graphql_hash_capture import (
+        TARGET_OPERATIONS,
+        capture_graphql_operations,
+        save_hashes,
+        save_operation_samples,
+    )
+
+    print("\n" + "="*60)
+    print("🔄 RUNNING IN UPDATE GRAPHQL HASHES MODE")
+    print("="*60)
+    print("This logs in and exercises the site to capture fresh GraphQL")
+    print("persisted-query hashes for the GraphQL cart modes.\n")
+
+    # Accumulator for every GraphQL operation seen across the whole flow.
+    # driver.get_log("performance") is destructive and the buffer is bounded,
+    # so we drain it after EACH step and merge, instead of once at the end.
+    captured_ops = {}
+
+    def _run_step(label, fn, *args):
+        """Run one capture step, log failures with artifacts, then drain the log.
+
+        Each step is best-effort: a failure in one flow must not abort the
+        capture run, but it MUST be recorded (screenshot + HTML + context) so
+        broken selectors can be diagnosed. The performance log is drained after
+        the step regardless of success so its GraphQL traffic is retained.
+        """
+        print(f"\n{label}")
+        try:
+            self_healing_call(fn, *args, driver=driver)
+        except Exception as e:  # noqa: BLE001
+            print(f"⚠️  {label} incomplete ({type(e).__name__}: {e}) - continuing")
+            try:
+                logger.log_failure(
+                    driver=driver,
+                    function_name=getattr(fn, "__name__", str(fn)),
+                    error=e,
+                    additional_info={
+                        "mode": "update_graphql_hashes",
+                        "step": label,
+                        "args": [str(a) for a in args],
+                    },
+                )
+            except Exception as log_err:  # noqa: BLE001
+                print(f"    ⚠️  Could not write debug log for this step: {log_err}")
+        finally:
+            random_time()
+            before = len(captured_ops)
+            capture_graphql_operations(driver, into=captured_ops)
+            gained = len(captured_ops) - before
+            print(f"    📡 Captured {len(captured_ops)} GraphQL op(s) so far (+{gained} this step).")
+
+    try:
+        # Login (reuse the self-healing Selenium login).
+        self_healing_call(login, driver, driver=driver)
+        random_time()
+        driver.maximize_window()
+        dismiss_modals(driver)
+        # Drain any GraphQL traffic that fired during/after login.
+        capture_graphql_operations(driver, into=captured_ops)
+
+        # 1. Homepage browsing -> ShopNavigation / alertEntryPoint / cartEstimated.
+        print("\n🏠 Loading homepage to trigger navigation queries...")
+        driver.get("https://www.heb.com/")
+        random_time()
+        capture_graphql_operations(driver, into=captured_ops)
+
+        # 2. Reserve a time slot -> timeslot list/reserve GraphQL ops.
+        _run_step("📅 Exercising time slot reservation...", reserve_time_slot, driver)
+
+        # 3. Visit the cart -> cartEstimated.
+        _run_step("🛒 Visiting cart to trigger cart estimate query...", clear_cart, driver)
+
+        # 4. Add a simple item -> cartItemV2.
+        print("\n➕ Adding a sample item to trigger cart mutation...")
+        driver.get("https://www.heb.com/")
+        random_time()
+        _run_step("➕ Adding sample item 'milk'...", add_ingredient, Ingredient("milk", ["1"], []), driver)
+
+        # 5. Change store via the UI -> StoreSearch + SelectPickupFulfillment.
+        search_text = _STORE_SEARCH_ADDRESS or "78701"
+        _run_step(
+            f"🏪 Exercising store search/change (near '{search_text}')...",
+            change_store_via_ui, driver, search_text,
+        )
+
+        # 6. Walk into checkout -> timeslot + checkout/order-review GraphQL ops.
+        #    The Selenium checkout stops before payment; we only need it to
+        #    advance far enough for HEB to fire the timeslot/checkout queries so
+        #    their operation names, hashes, and variable shapes get captured.
+        _run_step(
+            "🧾 Walking into checkout to trigger timeslot/checkout queries...",
+            checkout, driver,
+        )
+
+        # 7. Final drain + save. Hashes are derived from the accumulated samples
+        #    so we never call the destructive get_log twice for the same data.
+        print("\n🔎 Finalizing GraphQL capture...")
+        capture_graphql_operations(driver, into=captured_ops)
+        operations = captured_ops
+        hashes = {name: op["hash"] for name, op in operations.items() if op.get("hash")}
+
+        if not hashes:
+            print("\n❌ No GraphQL hashes captured.")
+            print("Ensure performance logging is enabled and the flows ran.")
+            print("Check the debug_logs directory for per-step failure artifacts.")
+            input("Press Enter to close the browser and exit...")
+            return
+
+        path = save_hashes(hashes)
+        samples_path = save_operation_samples(operations) if operations else None
+
+        print("\n" + "="*60)
+        print(f"✅ Captured {len(hashes)} GraphQL operation hash(es)")
+        print("="*60)
+        for name in sorted(hashes):
+            marker = "🎯" if name in TARGET_OPERATIONS else "  "
+            print(f"  {marker} {name}: {hashes[name][:16]}...")
+
+        missing = sorted(TARGET_OPERATIONS - set(hashes))
+        if missing:
+            print("\n⚠️  Target operations NOT captured this run:")
+            for name in missing:
+                print(f"    • {name}")
+            print("These weren't triggered; re-run after exercising those flows.")
+
+        print(f"\n💾 Saved to: {path}")
+        if samples_path:
+            print(f"💾 Operation samples (hash + variables) saved to: {samples_path}")
+            print(f"   ({len(operations)} operation(s) recorded for timeslot/checkout discovery)")
+        print("GraphQL modes will use these hashes on the next run.")
+        input("\nPress Enter to close the browser and exit...")
+
+    except Exception as e:
+        logger.log_failure(
+            driver=driver,
+            function_name="update_graphql_hashes",
+            error=e,
+            additional_info={"mode": "update_graphql_hashes"},
+        )
+        print(f"\n❌ Update GraphQL hashes failed with error: {e}")
+        print("Check the debug_logs directory for details.\n")
+        raise
+
+
 if __name__ == '__main__':
     
     # ============================================================
@@ -1128,14 +1581,23 @@ if __name__ == '__main__':
     from claude import parse_config
     _config = parse_config(os.path.join(os.path.dirname(__file__), 'config.txt'))
     MODE = _config.get('MODE', 'test').strip()
+    STORE_ID = _config.get('STORE_ID', '737').strip()
+    _STORE_SEARCH_ADDRESS = _config.get('STORE_SEARCH_ADDRESS', '').strip()
     
     # ============================================================
     # INGREDIENT SOURCE SELECTION
     # ============================================================
-    # Option 1: Use recipe URLs (set USE_URLS = True)
-    # Option 2: Use hardcoded ingredient list (set USE_URLS = False)
-    
-    USE_URLS = False  # Set to True to use url_list, False to use ingredient_list_array
+    # Controlled by INGREDIENT_SOURCE in config.txt:
+    #   'hardcoded' - use the ingredient_list_array below (default)
+    #   'urls'      - scrape ingredients from url_list
+    #   'database'  - ask the user which recipes they want this week and load
+    #                 the matching recipes' ingredients from the database
+    # (Legacy USE_URLS = True is still honored as 'urls'.)
+
+    USE_URLS = False  # Legacy toggle; INGREDIENT_SOURCE takes precedence if set
+    INGREDIENT_SOURCE = _config.get('INGREDIENT_SOURCE', '').strip().lower()
+    if not INGREDIENT_SOURCE:
+        INGREDIENT_SOURCE = 'urls' if USE_URLS else 'hardcoded'
     
     # Recipe URLs - Used when USE_URLS = True
     url_list = [
@@ -1167,11 +1629,37 @@ if __name__ == '__main__':
     print("🥗 AUTO GROCIER - HEB AUTOMATION")
     print("="*60)
     print(f"Mode: {MODE.upper()}")
-    print(f"Ingredient Source: {'Recipe URLs' if USE_URLS else 'Hardcoded List'}")
+    print(f"Ingredient Source: {INGREDIENT_SOURCE}")
     print("="*60 + "\n")
     
-    # Initialize ingredient list based on USE_URLS setting
-    if USE_URLS:
+    # Initialize ingredient list based on INGREDIENT_SOURCE setting
+    if INGREDIENT_SOURCE == 'database':
+        print("🗄️  Loading recipes from the database...\n")
+        from database.db_connection import get_db_session
+        from database.recipe_repository import RecipeRepository
+        from database.ingredient_repository import IngredientRepository
+        from utility.recipe_matcher import parse_and_match, build_ingredient_list
+
+        user_request = input("What recipes do you want this week? ").strip()
+        _db = get_db_session()
+        try:
+            _recipe_repo = RecipeRepository(_db)
+            _ingredient_repo = IngredientRepository(_db)
+            matched, unmatched = parse_and_match(user_request, _recipe_repo)
+
+            if matched:
+                print("\n✓ Matched recipes:")
+                for r in matched:
+                    print(f"   - {r.title or r.url}")
+            if unmatched:
+                print("\n⚠️  Could not match the following requests:")
+                for u in unmatched:
+                    print(f"   - {u}")
+
+            IL = build_ingredient_list(matched, _ingredient_repo)
+        finally:
+            _db.close()
+    elif INGREDIENT_SOURCE == 'urls':
         print("📡 Fetching ingredients from recipe URLs...")
         print(f"   Processing {len(url_list)} recipe(s)...\n")
         IL = populate_ingredient_list(url_list)
@@ -1207,7 +1695,18 @@ if __name__ == '__main__':
     options.add_argument("--no-first-run")
     options.add_argument("--no-service-autorun")
     options.add_argument("--password-store=basic")
-    
+
+    # Stop the "Can't update Chrome" / "Update" banner. Chrome 116 is pinned, so
+    # we disable the background update checks that trigger the upgrade bubble.
+    options.add_argument("--disable-component-update")
+    options.add_argument("--disable-background-networking")
+    options.add_argument("--disable-features=ChromeWhatsNewUI,UpgradeDetector")
+
+    # For the hash-capture mode, enable Chrome performance logging so we can
+    # read GraphQL network requests (and their persisted-query hashes).
+    if MODE == 'update_graphql_hashes':
+        options.set_capability("goog:loggingPrefs", {"performance": "ALL"})
+
     # Match Chrome version 116 that's installed
     # Temporarily ignore SIGINT so chromedriver inherits SIG_IGN and won't die on Ctrl+C.
     # This keeps the browser + driver connection alive when the user interrupts.
@@ -1240,9 +1739,19 @@ if __name__ == '__main__':
             checkout_with_prompt(driver, IL)
         elif MODE == 'auto_checkout':
             auto_checkout(driver, IL)
+        elif MODE == 'graphql':
+            graphql_mode(driver, IL, STORE_ID)
+        elif MODE == 'graphql_checkout_with_prompt':
+            graphql_checkout_with_prompt(driver, IL, STORE_ID)
+        elif MODE == 'graphql_auto_checkout':
+            graphql_auto_checkout(driver, IL, STORE_ID)
+        elif MODE == 'update_graphql_hashes':
+            update_graphql_hashes(driver, STORE_ID)
         else:
             print(f"❌ Invalid MODE: '{MODE}'")
-            print("Valid modes: 'test', 'checkout_with_prompt', 'auto_checkout'")
+            print("Valid modes: 'test', 'checkout_with_prompt', 'auto_checkout', "
+                  "'graphql', 'graphql_checkout_with_prompt', 'graphql_auto_checkout', "
+                  "'update_graphql_hashes'")
             driver.quit()
             exit(1)
     
