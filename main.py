@@ -25,6 +25,17 @@ from utility.graphql_auth import export_selenium_session_to_authjson
 from utility.graphql_cart import graphql_cart_sync
 from utility.graphql_store import select_store_interactive, update_config_value
 
+# Ensure console output is UTF-8 on every platform. On Unix stdout is already
+# UTF-8 so this is a no-op; on Windows the default console encoding (cp1252)
+# can't encode the emoji/status glyphs used throughout this program and would
+# raise UnicodeEncodeError, so we reconfigure the streams when possible.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        # Older Python (<3.7) or a stream that doesn't support reconfigure.
+        pass
+
 # Initialize the logger globally
 logger = DriverLogger(log_dir="debug_logs")
 
@@ -66,14 +77,25 @@ def signal_handler(signum, frame):
     signal.signal(signal.SIGINT, signal.SIG_DFL)  # Reset to default handler for second Ctrl+C
 
 
-def detect_chrome_major_version():
-    """Detect the installed Google Chrome major version.
+def _parse_chrome_major(text):
+    """Pull the leading major-version integer out of a version string.
 
-    Returns the major version as an int, or None if it can't be determined
-    (in which case undetected-chromedriver falls back to its own detection).
-    Used so the chromedriver matches whatever Chrome is currently installed,
-    surviving Chrome's frequent auto-updates without manual config changes.
+    Accepts either a bare version like ``116.0.5845.96`` or a full line like
+    ``Google Chrome 116.0.5845.96``. Returns an int or None.
     """
+    if not text:
+        return None
+    import re
+    match = re.search(r"(\d+)\.\d+\.\d+", text)
+    if match:
+        return int(match.group(1))
+    # Fall back to the first integer found (e.g. bare "116").
+    match = re.search(r"\d+", text)
+    return int(match.group(0)) if match else None
+
+
+def _detect_chrome_major_windows():
+    """Windows-only Chrome detection via registry and chrome.exe metadata."""
     # 1) Windows registry (updates immediately on Chrome auto-update).
     try:
         import winreg
@@ -81,8 +103,9 @@ def detect_chrome_major_version():
             try:
                 with winreg.OpenKey(hive, r"Software\Google\Chrome\BLBeacon") as key:
                     version, _ = winreg.QueryValueEx(key, "version")
-                    if version:
-                        return int(version.split(".")[0])
+                    major = _parse_chrome_major(version)
+                    if major:
+                        return major
             except OSError:
                 continue
     except Exception:
@@ -106,13 +129,68 @@ def detect_chrome_major_version():
                      f"(Get-Item '{path}').VersionInfo.ProductVersion"],
                     capture_output=True, text=True, timeout=15,
                 )
-                version = out.stdout.strip()
-                if version:
-                    return int(version.split(".")[0])
+                major = _parse_chrome_major(out.stdout.strip())
+                if major:
+                    return major
             except Exception:
                 continue
 
     return None
+
+
+def _detect_chrome_major_posix():
+    """Linux/macOS Chrome (or Chromium) detection by running ``<binary> --version``."""
+    import shutil
+    import subprocess
+
+    # Common executable names (Linux) and absolute paths (macOS app bundles +
+    # Linux package locations). shutil.which handles anything on PATH.
+    candidates = [
+        "google-chrome",
+        "google-chrome-stable",
+        "google-chrome-beta",
+        "chromium",
+        "chromium-browser",
+        "chrome",
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/Applications/Chromium.app/Contents/MacOS/Chromium",
+        "/usr/bin/google-chrome",
+        "/usr/bin/chromium-browser",
+        "/usr/bin/chromium",
+        "/snap/bin/chromium",
+    ]
+    for candidate in candidates:
+        binary = candidate if os.path.isabs(candidate) else shutil.which(candidate)
+        if not binary or not os.path.exists(binary):
+            continue
+        try:
+            out = subprocess.run(
+                [binary, "--version"],
+                capture_output=True, text=True, timeout=15,
+            )
+            major = _parse_chrome_major(out.stdout.strip() or out.stderr.strip())
+            if major:
+                return major
+        except Exception:
+            continue
+
+    return None
+
+
+def detect_chrome_major_version():
+    """Detect the installed Google Chrome major version, cross-platform.
+
+    Returns the major version as an int, or None if it can't be determined
+    (in which case undetected-chromedriver falls back to its own detection).
+    Used so the chromedriver matches whatever Chrome is currently installed,
+    surviving Chrome's frequent auto-updates without manual config changes.
+
+    Works equally on Windows (registry / chrome.exe metadata) and on
+    Linux/macOS (running the chrome/chromium binary with ``--version``).
+    """
+    if sys.platform.startswith("win"):
+        return _detect_chrome_major_windows()
+    return _detect_chrome_major_posix()
 
 
 def check_exists_by_xpath(xpath,driver):
