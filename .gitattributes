@@ -1,0 +1,24 @@
+# Normalize line endings so Windows and Unix contributors produce identical
+# diffs. Text files are stored as LF in the repo and checked out as LF on every
+# platform, preventing the whole-tree CRLF churn that happens when editing on
+# Windows without this file.
+* text=auto eol=lf
+
+# Scripts that must always be LF (they run under bash / WSL / Unix shells).
+*.sh   text eol=lf
+*.bash text eol=lf
+*.sql  text eol=lf
+*.py   text eol=lf
+
+# Windows batch files must stay CRLF to run correctly.
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+
+# Treat these as binary so git never rewrites their bytes or line endings.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.webp binary
+*.ico  binary
+*.pdf  binary
