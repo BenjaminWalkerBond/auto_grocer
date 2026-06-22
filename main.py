@@ -553,6 +553,50 @@ def reserve_time_slot(driver):
 
         time.sleep(2)
 
+        # STEP 4.5: Select a delivery tier (new tiered timeslot UI).
+        # HEB's refreshed reservation modal (variant
+        # 'dsweb-3931-timeslot-refresh-sidebar-layout') first shows summary
+        # buttons for each fee tier ("Under 2 hours", "2-4 hours", "Scheduled")
+        # instead of a date grid. The date/time options only appear AFTER a tier
+        # is clicked. Prefer the free "Scheduled" tier, then fall back to the
+        # cheapest available tier. If no tier buttons exist, the account is
+        # already on the old grid layout and we skip straight to date selection.
+        print("  Step 4.5: Selecting a delivery tier...")
+        try:
+            tier_buttons = driver.find_elements(
+                By.CSS_SELECTOR, 'button[class*="TimeslotSummary_button"]'
+            )
+            # Fallback: match by the aria-label pattern HEB uses on tier buttons.
+            if not tier_buttons:
+                tier_buttons = driver.find_elements(
+                    By.XPATH, '//button[contains(@aria-label, "time slots for")]'
+                )
+
+            visible_tiers = [b for b in tier_buttons if b.is_displayed()]
+            if not visible_tiers:
+                print("    ℹ️  No tier buttons found; assuming legacy date-grid layout.")
+            else:
+                # Prefer the free "Scheduled" tier.
+                preferred = None
+                for b in visible_tiers:
+                    label = (b.get_attribute("aria-label") or "")
+                    if "Scheduled" in label or "for Free" in label:
+                        preferred = b
+                        break
+                target = preferred or visible_tiers[-1]
+                label = (target.get_attribute("aria-label") or "tier").strip()
+                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", target)
+                time.sleep(1)
+                try:
+                    target.click()
+                except Exception:
+                    driver.execute_script("arguments[0].click();", target)
+                print(f"    ✓ Selected delivery tier: {label[:60]}")
+                random_time()
+                time.sleep(2)
+        except Exception as e:
+            print(f"    ⚠️  Could not select a delivery tier: {e}")
+
         # STEP 5: Select a date
         print("  Step 5: Selecting a date...")
         date_buttons = []

@@ -53,6 +53,57 @@ An automated grocery shopping assistant that parses recipes and manages ingredie
    python testing/test_database.py
    ```
 
+## MCP Server Operations
+
+The project ships an [MCP](https://modelcontextprotocol.io/) server (`mcp_server.py`)
+that exposes HEB grocery automation as tools over **pure GraphQL** (no browser at
+runtime). It reuses an exported HEB session — run the maintenance workflow
+(`MODE=update_graphql_hashes python main.py`) to log in and capture the GraphQL
+hashes, then call `refresh_session`.
+
+Start the server:
+```bash
+source venv/bin/activate
+python mcp_server.py
+```
+
+### Available Tools
+
+| Tool | Auth required | Description |
+|------|:---:|-------------|
+| `auth_status()` | No | Report whether a valid HEB session is available, the active store, and whether `place_order` is enabled. Reads the exported session; does not open a browser. |
+| `refresh_session()` | No | Reload the exported session and the latest persisted-query hashes after running the maintenance workflow. Call this if tools start reporting `NOT_AUTHENTICATED` or `OPERATION_NOT_CAPTURED`. |
+| `search_products(query, limit=10, store_id="")` | Yes | Search HEB products via GraphQL without adding anything to the cart. |
+| `add_groceries(items, clear_first=False)` | Yes | Search for and add a list of free-form grocery items (e.g. `"2 lb chicken breast"`) to the cart. Produce is searched as organic automatically. |
+| `add_recipe_ingredients(request, clear_first=False)` | Yes | Match a natural-language meal request against database recipes and add all matched recipes' ingredients to the cart. Requires seeded recipes. |
+| `find_recipes(request)` | No | Preview which database recipes match a natural-language request **without** adding anything to the cart. |
+| `query_recipes(search="", recipe_id=0, domain="", include_ingredients=False, limit=50)` | No | Browse/search/inspect the recipe database directly (no AI matching, no HEB login). |
+| `list_all_recipes(page=1)` | No | List every recipe, paginated 10 per page. Returns each recipe's name, url, ingredient count, and cook time (minutes). Call `page=1`, then `page=2`, etc. until `has_next` is false. |
+| `seed_recipes(title, url, ingredients, description="")` | No | Insert one recipe (with auto-tagged ingredients) into the recipe database. Re-seeding the same URL updates it instead of duplicating. |
+| `get_cart()` | Yes | Return the current cart contents (items, quantities, totals). |
+| `clear_cart()` | Yes | Empty all items from the cart. |
+| `set_store(store_id)` | Yes | Set the active pickup store for GraphQL operations. |
+| `list_timeslots(store_id="")` | Yes | List available curbside pickup time slots. |
+| `reserve_timeslot(slot_id, store_id="")` | Yes | Reserve a curbside pickup time slot (use `list_timeslots` first to get a slot id). |
+| `checkout()` | Yes | Advance to the order-review stage. **Does NOT place the order and never charges.** Reserve a timeslot first. |
+| `place_order()` | Yes | Submit the final **paid** order. ⚠️ **This charges your payment method.** Disabled by default — enable with `AUTO_GROCIER_ALLOW_PLACE_ORDER=1` in the server environment. |
+
+### Typical Order of Operations
+
+```
+auth_status                          # confirm you're logged in
+add_groceries / add_recipe_ingredients
+get_cart                             # review what was added
+list_timeslots
+reserve_timeslot
+checkout                             # review only — no charge
+place_order                          # optional, guarded — CHARGES your card
+```
+
+> **Safety:** `place_order` is the only tool that spends money and is disabled
+> unless `AUTO_GROCIER_ALLOW_PLACE_ORDER=1` is set. `checkout` only advances to
+> order review and never charges.
+
 ## Documentation
 
 All documentation is located in the `docs/` directory:

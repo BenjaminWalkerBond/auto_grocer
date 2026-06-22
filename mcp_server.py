@@ -8,6 +8,7 @@ Chat) so you can drive the whole flow conversationally:
     "add penne, spinach"     -> add_groceries           (GraphQL search + add)
     "I want palak paneer"    -> add_recipe_ingredients   (DB matcher + GraphQL)
     "show my saved recipes"  -> query_recipes            (DB browse/search)
+    "list all my recipes"    -> list_all_recipes         (DB paginated, 10/page)
     "add these recipes ..."  -> seed_recipes             (DB insert one recipe)
     "what's in my cart"      -> get_cart                 (GraphQL)
     "empty my cart"          -> clear_cart               (GraphQL)
@@ -392,11 +393,86 @@ def query_recipes(
 
 
 @mcp.tool()
+def list_all_recipes(page: int = 1) -> dict:
+    """
+    List every recipe in the database, paginated 10 per page (no AI matching, no
+    HEB login required).
+
+    Call with page=1 to get the first ten recipes, page=2 for the next ten, and
+    so on. Use the returned `has_next`/`next_page` fields to keep requesting more
+    until `has_next` is false.
+
+    Each recipe entry contains:
+      * name             -> the recipe title
+      * url              -> the source URL
+      * ingredient_count -> number of ingredients on the recipe
+      * cook_time        -> cook time in minutes (null if not recorded)
+
+    Args:
+        page: 1-indexed page number (10 recipes per page). Defaults to 1.
+    """
+    from database.db_connection import get_db_session
+    from database.recipe_repository import RecipeRepository
+
+    PAGE_SIZE = 10
+
+    try:
+        page_num = int(page)
+    except (TypeError, ValueError):
+        page_num = 1
+    if page_num < 1:
+        page_num = 1
+
+    try:
+        db = get_db_session()
+    except Exception as e:
+        return {
+            "error": True,
+            "code": "DATABASE_UNAVAILABLE",
+            "message": f"Could not open the recipe database: {e}",
+        }
+
+    try:
+        recipes_repo = RecipeRepository(db)
+        total = recipes_repo.count()
+        total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE if total else 0
+        offset = (page_num - 1) * PAGE_SIZE
+
+        recipes = recipes_repo.get_all(limit=PAGE_SIZE, offset=offset)
+        results = [
+            {
+                "name": r.title,
+                "url": r.url,
+                "ingredient_count": len(r.ingredients) if r.ingredients else 0,
+                "cook_time": r.cook_time,
+            }
+            for r in recipes
+        ]
+
+        has_next = (offset + len(results)) < total
+        return {
+            "page": page_num,
+            "page_size": PAGE_SIZE,
+            "count": len(results),
+            "total_recipes": total,
+            "total_pages": total_pages,
+            "has_next": has_next,
+            "next_page": page_num + 1 if has_next else None,
+            "recipes": results,
+        }
+    except Exception as e:
+        return {"error": True, "code": "QUERY_FAILED", "message": str(e)}
+    finally:
+        db.close()
+
+
+@mcp.tool()
 def seed_recipes(
     title: str,
     url: str,
     ingredients: list,
     description: str = "",
+    cook_time: int = 0,
 ) -> dict:
     """
     Insert ONE recipe (with its ingredients) into the recipe database. No HEB
@@ -422,6 +498,7 @@ def seed_recipes(
             - unit (str, default "none") e.g. "cup", "tablespoon", "lb"
             - tags (list[str], optional; auto-derived from name if omitted)
         description: Optional short description for natural-language matching.
+        cook_time: Optional cook time in minutes (0 or omit if unknown).
     """
     from database.db_connection import get_db_session
     from database.recipe_repository import RecipeRepository
@@ -453,6 +530,14 @@ def seed_recipes(
             title=(title or "").strip() or None,
             description=(description or "").strip() or None,
         )
+
+        # Update cook_time if provided (works for both new and re-seeded recipes).
+        try:
+            cook_time_minutes = int(cook_time)
+        except (TypeError, ValueError):
+            cook_time_minutes = 0
+        if cook_time_minutes > 0 and recipe.cook_time != cook_time_minutes:
+            recipe_repo.update(recipe.id, cook_time=cook_time_minutes)
 
         # Replace any existing ingredients so re-seeding is idempotent.
         existing = ingredient_repo.get_by_recipe(recipe.id)

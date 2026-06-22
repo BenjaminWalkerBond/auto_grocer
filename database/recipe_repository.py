@@ -14,7 +14,7 @@ class RecipeRepository:
     def __init__(self, db: Session):
         self.db = db
     
-    def create(self, url: str, title: str = None, source_domain: str = None, description: str = None) -> Recipe:
+    def create(self, url: str, title: str = None, source_domain: str = None, description: str = None, cook_time: int = None) -> Recipe:
         """
         Create a new recipe.
         
@@ -23,6 +23,7 @@ class RecipeRepository:
             title: Recipe title (optional)
             source_domain: Source domain (optional, will be extracted from URL if not provided)
             description: Recipe description used for natural-language matching (optional)
+            cook_time: Cook time in minutes (optional)
             
         Returns:
             Created Recipe object
@@ -36,7 +37,8 @@ class RecipeRepository:
             url=url,
             title=title,
             description=description,
-            source_domain=source_domain
+            source_domain=source_domain,
+            cook_time=cook_time
         )
         self.db.add(recipe)
         self.db.commit()
@@ -51,7 +53,7 @@ class RecipeRepository:
         """Get a recipe by its URL"""
         return self.db.query(Recipe).filter(Recipe.url == url).first()
     
-    def get_or_create(self, url: str, title: str = None, source_domain: str = None, description: str = None) -> Recipe:
+    def get_or_create(self, url: str, title: str = None, source_domain: str = None, description: str = None, cook_time: int = None) -> Recipe:
         """
         Get an existing recipe or create a new one if it doesn't exist.
         
@@ -60,13 +62,14 @@ class RecipeRepository:
             title: Recipe title (optional)
             source_domain: Source domain (optional)
             description: Recipe description (optional)
+            cook_time: Cook time in minutes (optional)
             
         Returns:
             Recipe object
         """
         recipe = self.get_by_url(url)
         if not recipe:
-            recipe = self.create(url, title, source_domain, description)
+            recipe = self.create(url, title, source_domain, description, cook_time)
         return recipe
     
     def get_all(self, limit: int = None, offset: int = 0) -> List[Recipe]:
@@ -128,7 +131,7 @@ class RecipeRepository:
             Recipe.source_domain.ilike(f'%{domain}%')
         ).all()
     
-    def update(self, recipe_id: int, url: str = None, title: str = None, source_domain: str = None, description: str = None) -> Optional[Recipe]:
+    def update(self, recipe_id: int, url: str = None, title: str = None, source_domain: str = None, description: str = None, cook_time: int = None) -> Optional[Recipe]:
         """
         Update a recipe.
         
@@ -138,6 +141,7 @@ class RecipeRepository:
             title: New title (optional)
             source_domain: New source domain (optional)
             description: New description (optional)
+            cook_time: New cook time in minutes (optional)
             
         Returns:
             Updated Recipe object or None if not found
@@ -152,6 +156,8 @@ class RecipeRepository:
                 recipe.source_domain = source_domain
             if description is not None:
                 recipe.description = description
+            if cook_time is not None:
+                recipe.cook_time = cook_time
             self.db.commit()
             self.db.refresh(recipe)
         return recipe

@@ -57,6 +57,7 @@ class Recipe(Base):
     title = Column(String(500), nullable=True)
     description = Column(Text, nullable=True)
     source_domain = Column(String(255), nullable=True, index=True)
+    cook_time = Column(Integer, nullable=True)  # Cook time in minutes
     created_at = Column(TIMESTAMP, default=datetime.utcnow, nullable=False)
     updated_at = Column(TIMESTAMP, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
@@ -74,6 +75,7 @@ class Recipe(Base):
             'title': self.title,
             'description': self.description,
             'source_domain': self.source_domain,
+            'cook_time': self.cook_time,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
             'ingredient_count': len(self.ingredients) if self.ingredients else 0
