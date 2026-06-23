@@ -61,6 +61,14 @@ runtime). It reuses an exported HEB session — run the maintenance workflow
 (`MODE=update_graphql_hashes python main.py`) to log in and capture the GraphQL
 hashes, then call `refresh_session`.
 
+**Automatic login:** if no valid session is available when an authenticated tool
+is called, the server automatically runs a one-off browser login
+(`scripts/refresh_authjson.py`) to refresh the session, then continues. This can
+take up to a minute on the first call. Disable it with
+`AUTO_GROCIER_AUTO_LOGIN=0` (tune the cap with `AUTO_GROCIER_AUTO_LOGIN_TIMEOUT`),
+in which case tools return `NOT_AUTHENTICATED` and you refresh the session
+manually.
+
 Start the server:
 ```bash
 source venv/bin/activate
