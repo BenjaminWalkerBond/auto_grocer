@@ -87,7 +87,7 @@ python mcp_server.py
 | `find_recipes(request)` | No | Preview which database recipes match a natural-language request **without** adding anything to the cart. |
 | `query_recipes(search="", recipe_id=0, domain="", include_ingredients=False, limit=50)` | No | Browse/search/inspect the recipe database directly (no AI matching, no HEB login). |
 | `list_all_recipes(page=1)` | No | List every recipe, paginated 10 per page. Returns each recipe's name, url, ingredient count, and cook time (minutes). Call `page=1`, then `page=2`, etc. until `has_next` is false. |
-| `seed_recipes(title, url, ingredients, description="")` | No | Insert one recipe (with auto-tagged ingredients) into the recipe database. Re-seeding the same URL updates it instead of duplicating. |
+| `seed_recipes(title, url, ingredients, description="")` | No | Insert one recipe (with auto-tagged ingredients) into the recipe database. Re-seeding the same URL updates it instead of duplicating. **YouTube URLs** (videos/Shorts) are auto-detected: pass the URL with empty `ingredients` and it fetches the video description, parses the ingredients with Claude, and derives the title/description. |
 | `get_cart()` | Yes | Return the current cart contents (items, quantities, totals). |
 | `clear_cart()` | Yes | Empty all items from the cart. |
 | `set_store(store_id)` | Yes | Set the active pickup store for GraphQL operations. |

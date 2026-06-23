@@ -567,9 +567,9 @@ def list_all_recipes(page: int = 1) -> dict:
 
 @mcp.tool()
 def seed_recipes(
-    title: str,
-    url: str,
-    ingredients: list,
+    title: str = "",
+    url: str = "",
+    ingredients: list = None,
     description: str = "",
     cook_time: int = 0,
 ) -> dict:
@@ -582,6 +582,12 @@ def seed_recipes(
     link, extracts EVERY ingredient (name, quantity, unit), shows the full list
     in chat, then calls this tool ONCE PER RECIPE to persist it.
 
+    YOUTUBE SUPPORT: if `url` is a YouTube video or Short and no `ingredients`
+    are supplied, this tool automatically fetches the video's description
+    (assumed to contain the full recipe + ingredient list), parses the
+    ingredients with Claude, and derives the title/description when they aren't
+    given. Just pass the YouTube URL with an empty `ingredients` list.
+
     Ingredients are auto-tagged (vegetable, fruit, meat, fish, cheese, pasta,
     oil, spice, wine, tree_nut, eggs, milk) using the project's word
     dictionaries so downstream cart/organic logic works. Re-seeding the same URL
@@ -589,14 +595,18 @@ def seed_recipes(
     a duplicate.
 
     Args:
-        title: Recipe name/title (e.g. "Palak Paneer").
-        url: Source URL. Used as the unique key; required.
+        title: Recipe name/title (e.g. "Palak Paneer"). Optional for YouTube
+            URLs (derived from the description when blank).
+        url: Source URL. Used as the unique key; required. May be a recipe page
+            or a YouTube video/Short URL.
         ingredients: List of ingredient dicts. Each item supports:
             - name (str, required) e.g. "spinach"
             - amount (number, default 1) e.g. 2
             - unit (str, default "none") e.g. "cup", "tablespoon", "lb"
             - tags (list[str], optional; auto-derived from name if omitted)
+            Optional/empty for YouTube URLs (parsed from the description).
         description: Optional short description for natural-language matching.
+            Derived from the video for YouTube URLs when blank.
         cook_time: Optional cook time in minutes (0 or omit if unknown).
     """
     from database.db_connection import get_db_session
@@ -605,6 +615,41 @@ def seed_recipes(
 
     if not url or not str(url).strip():
         return {"error": True, "code": "INVALID_INPUT", "message": "A recipe 'url' is required."}
+
+    if ingredients is None:
+        ingredients = []
+
+    # YouTube auto-detection: when a video/Short URL is given without explicit
+    # ingredients, fetch + parse the description into ingredients.
+    youtube_source = False
+    try:
+        from utility.youtube import is_youtube_url, youtube_recipe_from_url
+    except Exception:  # noqa: BLE001 - module optional at import time
+        is_youtube_url = None
+
+    if is_youtube_url and is_youtube_url(url) and not ingredients:
+        try:
+            parsed = youtube_recipe_from_url(url)
+        except ValueError as e:
+            return {
+                "error": True,
+                "code": "YOUTUBE_FETCH_FAILED",
+                "message": str(e),
+            }
+        except Exception as e:  # noqa: BLE001
+            return {
+                "error": True,
+                "code": "YOUTUBE_FETCH_FAILED",
+                "message": f"Could not process YouTube URL: {e}",
+            }
+
+        ingredients = parsed.get("ingredients") or []
+        if not str(title).strip():
+            title = parsed.get("title", "")
+        if not str(description).strip():
+            description = parsed.get("description", "")
+        youtube_source = True
+
     if not isinstance(ingredients, list) or not ingredients:
         return {"error": True, "code": "INVALID_INPUT", "message": "'ingredients' must be a non-empty list."}
 
@@ -676,6 +721,7 @@ def seed_recipes(
 
         return {
             "success": True,
+            "source": "youtube" if youtube_source else "manual",
             "recipe": recipe.to_dict(),
             "ingredients_added": len(added),
             "ingredients_skipped": len(skipped),
