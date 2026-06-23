@@ -34,6 +34,11 @@ tqdm==4.66.1
 trio==0.22.2
 trio-websocket==0.10.4
 undetected-chromedriver==3.5.5
+# --- nodriver migration (migration/nodriver/ prototype, Step 1) ---
+# Async, CDP-native successor to undetected-chromedriver. Kept alongside the
+# Selenium stack during the two-step migration; selenium + undetected-chromedriver
+# will be removed in Step 2 once the prototype is validated.
+nodriver>=0.50.3
 urllib3==2.0.4
 websockets==11.0.3
 wsproto==1.2.0
