@@ -43,7 +43,10 @@ Run standalone:
     python mcp_server.py
 """
 import os
+import sys
 import asyncio
+import subprocess
+import threading
 
 from fastmcp import FastMCP
 
@@ -68,13 +71,28 @@ _ALLOW_PLACE_ORDER = os.environ.get("AUTO_GROCIER_ALLOW_PLACE_ORDER", "").lower(
     "1", "true", "yes",
 )
 
+# When True (default), authenticated tools will automatically run the browser
+# login-and-export workflow if no valid session is available, instead of just
+# returning NOT_AUTHENTICATED. Set AUTO_GROCIER_AUTO_LOGIN=0 to disable and use
+# the manual workflow (run the script yourself, then call refresh_session).
+_AUTO_LOGIN = os.environ.get("AUTO_GROCIER_AUTO_LOGIN", "1").lower() in (
+    "1", "true", "yes",
+)
+
+# How long (seconds) to allow the browser login-and-export to run before giving
+# up. The flow logs in, may handle email verification, and exports auth.json.
+_AUTO_LOGIN_TIMEOUT = int(os.environ.get("AUTO_GROCIER_AUTO_LOGIN_TIMEOUT", "300"))
+
+# Serialize auto-login so concurrent tool calls don't launch multiple browsers.
+_AUTO_LOGIN_LOCK = threading.Lock()
+
 _NOT_AUTHED = {
     "error": True,
     "code": "NOT_AUTHENTICATED",
     "message": (
-        "No valid HEB session. Run the maintenance workflow "
-        "(MODE=update_graphql_hashes python main.py) to log in and export a "
-        "session, then call refresh_session."
+        "No valid HEB session and automatic login is disabled or failed. "
+        "Enable auto-login (AUTO_GROCIER_AUTO_LOGIN=1) or run the login workflow "
+        "manually (python scripts/refresh_authjson.py), then call refresh_session."
     ),
 }
 
@@ -100,6 +118,96 @@ def _is_authed() -> bool:
         return bool(is_authenticated())
     except Exception:
         return False
+
+
+def _reload_session_caches() -> None:
+    """Drop cached settings/hashes so the next check re-reads auth.json."""
+    try:
+        from texas_grocery_mcp.utils.config import get_settings
+        get_settings.cache_clear()
+    except Exception:
+        pass
+    try:
+        from texas_grocery_mcp.clients.graphql import reload_persisted_query_overrides
+        reload_persisted_query_overrides()
+    except Exception:
+        pass
+
+
+def _auto_authenticate() -> dict:
+    """Run the browser login-and-export workflow to refresh the HEB session.
+
+    Launches scripts/refresh_authjson.py (undetected-chromedriver) which logs in
+    with the configured credentials, handles email verification, and re-exports
+    ~/.texas-grocery-mcp/auth.json. Blocks until it finishes (up to
+    _AUTO_LOGIN_TIMEOUT seconds). Serialized so only one login runs at a time.
+
+    Returns a dict describing the outcome (does not raise).
+    """
+    with _AUTO_LOGIN_LOCK:
+        # Another thread may have authenticated while we waited for the lock.
+        if _is_authed():
+            return {"ok": True, "skipped": "already authenticated"}
+
+        script = os.path.join(_PROJECT_ROOT, "scripts", "refresh_authjson.py")
+        if not os.path.exists(script):
+            return {"ok": False, "detail": f"login script not found at {script}"}
+
+        # Prefer the project venv interpreter so dependencies resolve.
+        venv_python = os.path.join(_PROJECT_ROOT, "venv", "bin", "python")
+        python_exe = venv_python if os.path.exists(venv_python) else sys.executable
+
+        env = dict(os.environ)
+        env.setdefault("DISPLAY", ":0")  # WSLg X server for the browser
+
+        print(
+            "[auto-grocier] No valid session - running browser login to refresh "
+            "auth.json (this can take a minute)...",
+            file=sys.stderr,
+        )
+        try:
+            proc = subprocess.run(
+                [python_exe, "-u", script, _store_id()],
+                cwd=_PROJECT_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=_AUTO_LOGIN_TIMEOUT,
+            )
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "detail": f"login timed out after {_AUTO_LOGIN_TIMEOUT}s"}
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "detail": f"failed to run login script: {e}"}
+
+        # Re-read the freshly exported session.
+        _reload_session_caches()
+        ok = _is_authed()
+        if not ok:
+            print(
+                "[auto-grocier] Auto-login finished but session still invalid. "
+                f"(returncode={proc.returncode})",
+                file=sys.stderr,
+            )
+        return {
+            "ok": ok,
+            "returncode": proc.returncode,
+            "stdout_tail": (proc.stdout or "")[-600:],
+            "stderr_tail": (proc.stderr or "")[-600:],
+        }
+
+
+def _ensure_authed() -> bool:
+    """Ensure a valid HEB session exists, auto-running login if needed.
+
+    Returns True if authenticated (possibly after a successful auto-login).
+    Honors AUTO_GROCIER_AUTO_LOGIN; when disabled, behaves like _is_authed().
+    """
+    if _is_authed():
+        return True
+    if not _AUTO_LOGIN:
+        return False
+    _auto_authenticate()
+    return _is_authed()
 
 
 def _ingredient_list_from_items(items):
@@ -171,12 +279,12 @@ mcp = FastMCP(
     name="auto-grocier",
     instructions=(
         "Drive HEB grocery automation over GraphQL. This server reuses an "
-        "exported HEB session - if tools report NOT_AUTHENTICATED, run the "
-        "maintenance workflow (MODE=update_graphql_hashes python main.py) to "
-        "log in and refresh hashes, then call refresh_session. Typical order: "
-        "add_groceries / add_recipe_ingredients -> get_cart -> list_timeslots "
-        "-> reserve_timeslot -> checkout (review only). place_order is guarded "
-        "and will charge."
+        "exported HEB session. If no valid session exists, authenticated tools "
+        "automatically run a browser login to refresh it (set "
+        "AUTO_GROCIER_AUTO_LOGIN=0 to disable and use refresh_session manually). "
+        "Typical order: add_groceries / add_recipe_ingredients -> get_cart -> "
+        "list_timeslots -> reserve_timeslot -> checkout (review only). "
+        "place_order is guarded and will charge."
     ),
 )
 
@@ -194,16 +302,7 @@ def auth_status() -> dict:
 @mcp.tool()
 def refresh_session() -> dict:
     """Reload the exported session and the latest persisted-query hashes after running the maintenance workflow. Call this if tools start reporting NOT_AUTHENTICATED or OPERATION_NOT_CAPTURED."""
-    try:
-        from texas_grocery_mcp.utils.config import get_settings
-        get_settings.cache_clear()
-    except Exception:
-        pass
-    try:
-        from texas_grocery_mcp.clients.graphql import reload_persisted_query_overrides
-        reload_persisted_query_overrides()
-    except Exception:
-        pass
+    _reload_session_caches()
     return {"authenticated": _is_authed(), "store_id": _store_id()}
 
 
@@ -217,7 +316,7 @@ def search_products(query: str, limit: int = 10, store_id: str = "") -> dict:
         limit: Maximum number of results to return.
         store_id: Optional HEB store id. Defaults to STORE_ID in config.txt.
     """
-    if not _is_authed():
+    if not _ensure_authed():
         return _NOT_AUTHED
     products = _search_products_sync(query, _store_id(store_id), limit)
     return {"query": query, "count": len(products), "products": products}
@@ -235,7 +334,7 @@ def add_groceries(items: list[str], clear_first: bool = False) -> dict:
         items: List of grocery item descriptions to add.
         clear_first: If True, empty the cart before adding.
     """
-    if not _is_authed():
+    if not _ensure_authed():
         return _NOT_AUTHED
     IL = _ingredient_list_from_items(items)
     report = graphql_cart_sync(IL, _store_id(), do_clear=clear_first)
@@ -255,7 +354,7 @@ def add_recipe_ingredients(request: str, clear_first: bool = False) -> dict:
         request: Natural-language description of the meals/recipes you want.
         clear_first: If True, empty the cart before adding.
     """
-    if not _is_authed():
+    if not _ensure_authed():
         return _NOT_AUTHED
 
     from database.db_connection import get_db_session
@@ -592,7 +691,7 @@ def seed_recipes(
 @mcp.tool()
 def get_cart() -> dict:
     """Return the current cart contents (items, quantities, totals) via GraphQL."""
-    if not _is_authed():
+    if not _ensure_authed():
         return _NOT_AUTHED
     return _graphql_get_cart_sync()
 
@@ -600,7 +699,7 @@ def get_cart() -> dict:
 @mcp.tool()
 def clear_cart() -> dict:
     """Empty all items from the cart via GraphQL."""
-    if not _is_authed():
+    if not _ensure_authed():
         return _NOT_AUTHED
     report = graphql_cart_sync(IngredientList(), _store_id(), do_clear=True)
     return {"status": "cleared", "cart": report.get("cart")}
@@ -614,7 +713,7 @@ def set_store(store_id: str) -> dict:
     Args:
         store_id: HEB store id to make active.
     """
-    if not _is_authed():
+    if not _ensure_authed():
         return _NOT_AUTHED
     result = asyncio.run(select_store(str(store_id)))
     return {"store_id": str(store_id), "result": result}
@@ -631,7 +730,7 @@ def list_timeslots(store_id: str = "") -> dict:
     Args:
         store_id: Optional HEB store id. Defaults to STORE_ID in config.txt.
     """
-    if not _is_authed():
+    if not _ensure_authed():
         return _NOT_AUTHED
     return list_timeslots_sync(_store_id(store_id))
 
@@ -648,7 +747,7 @@ def reserve_timeslot(slot_id: str, store_id: str = "") -> dict:
         slot_id: The time slot id to reserve (from list_timeslots).
         store_id: Optional HEB store id. Defaults to STORE_ID in config.txt.
     """
-    if not _is_authed():
+    if not _ensure_authed():
         return _NOT_AUTHED
     return reserve_timeslot_sync(slot_id, _store_id(store_id))
 
@@ -660,7 +759,7 @@ def checkout() -> dict:
     and never charges. Reserve a timeslot first. Use place_order to actually
     submit the paid order.
     """
-    if not _is_authed():
+    if not _ensure_authed():
         return _NOT_AUTHED
     return checkout_sync(place_order=False)
 
@@ -674,7 +773,7 @@ def place_order() -> dict:
     AUTO_GROCIER_ALLOW_PLACE_ORDER=1 before starting the server. Run checkout
     (review) first.
     """
-    if not _is_authed():
+    if not _ensure_authed():
         return _NOT_AUTHED
     if not _ALLOW_PLACE_ORDER:
         return {
