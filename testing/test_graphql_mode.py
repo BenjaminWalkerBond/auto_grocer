@@ -1,8 +1,8 @@
 """
 Tests for the GraphQL mode integration.
 
-- Verifies the Selenium->Playwright auth.json export produces the structure the
-  texas_grocery_mcp client expects (offline, uses a fake driver).
+- Verifies the nodriver -> Playwright auth.json export produces the structure the
+  texas_grocery_mcp client expects (offline, uses fake CDP cookie/tab objects).
 - Provides an opt-in live smoke test for product search (requires a valid
   auth.json and network access; set RUN_LIVE=1 to enable).
 
@@ -10,6 +10,7 @@ Run:
     python testing/test_graphql_mode.py
     RUN_LIVE=1 python testing/test_graphql_mode.py
 """
+import asyncio
 import json
 import os
 import sys
@@ -18,21 +19,44 @@ import tempfile
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utility.graphql_auth import export_selenium_session_to_authjson
+from grocery_browser.auth_export import export_session_to_authjson
 
 
-class _FakeDriver:
-    """Minimal stand-in for a Selenium WebDriver."""
+class _FakeCDPCookie:
+    """Minimal stand-in for a nodriver/CDP cookie object (attribute access)."""
 
-    def __init__(self, cookies, local_storage):
+    def __init__(self, name, value, domain=".heb.com", path="/", expires=None,
+                 same_site=None, http_only=False, secure=False):
+        self.name = name
+        self.value = value
+        self.domain = domain
+        self.path = path
+        self.expires = expires
+        self.same_site = same_site
+        self.http_only = http_only
+        self.secure = secure
+
+
+class _FakeCookieJar:
+    def __init__(self, cookies):
         self._cookies = cookies
-        self._local_storage = local_storage
 
-    def get_cookies(self):
+    async def get_all(self):
         return self._cookies
 
-    def execute_script(self, _script):
-        # The auth bridge reads the full localStorage as a dict.
+
+class _FakeBrowser:
+    def __init__(self, cookies):
+        self.cookies = _FakeCookieJar(cookies)
+
+
+class _FakeTab:
+    """Minimal stand-in for a nodriver Tab (only get_local_storage is used)."""
+
+    def __init__(self, local_storage):
+        self._local_storage = local_storage
+
+    async def get_local_storage(self):
         return self._local_storage
 
 
@@ -41,20 +65,19 @@ def test_auth_export_structure():
     print("Testing auth.json export structure...")
 
     reese84_value = json.dumps({"token": "abc", "renewTime": 9999999999000})
-    driver = _FakeDriver(
+    browser = _FakeBrowser(
         cookies=[
-            {"name": "sat", "value": "s1", "domain": ".heb.com", "path": "/",
-             "secure": True, "httpOnly": True, "sameSite": "Lax"},
-            {"name": "sst", "value": "s2", "domain": ".heb.com", "path": "/"},
-            {"name": "JSESSIONID", "value": "s3", "domain": ".heb.com", "path": "/"},
+            _FakeCDPCookie("sat", "s1", secure=True, http_only=True, same_site="Lax"),
+            _FakeCDPCookie("sst", "s2"),
+            _FakeCDPCookie("JSESSIONID", "s3"),
         ],
-        local_storage={"reese84": reese84_value, "other": "x"},
     )
+    tab = _FakeTab(local_storage={"reese84": reese84_value, "other": "x"})
 
     with tempfile.TemporaryDirectory() as tmp:
         auth_path = os.path.join(tmp, "auth.json")
-        result_path = export_selenium_session_to_authjson(
-            driver, auth_path=auth_path, store_id="737"
+        result_path = asyncio.run(
+            export_session_to_authjson(browser, tab, auth_path=auth_path, store_id="737")
         )
 
         assert os.path.exists(result_path), "auth.json was not created"
@@ -84,8 +107,6 @@ def test_live_search():
     if os.environ.get("RUN_LIVE") != "1":
         print("Skipping live search test (set RUN_LIVE=1 to enable).")
         return
-
-    import asyncio
 
     from texas_grocery_mcp.clients.graphql import HEBGraphQLClient
 

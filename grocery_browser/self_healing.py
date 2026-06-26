@@ -2,7 +2,7 @@
 
 Same idea as utility/self_healing.py: on a runtime error, send the broken
 function's source + traceback + page HTML + a screenshot to Claude, ask for a
-corrected version, compile it, save it to migration/nodriver/updated_functions/,
+corrected version, compile it, save it to grocery_browser/updated_functions/,
 and retry. The difference: the functions here are ``async def`` and use the
 nodriver tab API, so the repaired function must also be async and is awaited.
 """
@@ -36,7 +36,7 @@ _NODRIVER_API_NOTES = (
     "  * Attributes: use `el.attrs.get('aria-label')` (there is NO get_attribute).\n"
     "  * Run JS on the page: `await tab.evaluate('document.title')`.\n"
     "  * Sleeps: `await asyncio.sleep(seconds)`.\n"
-    "  * Helpers from migration.nodriver.primitives may be referenced if already "
+    "  * Helpers from grocery_browser.primitives may be referenced if already "
     "imported in the original (random_time, select_one, select_all, click_element, "
     "attr, is_visible, dismiss_modals, check_exists_by_xpath).\n"
 )
@@ -62,7 +62,7 @@ def _save_updated_function(func_name, new_code, source_file, attempt, error_msg)
         f.write(header)
         f.write(new_code)
         f.write("\n")
-    print(f"    💾 Saved rewritten function to: migration/nodriver/updated_functions/{func_name}.py")
+    print(f"    💾 Saved rewritten function to: grocery_browser/updated_functions/{func_name}.py")
     return filepath
 
 

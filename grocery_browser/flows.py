@@ -16,7 +16,7 @@ from urllib.parse import quote_plus
 from claude import parse_config
 from utility.read_email import fetch_verification_code
 
-from migration.nodriver.primitives import (
+from grocery_browser.primitives import (
     random_time,
     human_like_delay,
     human_like_typing,
