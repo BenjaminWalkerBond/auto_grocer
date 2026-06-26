@@ -1,14 +1,18 @@
-# PostgreSQL for auto_grocier — portable, no host install required.
+# PostgreSQL + MCP server for auto_grocier — portable, no host install required.
 #
-# Brings up the database the app expects (host localhost:5432, db auto_grocier,
-# user grocier_user) so config.txt works unchanged. The schema is created
-# automatically on first boot from the migration scripts mounted into
-# /docker-entrypoint-initdb.d (run once, alphabetically, on an empty volume).
+# Brings up the database the app expects (db auto_grocier, user grocier_user) so
+# config.txt works unchanged, plus the MCP server in its own container. Starting
+# the MCP server auto-starts Postgres first (depends_on + healthcheck).
 #
 # Usage (from the repo root):
-#   docker compose -f docker/docker-compose.yml up -d      # start
-#   docker compose -f docker/docker-compose.yml down       # stop (keeps data)
-#   docker compose -f docker/docker-compose.yml down -v    # stop + wipe data
+#   docker compose -f docker/docker-compose.yml up -d postgres   # just the DB
+#   docker compose -f docker/docker-compose.yml build mcp        # build MCP image
+#   docker compose -f docker/docker-compose.yml run --rm mcp     # run MCP (stdio)
+#   docker compose -f docker/docker-compose.yml down             # stop (keeps data)
+#   docker compose -f docker/docker-compose.yml down -v          # stop + wipe data
+#
+# The MCP server is launched by VS Code via .vscode/mcp.json using
+# `docker compose run` so it speaks MCP over stdio and Postgres comes up first.
 #
 # Credentials default to the values in config.txt but can be overridden via the
 # environment (DATABASE_USER / DATABASE_PASSWORD / DATABASE_NAME / DATABASE_PORT).
@@ -36,6 +40,42 @@ services:
       timeout: 5s
       retries: 10
 
+  mcp:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.mcp
+    image: auto_grocier_mcp
+    container_name: auto_grocier_mcp
+    # Starting the MCP server brings Postgres up first and waits for it healthy.
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Reach Postgres over the compose network (service name "postgres"),
+      # overriding config.txt's localhost without editing it.
+      DATABASE_URL: postgresql://${DATABASE_USER:-grocier_user}:${DATABASE_PASSWORD:-grocier_user_123}@postgres:5432/${DATABASE_NAME:-auto_grocier}
+      # In-container login uses the nodriver (Xvfb) flow with no Chrome sandbox.
+      AUTO_GROCIER_LOGIN_MODE: nodriver
+      AUTO_GROCIER_NO_SANDBOX: "1"
+      AUTO_GROCIER_AUTO_LOGIN: "1"
+      NODRIVER_BROWSER_PATH: /usr/bin/chromium
+      DISPLAY: ":99"
+    volumes:
+      # Credentials (read-only) — not baked into the image.
+      - ../config.txt:/app/config.txt:ro
+      # Gmail IMAP creds for email-verification login (read-only).
+      - ../.env:/app/.env:ro
+      # Persisted HEB session (auth.json + persisted_queries.json). Survives
+      # restarts so the container doesn't re-login every time.
+      - auto_grocier_session:/root/.texas-grocery-mcp
+    # MCP stdio server: keep stdin open and don't allocate a TTY.
+    stdin_open: true
+    tty: false
+    # No restart policy: this is launched on-demand by the MCP client via
+    # `docker compose run --rm mcp`.
+
 volumes:
   auto_grocier_pgdata:
     name: auto_grocier_pgdata
+  auto_grocier_session:
+    name: auto_grocier_session

@@ -48,7 +48,16 @@ class DatabaseConfig:
     
     @classmethod
     def get_database_url(cls):
-        """Construct the database URL for SQLAlchemy"""
+        """Construct the database URL for SQLAlchemy.
+
+        A ``DATABASE_URL`` environment variable, when set, takes top priority and
+        is returned verbatim. This lets the Dockerized MCP server point at the
+        Postgres *service* on the compose network (host ``postgres``) without
+        editing config.txt, which otherwise hard-codes ``localhost``.
+        """
+        override = os.environ.get('DATABASE_URL')
+        if override:
+            return override
         return f"postgresql://{cls.DB_USER}:{cls.DB_PASSWORD}@{cls.DB_HOST}:{cls.DB_PORT}/{cls.DB_NAME}"
     
     @classmethod

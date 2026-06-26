@@ -75,6 +75,45 @@ source venv/bin/activate
 python mcp_server.py
 ```
 
+### Running it fully in Docker (recommended, portable)
+
+The whole stack — **PostgreSQL + the MCP server (with Chromium + Xvfb so it can
+refresh its own HEB session)** — runs in containers, so no host Python/Postgres
+install is required. Starting the MCP server auto-starts the database first
+(`depends_on` + healthcheck).
+
+```bash
+# Build the MCP image (Python 3.12 + Chromium + Xvfb)
+docker compose -f docker/docker-compose.yml build mcp
+
+# Start just the database (optional; the MCP server starts it automatically)
+docker compose -f docker/docker-compose.yml up -d postgres
+
+# Run the MCP server over stdio (Postgres comes up first)
+docker compose -f docker/docker-compose.yml run --rm -T mcp
+```
+
+VS Code launches it automatically via [.vscode/mcp.json](.vscode/mcp.json), which
+uses `docker compose run --rm -T mcp`.
+
+How it works:
+- **Database:** the `postgres` service auto-creates the schema from
+  `database/migrations/` on first boot. Data lives in the `auto_grocier_pgdata`
+  named volume (survives restarts; only `down -v` wipes it). The MCP container
+  reaches it over the compose network via a `DATABASE_URL` override (no
+  `config.txt` change needed).
+- **In-container login:** when no valid session exists, the container refreshes
+  it itself using the async **nodriver** flow (`AUTO_GROCIER_LOGIN_MODE=nodriver`)
+  driving Chromium headfully under Xvfb — validated against HEB's Imperva WAF.
+  The exported session persists in the `auto_grocier_session` volume.
+- **Mounts:** `config.txt` (credentials) and `.env` (Gmail IMAP for email
+  verification) are mounted read-only — never baked into the image.
+
+> The image is ~1 GB because it bundles Chromium. If you'd rather keep the server
+> slim and refresh the session on the host instead, set
+> `AUTO_GROCIER_LOGIN_MODE=selenium` (or `AUTO_GROCIER_AUTO_LOGIN=0`) and produce
+> `auth.json` on the host, then mount the session volume.
+
 ### Available Tools
 
 | Tool | Auth required | Description |
