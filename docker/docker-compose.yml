@@ -1,8 +1,9 @@
 # PostgreSQL + MCP server for auto_grocier — portable, no host install required.
 #
 # Brings up the database the app expects (db auto_grocier, user grocier_user) so
-# config.txt works unchanged, plus the MCP server in its own container. Starting
-# the MCP server auto-starts Postgres first (depends_on + healthcheck).
+# the app's .env settings work unchanged, plus the MCP server in its own
+# container. Starting the MCP server auto-starts Postgres first (depends_on +
+# healthcheck).
 #
 # Usage (from the repo root):
 #   docker compose -f docker/docker-compose.yml up -d postgres   # just the DB
@@ -14,7 +15,8 @@
 # The MCP server is launched by VS Code via .vscode/mcp.json using
 # `docker compose run` so it speaks MCP over stdio and Postgres comes up first.
 #
-# Credentials default to the values in config.txt but can be overridden via the
+# All configuration is read from the repo-root .env (see .env.example). DB
+# credentials default to the .env values but can be overridden via the
 # environment (DATABASE_USER / DATABASE_PASSWORD / DATABASE_NAME / DATABASE_PORT).
 
 services:
@@ -50,9 +52,13 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # All app settings come from the repo-root .env (HEB + Gmail creds, store,
+    # Claude key, etc). Real environment vars below still take precedence.
+    env_file:
+      - ../.env
     environment:
       # Reach Postgres over the compose network (service name "postgres"),
-      # overriding config.txt's localhost without editing it.
+      # overriding the .env DATABASE_HOST (localhost) without editing it.
       DATABASE_URL: postgresql://${DATABASE_USER:-grocier_user}:${DATABASE_PASSWORD:-grocier_user_123}@postgres:5432/${DATABASE_NAME:-auto_grocier}
       # In-container login uses the nodriver (Xvfb) flow with no Chrome sandbox.
       AUTO_GROCIER_NO_SANDBOX: "1"
@@ -60,9 +66,8 @@ services:
       NODRIVER_BROWSER_PATH: /usr/bin/chromium
       DISPLAY: ":99"
     volumes:
-      # Credentials (read-only) — not baked into the image.
-      - ../config.txt:/app/config.txt:ro
-      # Gmail IMAP creds for email-verification login (read-only).
+      # App configuration + credentials (read-only) — not baked into the image.
+      # claude.py / read_email.py call load_dotenv on this file directly.
       - ../.env:/app/.env:ro
       # Persisted HEB session (auth.json + persisted_queries.json). Survives
       # restarts so the container doesn't re-login every time.

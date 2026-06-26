@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import anthropic
+from dotenv import load_dotenv
 
 # Ensure stdout/stderr use UTF-8 so the project's Unicode status symbols (✓, 🥗,
 # emoji) don't crash on Windows, whose console defaults to a legacy code page
@@ -13,50 +14,36 @@ for _stream in (sys.stdout, sys.stderr):
     except Exception:
         pass
 
+# Load configuration from the .env file (the single source of config for this
+# Docker-first project). Pointing at an explicit path makes it work regardless
+# of the current working directory. Real environment variables take precedence
+# over .env values (load_dotenv does not override), so Docker Compose / the
+# shell can override individual settings.
+_ENV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+load_dotenv(_ENV_PATH)
+
 # Claude model used across the project. Update here if the model is retired.
 MODEL = "claude-sonnet-4-5-20250929"
 
 
-def parse_config(config_path):
+def get_setting(key, default=""):
+    """Return a configuration value from the environment (.env or real env).
+
+    This is the project's single config accessor now that config.txt has been
+    retired in favor of .env. Returns ``default`` only when the key is absent.
     """
-    Parse the config.txt file and return a dictionary of key-value pairs.
-    Supports KEY=VALUE format and ignores comments (lines starting with #).
-    """
-    config_dict = {}
-    
-    if not os.path.exists(config_path):
-        return config_dict
-    
-    with open(config_path, 'r') as file:
-        for line in file:
-            line = line.strip()
-            
-            # Skip empty lines and comments
-            if not line or line.startswith('#'):
-                continue
-            
-            # Parse KEY=VALUE format
-            if '=' in line:
-                key, value = line.split('=', 1)  # Split only on first =
-                config_dict[key.strip()] = value.strip()
-    
-    return config_dict
+    return os.environ.get(key, default)
 
 
-# Find the absolute path of the file called config.txt in the current directory
-file_path = os.path.join(os.path.dirname(__file__), 'config.txt')
-
-# Parse the config file
-config = parse_config(file_path)
-
-# Get Claude API key from config or environment variable
-claude_api_key = config.get('CLAUDE_API_KEY') or os.environ.get("ANTHROPIC_API_KEY")
+# Get Claude API key from the environment (.env CLAUDE_API_KEY, or the standard
+# ANTHROPIC_API_KEY).
+claude_api_key = get_setting("CLAUDE_API_KEY") or get_setting("ANTHROPIC_API_KEY")
 
 if not claude_api_key:
     print("ERROR: No Claude API key found.")
-    print("Please add CLAUDE_API_KEY=your-key-here to config.txt")
-    print("or set the ANTHROPIC_API_KEY environment variable")
-    print("See CLAUDE_SETUP.md for instructions.")
+    print("Add CLAUDE_API_KEY=your-key-here to your .env file")
+    print("or set the ANTHROPIC_API_KEY environment variable.")
+    print("See docs/CLAUDE_SETUP.md for instructions.")
 else:
     print(f"✓ Claude API key loaded successfully: {claude_api_key[:20]}...")
 
@@ -75,7 +62,7 @@ def extract_ingredients(txt):
         A list containing comma-separated ingredients with their measurements
     """
     if client is None:
-        raise Exception("Claude API client not initialized. Please add your Claude API key to config.txt (line 5) or set the ANTHROPIC_API_KEY environment variable. See CLAUDE_SETUP.md for instructions.")
+        raise Exception("Claude API client not initialized. Add CLAUDE_API_KEY to your .env file or set the ANTHROPIC_API_KEY environment variable. See docs/CLAUDE_SETUP.md for instructions.")
     
     ingredient_list = []
 
@@ -129,7 +116,7 @@ def get_recipe_metadata_txt(txt):
         scraped <meta> tags.
     """
     if client is None:
-        raise Exception("Claude API client not initialized. Please add your Claude API key to config.txt or set the ANTHROPIC_API_KEY environment variable.")
+        raise Exception("Claude API client not initialized. Add CLAUDE_API_KEY to your .env file or set the ANTHROPIC_API_KEY environment variable.")
 
     # Truncate to stay within a reasonable prompt size
     max_chars = 100000
@@ -183,7 +170,7 @@ def match_recipes_txt(user_text, recipes):
         On failure returns {'matched_ids': [], 'unmatched': []}.
     """
     if client is None:
-        raise Exception("Claude API client not initialized. Please add your Claude API key to config.txt or set the ANTHROPIC_API_KEY environment variable.")
+        raise Exception("Claude API client not initialized. Add CLAUDE_API_KEY to your .env file or set the ANTHROPIC_API_KEY environment variable.")
 
     catalog = json.dumps(recipes, ensure_ascii=False)
     try:

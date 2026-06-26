@@ -53,7 +53,7 @@ import threading
 
 from fastmcp import FastMCP
 
-from claude import parse_config
+from claude import get_setting
 from classes.IngredientList import IngredientList
 from classes.Ingredient import Ingredient
 from recipe_grabber import clean_ingredient
@@ -66,7 +66,6 @@ from utility.graphql_checkout import (
 )
 
 _PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-_CONFIG_PATH = os.path.join(_PROJECT_ROOT, "config.txt")
 
 # Set to True to permit the place_order tool to actually submit a paid order.
 # Left False by default so checkout can never charge accidentally.
@@ -101,18 +100,11 @@ _NOT_AUTHED = {
 }
 
 
-def _config():
-    try:
-        return parse_config(_CONFIG_PATH)
-    except Exception:
-        return {}
-
-
 def _store_id(override: str = "") -> str:
-    """Resolve the store id: explicit override > config STORE_ID > default."""
+    """Resolve the store id: explicit override > STORE_ID env (.env) > default."""
     if override:
         return str(override).strip()
-    return _config().get("STORE_ID", "737").strip() or "737"
+    return (get_setting("STORE_ID", "737") or "737").strip() or "737"
 
 
 def _is_authed() -> bool:
@@ -316,7 +308,7 @@ def search_products(query: str, limit: int = 10, store_id: str = "") -> dict:
     Args:
         query: Search term, e.g. "organic spinach" or "chicken breast".
         limit: Maximum number of results to return.
-        store_id: Optional HEB store id. Defaults to STORE_ID in config.txt.
+        store_id: Optional HEB store id. Defaults to STORE_ID in .env.
     """
     if not _ensure_authed():
         return _NOT_AUTHED
@@ -776,7 +768,7 @@ def list_timeslots(store_id: str = "") -> dict:
     captured yet - run the maintenance workflow and refresh_session.
 
     Args:
-        store_id: Optional HEB store id. Defaults to STORE_ID in config.txt.
+        store_id: Optional HEB store id. Defaults to STORE_ID in .env.
     """
     if not _ensure_authed():
         return _NOT_AUTHED
@@ -793,7 +785,7 @@ def reserve_timeslot(slot_id: str, store_id: str = "") -> dict:
 
     Args:
         slot_id: The time slot id to reserve (from list_timeslots).
-        store_id: Optional HEB store id. Defaults to STORE_ID in config.txt.
+        store_id: Optional HEB store id. Defaults to STORE_ID in .env.
     """
     if not _ensure_authed():
         return _NOT_AUTHED

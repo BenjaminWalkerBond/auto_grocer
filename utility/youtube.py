@@ -132,8 +132,8 @@ def parse_ingredients_from_text(text):
         return []
     if client is None:
         raise Exception(
-            "Claude API client not initialized. Add CLAUDE_API_KEY to config.txt "
-            "or set ANTHROPIC_API_KEY."
+            "Claude API client not initialized. Add CLAUDE_API_KEY to your .env "
+            "file or set ANTHROPIC_API_KEY."
         )
 
     max_chars = 100000

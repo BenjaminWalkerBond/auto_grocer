@@ -1,6 +1,6 @@
 """Async mode dispatcher for the auto_grocier browser automation (nodriver).
 
-Supported modes (read from config.txt MODE, or the MODE env var which overrides):
+Supported modes (read from the MODE setting in .env, or the MODE env var which overrides):
 
     login_export                  - log in and export auth.json (refresh the MCP session).
     test                          - login, clear cart, reserve slot, add ingredients (no checkout).
@@ -16,7 +16,7 @@ paid order (no payment step). Placing a paid order is the MCP server's guarded
 ``place_order`` tool.
 
 Run:
-    python -m grocery_browser.run        # uses MODE from config.txt
+    python -m grocery_browser.run        # uses MODE from .env
     MODE=test python -m grocery_browser.run
 """
 from __future__ import annotations
@@ -26,7 +26,7 @@ import asyncio
 
 import nodriver
 
-from claude import parse_config
+from claude import get_setting
 from classes.IngredientList import IngredientList
 from classes.Ingredient import Ingredient
 from recipe_grabber import clean_ingredient, populate_ingredient_list
@@ -71,13 +71,13 @@ def _build_hardcoded_list() -> IngredientList:
     return IL
 
 
-def _load_ingredients(cfg) -> IngredientList:
-    """Build the ingredient list per config INGREDIENT_SOURCE.
+def _load_ingredients() -> IngredientList:
+    """Build the ingredient list per INGREDIENT_SOURCE in .env.
 
     Sources: 'database' (ask which recipes, match from DB), 'urls' (scrape recipe
     URLs), or 'hardcoded' (default sample list). Mirrors the old main.py logic.
     """
-    source = cfg.get("INGREDIENT_SOURCE", "").strip().lower() or "hardcoded"
+    source = (get_setting("INGREDIENT_SOURCE", "") or "").strip().lower() or "hardcoded"
 
     if source == "database":
         print("🗄️  Loading recipes from the database...\n")
@@ -345,12 +345,11 @@ async def update_graphql_hashes_mode(browser, tab, logger, store_id, store_searc
 # Entry
 # ---------------------------------------------------------------------------
 async def main():
-    cfg = parse_config(os.path.join(os.getcwd(), "config.txt"))
-    # An explicit MODE environment variable overrides config.txt so the
-    # prototype can be exercised without editing config (e.g. MODE=test ...).
-    mode = (os.environ.get("MODE") or cfg.get("MODE", "test")).strip()
-    store_id = cfg.get("STORE_ID", "737").strip()
-    store_search_address = cfg.get("STORE_SEARCH_ADDRESS", "").strip()
+    # An explicit MODE environment variable overrides the .env MODE setting so
+    # any mode can be exercised without editing .env (e.g. MODE=test ...).
+    mode = (os.environ.get("MODE") or get_setting("MODE", "test")).strip()
+    store_id = (get_setting("STORE_ID", "737") or "737").strip()
+    store_search_address = (get_setting("STORE_SEARCH_ADDRESS", "") or "").strip()
 
     print("\n" + "=" * 60)
     print("🥗 AUTO GROCIER - HEB AUTOMATION (nodriver)")
@@ -358,7 +357,7 @@ async def main():
     print(f"Mode: {mode.upper()}")
     print("=" * 60 + "\n")
 
-    ingredient_list = _load_ingredients(cfg)
+    ingredient_list = _load_ingredients()
     logger = AsyncDriverLogger(log_dir="debug_logs")
 
     print("🌐 Starting browser...")

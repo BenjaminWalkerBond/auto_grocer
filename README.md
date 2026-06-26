@@ -4,11 +4,11 @@ An automated grocery shopping assistant that parses recipes and manages ingredie
 
 ## 🔒 Security Notice
 
-**NEVER commit `config.txt` to version control!** It contains sensitive credentials.
+**NEVER commit `.env` to version control!** It contains sensitive credentials.
 
-1. Copy `config.txt.example` to `config.txt`
-2. Fill in your actual credentials in `config.txt`
-3. The `.gitignore` file ensures `config.txt` stays local only
+1. Copy `.env.example` to `.env`
+2. Fill in your actual credentials in `.env`
+3. The `.gitignore` file ensures `.env` stays local only
 
 ## Quick Start
 
@@ -17,13 +17,13 @@ An automated grocery shopping assistant that parses recipes and manages ingredie
    source venv/bin/activate
    ```
 
-2. **Configure your credentials** - Copy and edit the config file:
+2. **Configure your credentials** - Copy and edit the env file:
    ```bash
-   cp config.txt.example config.txt
-   # Then edit config.txt with your actual credentials
+   cp .env.example .env
+   # Then edit .env with your actual credentials
    ```
    
-   Example `config.txt`:
+   Example `.env`:
    ```
    EMAIL=your-heb-email@example.com
    PASSWORD=your-heb-password
@@ -31,7 +31,7 @@ An automated grocery shopping assistant that parses recipes and manages ingredie
    DATABASE_PASSWORD=your_secure_password
    ```
 
-3. **Choose a mode** (set `MODE` in `config.txt`):
+3. **Choose a mode** (set `MODE` in `.env`):
    - `MODE=login_export` - log in and export the session (refresh MCP auth)
    - `MODE=test` - login, reserve a slot, add ingredients (no checkout)
    - `MODE=checkout_with_prompt` - prompts before advancing to checkout
@@ -39,7 +39,7 @@ An automated grocery shopping assistant that parses recipes and manages ingredie
    - `MODE=graphql` / `graphql_checkout_with_prompt` / `graphql_auto_checkout` - add via the GraphQL API
    - `MODE=update_graphql_hashes` - refresh HEB's GraphQL persisted-query hashes
 
-   **Ingredient source** (set `INGREDIENT_SOURCE` in `config.txt`): `hardcoded`
+   **Ingredient source** (set `INGREDIENT_SOURCE` in `.env`): `hardcoded`
    (default), `urls`, or `database`.
 
    > The browser automation runs on **nodriver** (async, CDP-native). Selenium /
@@ -51,7 +51,7 @@ An automated grocery shopping assistant that parses recipes and manages ingredie
    python main.py
    # or, equivalently:
    python -m grocery_browser.run
-   # override the mode without editing config.txt:
+   # override the mode without editing .env:
    MODE=test python -m grocery_browser.run
    ```
 
@@ -109,13 +109,14 @@ How it works:
   `database/migrations/` on first boot. Data lives in the `auto_grocier_pgdata`
   named volume (survives restarts; only `down -v` wipes it). The MCP container
   reaches it over the compose network via a `DATABASE_URL` override (no
-  `config.txt` change needed).
+  `.env` change needed).
 - **In-container login:** when no valid session exists, the container refreshes
   it itself using the async **nodriver** flow (`AUTO_GROCIER_LOGIN_MODE=nodriver`)
   driving Chromium headfully under Xvfb — validated against HEB's Imperva WAF.
   The exported session persists in the `auto_grocier_session` volume.
-- **Mounts:** `config.txt` (credentials) and `.env` (Gmail IMAP for email
-  verification) are mounted read-only — never baked into the image.
+- **Mounts:** `.env` (all credentials — HEB login, Gmail IMAP for email
+  verification, Claude key, store) is mounted read-only — never baked into the
+  image. The MCP service also loads it via `env_file`.
 
 > The image is ~1 GB because it bundles Chromium. If you'd rather keep the server
 > slim and refresh the session on the host instead, set
@@ -190,11 +191,11 @@ auto_grocier/
 
 - **Always activate the virtual environment before running any commands!**
 - **All test scripts are located in the `testing/` directory**
-- Database credentials are stored in `config.txt` (not tracked in git)
+- Database credentials are stored in `.env` (not tracked in git)
 
 ## Configuration
 
-Create a `config.txt` file in the root directory with:
+Create a `.env` file in the root directory (copy `.env.example`) with:
 ```
 DATABASE_HOST=localhost
 DATABASE_PORT=5432

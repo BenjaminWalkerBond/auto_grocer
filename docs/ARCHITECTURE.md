@@ -6,7 +6,7 @@ is no Selenium or undetected-chromedriver in the project anymore.
 
 - **Entrypoint:** `main.py` is a thin shim that delegates to
   `grocery_browser.run`. You can also run `python -m grocery_browser.run`.
-- **Modes** (set `MODE` in `config.txt`, or via the `MODE` env var):
+- **Modes** (set `MODE` in `.env`, or via the `MODE` env var):
   `login_export`, `test`, `checkout_with_prompt`, `auto_checkout`, `graphql`,
   `graphql_checkout_with_prompt`, `graphql_auto_checkout`, `update_graphql_hashes`.
 - **Flows** (login, clear_cart, reserve_time_slot, change_store_via_ui,

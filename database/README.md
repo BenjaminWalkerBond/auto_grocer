@@ -41,7 +41,7 @@ GRANT ALL PRIVILEGES ON DATABASE auto_grocier TO grocier_user;
 
 ## Configuration
 
-Update `config.txt` with your database credentials:
+Update `.env` with your database credentials:
 
 ```
 DATABASE_HOST=localhost

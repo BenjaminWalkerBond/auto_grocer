@@ -324,7 +324,7 @@ class IngredientRepository:
 
 ## Configuration Updates
 
-### Add to config.txt
+### Add to .env
 ```
 # Database Configuration
 DATABASE_HOST=localhost
@@ -410,7 +410,7 @@ python database/seed_tags.py
 
 1. Install PostgreSQL locally or use cloud service (AWS RDS, Heroku Postgres, etc.)
 2. Create database and user
-3. Add database credentials to config.txt
+3. Add database credentials to .env
 4. Install Python dependencies
 5. Create database folder structure
 6. Implement models and migrations

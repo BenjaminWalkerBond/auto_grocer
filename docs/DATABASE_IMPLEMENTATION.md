@@ -112,7 +112,7 @@ GRANT ALL PRIVILEGES ON DATABASE auto_grocier TO grocier_user;
 ```
 
 ### 3. Update Configuration
-Edit `config.txt`:
+Edit `.env`:
 ```
 DATABASE_HOST=localhost
 DATABASE_PORT=5432

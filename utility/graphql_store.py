@@ -141,7 +141,7 @@ def select_store_interactive(default_store_id, default_address="", radius_miles=
 
 
 def update_config_value(key, value, config_path):
-    """Update or append ``KEY=VALUE`` in a config.txt-style file.
+    """Update or append ``KEY=VALUE`` in a ``.env``-style file.
 
     Preserves comments and other lines. Returns True on success.
     """

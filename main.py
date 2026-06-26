@@ -5,7 +5,7 @@ The browser automation now runs on the async **nodriver** stack in the
 removed). This module is a thin compatibility shim so ``python main.py`` keeps
 working; it simply delegates to ``grocery_browser.run``.
 
-The MODE is read from config.txt (or the MODE env var, which overrides). Modes:
+The MODE is read from .env (or the MODE env var, which overrides). Modes:
     login_export, test, checkout_with_prompt, auto_checkout,
     graphql, graphql_checkout_with_prompt, graphql_auto_checkout,
     update_graphql_hashes
