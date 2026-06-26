@@ -66,15 +66,35 @@ async def start_browser(headless: bool = False, extra_args=None):
 
     Returns:
         nodriver.Browser
+
+    Environment overrides (used by the Docker image):
+        NODRIVER_BROWSER_PATH / CHROME_BIN  - explicit Chrome/Chromium binary.
+        AUTO_GROCIER_NO_SANDBOX=1           - add --no-sandbox (required when
+                                              running as root inside a container).
     """
     args = list(DEFAULT_BROWSER_ARGS)
+
+    # Containers run as root, where Chrome's sandbox refuses to start; disable it
+    # when explicitly requested.
+    if os.environ.get("AUTO_GROCIER_NO_SANDBOX", "").lower() in ("1", "true", "yes"):
+        args += ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
+
     if extra_args:
         args.extend(extra_args)
+
+    # Allow pinning the browser binary (the Docker image installs Chromium at a
+    # known path); otherwise let nodriver auto-detect the installed browser.
+    browser_path = (
+        os.environ.get("NODRIVER_BROWSER_PATH")
+        or os.environ.get("CHROME_BIN")
+        or None
+    )
 
     browser = await nodriver.start(
         headless=headless,
         browser_args=args,
         user_data_dir=_make_profile_with_prefs(),
+        browser_executable_path=browser_path,
     )
     return browser
 

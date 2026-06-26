@@ -1,0 +1,52 @@
+# Dockerized auto_grocier MCP server.
+#
+# Pure-GraphQL at runtime, but bundles Chromium + Xvfb so it can ALSO refresh its
+# own HEB session in-container via the nodriver login_export flow (AUTO_GROCIER_
+# LOGIN_MODE=nodriver). The server speaks MCP over stdio.
+#
+# Build (from repo root):
+#   docker compose -f docker/docker-compose.yml build mcp
+# Run is wired through docker-compose.yml (so Postgres starts first).
+
+FROM python:3.12-slim
+
+# --- System deps: Chromium (for nodriver) + Xvfb (virtual display) + fonts ---
+# Chromium pulls most of its shared-library deps automatically; Xvfb gives the
+# headful browser a display, which evades more anti-bot checks than --headless.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        chromium \
+        xvfb \
+        ca-certificates \
+        fonts-liberation \
+        dumb-init \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# --- Python deps (cached layer) ---
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+# --- Application code ---
+COPY . .
+
+# Ensure the entrypoint is executable (the +x bit is not preserved from Windows).
+RUN chmod +x /app/docker/entrypoint.sh
+
+# Runtime configuration for the containerized browser + login path.
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONIOENCODING=utf-8 \
+    DISPLAY=:99 \
+    AUTO_GROCIER_LOGIN_MODE=nodriver \
+    AUTO_GROCIER_NO_SANDBOX=1 \
+    NODRIVER_BROWSER_PATH=/usr/bin/chromium \
+    HOME=/root
+
+# Session files live here; mounted as a volume so the refreshed auth.json
+# persists across container restarts.
+RUN mkdir -p /root/.texas-grocery-mcp
+
+# dumb-init reaps zombie Chromium processes; the entrypoint starts Xvfb then the
+# requested command (default: the MCP stdio server).
+ENTRYPOINT ["/usr/bin/dumb-init", "--", "/app/docker/entrypoint.sh"]
+CMD ["python", "mcp_server.py"]

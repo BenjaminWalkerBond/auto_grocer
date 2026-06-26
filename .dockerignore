@@ -1,0 +1,48 @@
+# Build context excludes — keep the image small and free of secrets/host state.
+
+# Virtual environments (host-specific; deps are installed from requirements.txt)
+venv/
+.venv/
+.venv-win/
+env/
+ENV/
+
+# Python caches / build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Secrets / local config (mounted at runtime instead of baked in)
+config.txt
+.env
+docker/.env
+
+# Runtime / scratch output
+debug_logs/
+*.log
+output.txt
+*.dump
+*.sql.bak
+
+# Exported HEB session (mounted at runtime)
+.texas-grocery-mcp/
+
+# VCS / editor / OS
+.git/
+.gitignore
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Docs and tests aren't needed at runtime
+*.md
+docs/
+testing/

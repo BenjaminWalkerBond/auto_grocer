@@ -83,6 +83,14 @@ _AUTO_LOGIN = os.environ.get("AUTO_GROCIER_AUTO_LOGIN", "1").lower() in (
 # up. The flow logs in, may handle email verification, and exports auth.json.
 _AUTO_LOGIN_TIMEOUT = int(os.environ.get("AUTO_GROCIER_AUTO_LOGIN_TIMEOUT", "300"))
 
+# Which browser stack performs the auto-login + session export:
+#   "selenium" (default) -> scripts/refresh_authjson.py (undetected-chromedriver,
+#                           used on the host / WSL with WSLg).
+#   "nodriver"           -> python -m migration.nodriver.run with MODE=login_export
+#                           (async CDP browser; designed for headless/Xvfb, which
+#                           is what the Docker image uses).
+_LOGIN_MODE = os.environ.get("AUTO_GROCIER_LOGIN_MODE", "selenium").strip().lower()
+
 # Serialize auto-login so concurrent tool calls don't launch multiple browsers.
 _AUTO_LOGIN_LOCK = threading.Lock()
 
@@ -137,37 +145,48 @@ def _reload_session_caches() -> None:
 def _auto_authenticate() -> dict:
     """Run the browser login-and-export workflow to refresh the HEB session.
 
-    Launches scripts/refresh_authjson.py (undetected-chromedriver) which logs in
-    with the configured credentials, handles email verification, and re-exports
-    ~/.texas-grocery-mcp/auth.json. Blocks until it finishes (up to
-    _AUTO_LOGIN_TIMEOUT seconds). Serialized so only one login runs at a time.
-
-    Returns a dict describing the outcome (does not raise).
+    Logs in with the configured credentials, handles email verification, and
+    re-exports ~/.texas-grocery-mcp/auth.json. The browser stack is chosen by
+    AUTO_GROCIER_LOGIN_MODE:
+      * "selenium" (default): scripts/refresh_authjson.py (undetected-chromedriver).
+      * "nodriver": python -m migration.nodriver.run with MODE=login_export
+        (async CDP browser; used inside the Docker image under Xvfb).
+    Blocks until it finishes (up to _AUTO_LOGIN_TIMEOUT seconds). Serialized so
+    only one login runs at a time. Returns a dict describing the outcome.
     """
     with _AUTO_LOGIN_LOCK:
         # Another thread may have authenticated while we waited for the lock.
         if _is_authed():
             return {"ok": True, "skipped": "already authenticated"}
 
-        script = os.path.join(_PROJECT_ROOT, "scripts", "refresh_authjson.py")
-        if not os.path.exists(script):
-            return {"ok": False, "detail": f"login script not found at {script}"}
-
         # Prefer the project venv interpreter so dependencies resolve.
         venv_python = os.path.join(_PROJECT_ROOT, "venv", "bin", "python")
         python_exe = venv_python if os.path.exists(venv_python) else sys.executable
 
         env = dict(os.environ)
-        env.setdefault("DISPLAY", ":0")  # WSLg X server for the browser
+        env.setdefault("DISPLAY", ":0")  # X server (WSLg on host, Xvfb in Docker)
+
+        if _LOGIN_MODE == "nodriver":
+            # Async nodriver login_export mode. MODE is read from the env by
+            # migration/nodriver/run.py.
+            cmd = [python_exe, "-u", "-m", "migration.nodriver.run"]
+            env["MODE"] = "login_export"
+            label = "nodriver login_export"
+        else:
+            script = os.path.join(_PROJECT_ROOT, "scripts", "refresh_authjson.py")
+            if not os.path.exists(script):
+                return {"ok": False, "detail": f"login script not found at {script}"}
+            cmd = [python_exe, "-u", script, _store_id()]
+            label = "selenium refresh_authjson"
 
         print(
-            "[auto-grocier] No valid session - running browser login to refresh "
-            "auth.json (this can take a minute)...",
+            f"[auto-grocier] No valid session - running browser login "
+            f"({label}) to refresh auth.json (this can take a minute)...",
             file=sys.stderr,
         )
         try:
             proc = subprocess.run(
-                [python_exe, "-u", script, _store_id()],
+                cmd,
                 cwd=_PROJECT_ROOT,
                 env=env,
                 capture_output=True,
@@ -177,7 +196,7 @@ def _auto_authenticate() -> dict:
         except subprocess.TimeoutExpired:
             return {"ok": False, "detail": f"login timed out after {_AUTO_LOGIN_TIMEOUT}s"}
         except Exception as e:  # noqa: BLE001
-            return {"ok": False, "detail": f"failed to run login script: {e}"}
+            return {"ok": False, "detail": f"failed to run login: {e}"}
 
         # Re-read the freshly exported session.
         _reload_session_caches()
