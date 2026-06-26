@@ -31,20 +31,28 @@ An automated grocery shopping assistant that parses recipes and manages ingredie
    DATABASE_PASSWORD=your_secure_password
    ```
 
-3. **Choose a mode and ingredient source** (edit `main.py`):
-   
-   **Mode:**
-   - `MODE = 'test'` - Testing (safest, no checkout)
-   - `MODE = 'checkout_with_prompt'` - Prompts before checkout
-   - `MODE = 'auto_checkout'` - Fully automated (⚠️ careful!)
-   
-   **Ingredient Source:**
-   - `USE_URLS = True` - Parse ingredients from recipe URLs
-   - `USE_URLS = False` - Use hardcoded ingredient list
+3. **Choose a mode** (set `MODE` in `config.txt`):
+   - `MODE=login_export` - log in and export the session (refresh MCP auth)
+   - `MODE=test` - login, reserve a slot, add ingredients (no checkout)
+   - `MODE=checkout_with_prompt` - prompts before advancing to checkout
+   - `MODE=auto_checkout` - advances to checkout automatically
+   - `MODE=graphql` / `graphql_checkout_with_prompt` / `graphql_auto_checkout` - add via the GraphQL API
+   - `MODE=update_graphql_hashes` - refresh HEB's GraphQL persisted-query hashes
+
+   **Ingredient source** (set `INGREDIENT_SOURCE` in `config.txt`): `hardcoded`
+   (default), `urls`, or `database`.
+
+   > The browser automation runs on **nodriver** (async, CDP-native). Selenium /
+   > undetected-chromedriver have been removed. The checkout flow stops at HEB's
+   > checkout page and never places a paid order.
 
 4. **Run the automation**
    ```bash
    python main.py
+   # or, equivalently:
+   python -m grocery_browser.run
+   # override the mode without editing config.txt:
+   MODE=test python -m grocery_browser.run
    ```
 
 5. **Run database tests** (optional)
@@ -58,13 +66,13 @@ An automated grocery shopping assistant that parses recipes and manages ingredie
 The project ships an [MCP](https://modelcontextprotocol.io/) server (`mcp_server.py`)
 that exposes HEB grocery automation as tools over **pure GraphQL** (no browser at
 runtime). It reuses an exported HEB session — run the maintenance workflow
-(`MODE=update_graphql_hashes python main.py`) to log in and capture the GraphQL
-hashes, then call `refresh_session`.
+(`MODE=update_graphql_hashes python -m grocery_browser.run`) to log in and capture
+the GraphQL hashes, then call `refresh_session`.
 
 **Automatic login:** if no valid session is available when an authenticated tool
-is called, the server automatically runs a one-off browser login
-(`scripts/refresh_authjson.py`) to refresh the session, then continues. This can
-take up to a minute on the first call. Disable it with
+is called, the server automatically runs a one-off nodriver browser login
+(`MODE=login_export python -m grocery_browser.run`) to refresh the session, then
+continues. This can take up to a minute on the first call. Disable it with
 `AUTO_GROCIER_AUTO_LOGIN=0` (tune the cap with `AUTO_GROCIER_AUTO_LOGIN_TIMEOUT`),
 in which case tools return `NOT_AUTHENTICATED` and you refresh the session
 manually.
@@ -155,9 +163,7 @@ place_order                          # optional, guarded — CHARGES your card
 
 All documentation is located in the `docs/` directory:
 
-- **[Modes Guide](docs/MODES_GUIDE.md)** - Three operating modes: test, checkout_with_prompt, auto_checkout
-- **[Ingredient Source Guide](docs/INGREDIENT_SOURCE_GUIDE.md)** - Recipe URLs vs. hardcoded ingredients
-- **[Driver Logger Guide](docs/DRIVER_LOGGER_GUIDE.md)** - Debugging HEB website changes with HTML snapshots
+- **[Browser automation (nodriver)](grocery_browser/README.md)** - The async browser layer and its run modes
 - **[Claude Setup Guide](docs/CLAUDE_SETUP.md)** - API configuration and usage instructions
 - **[PostgreSQL Installation](docs/POSTGRES_INSTALL.md)** - Database setup guide
 - **[Database Plan](docs/DATABASE_PLAN.md)** - Database architecture and design
@@ -171,10 +177,13 @@ auto_grocier/
 ├── docs/                    # All documentation
 ├── classes/                 # Core ingredient classes
 ├── database/                # Database models and repositories
+├── grocery_browser/         # Async nodriver browser automation (login, reserve, checkout)
+├── docker/                  # Dockerized Postgres + MCP server
 ├── testing/                 # All test scripts
-├── utility/                 # Utility scripts
+├── utility/                 # Utility scripts (GraphQL, recipe parsing, email)
 ├── word_dictionaries/       # Ingredient classification data
-└── main.py                  # Main application entry point
+├── mcp_server.py            # MCP server (pure GraphQL)
+└── main.py                  # Entrypoint shim -> grocery_browser.run
 ```
 
 ## Important Notes

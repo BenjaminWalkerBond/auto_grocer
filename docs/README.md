@@ -98,9 +98,9 @@ eating out a difficult process. Furthermore, it helps solves the problem of meal
 
 ### Built With
 
-Selenium
+nodriver (async, CDP-native browser automation)
 BeautifulSoup4
-OpenAI
+Anthropic Claude
 
 
 

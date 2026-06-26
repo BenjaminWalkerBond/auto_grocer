@@ -1,3 +1,0 @@
-# This directory stores functions rewritten by the self-healing agent.
-# Each file is named <function_name>.py and contains the corrected version.
-# Use apply_updates.py to review and apply these changes to the source files.

@@ -27,9 +27,10 @@ reusing an authenticated session previously exported to
 
 Producing/refreshing that session, and refreshing HEB's rotating persisted-query
 hashes (including the timeslot/checkout operations), is the job of a SEPARATE
-maintenance workflow driven by undetected-chromedriver:
+maintenance workflow driven by nodriver (async CDP browser, runs under Xvfb in
+Docker):
 
-    MODE=update_graphql_hashes python main.py
+    MODE=update_graphql_hashes python -m grocery_browser.run
 
 That workflow logs in, exercises the site, and writes:
   * ~/.texas-grocery-mcp/auth.json                (session for this server)
@@ -37,7 +38,9 @@ That workflow logs in, exercises the site, and writes:
   * ~/.texas-grocery-mcp/captured_operations.json (timeslot/checkout payloads)
 
 If a tool reports NOT_AUTHENTICATED or OPERATION_NOT_CAPTURED, re-run that
-maintenance workflow, then call refresh_session here.
+maintenance workflow, then call refresh_session here. When AUTO_GROCIER_AUTO_LOGIN
+is enabled (default), authenticated tools refresh an expired session
+automatically by running the login_export flow.
 
 Run standalone:
     python mcp_server.py
@@ -83,14 +86,6 @@ _AUTO_LOGIN = os.environ.get("AUTO_GROCIER_AUTO_LOGIN", "1").lower() in (
 # up. The flow logs in, may handle email verification, and exports auth.json.
 _AUTO_LOGIN_TIMEOUT = int(os.environ.get("AUTO_GROCIER_AUTO_LOGIN_TIMEOUT", "300"))
 
-# Which browser stack performs the auto-login + session export:
-#   "selenium" (default) -> scripts/refresh_authjson.py (undetected-chromedriver,
-#                           used on the host / WSL with WSLg).
-#   "nodriver"           -> python -m migration.nodriver.run with MODE=login_export
-#                           (async CDP browser; designed for headless/Xvfb, which
-#                           is what the Docker image uses).
-_LOGIN_MODE = os.environ.get("AUTO_GROCIER_LOGIN_MODE", "selenium").strip().lower()
-
 # Serialize auto-login so concurrent tool calls don't launch multiple browsers.
 _AUTO_LOGIN_LOCK = threading.Lock()
 
@@ -99,8 +94,9 @@ _NOT_AUTHED = {
     "code": "NOT_AUTHENTICATED",
     "message": (
         "No valid HEB session and automatic login is disabled or failed. "
-        "Enable auto-login (AUTO_GROCIER_AUTO_LOGIN=1) or run the login workflow "
-        "manually (python scripts/refresh_authjson.py), then call refresh_session."
+        "Enable auto-login (AUTO_GROCIER_AUTO_LOGIN=1) or refresh the session "
+        "manually (MODE=login_export python -m grocery_browser.run), then call "
+        "refresh_session."
     ),
 }
 
@@ -145,14 +141,12 @@ def _reload_session_caches() -> None:
 def _auto_authenticate() -> dict:
     """Run the browser login-and-export workflow to refresh the HEB session.
 
-    Logs in with the configured credentials, handles email verification, and
-    re-exports ~/.texas-grocery-mcp/auth.json. The browser stack is chosen by
-    AUTO_GROCIER_LOGIN_MODE:
-      * "selenium" (default): scripts/refresh_authjson.py (undetected-chromedriver).
-      * "nodriver": python -m migration.nodriver.run with MODE=login_export
-        (async CDP browser; used inside the Docker image under Xvfb).
-    Blocks until it finishes (up to _AUTO_LOGIN_TIMEOUT seconds). Serialized so
-    only one login runs at a time. Returns a dict describing the outcome.
+    Logs in with the configured credentials (handling email verification) via the
+    async nodriver flow (``grocery_browser.run`` with MODE=login_export) and
+    re-exports ~/.texas-grocery-mcp/auth.json. The browser is driven over CDP and
+    runs under Xvfb inside the Docker image. Blocks until it finishes (up to
+    _AUTO_LOGIN_TIMEOUT seconds). Serialized so only one login runs at a time.
+    Returns a dict describing the outcome.
     """
     with _AUTO_LOGIN_LOCK:
         # Another thread may have authenticated while we waited for the lock.
@@ -165,23 +159,12 @@ def _auto_authenticate() -> dict:
 
         env = dict(os.environ)
         env.setdefault("DISPLAY", ":0")  # X server (WSLg on host, Xvfb in Docker)
-
-        if _LOGIN_MODE == "nodriver":
-            # Async nodriver login_export mode. MODE is read from the env by
-            # migration/nodriver/run.py.
-            cmd = [python_exe, "-u", "-m", "migration.nodriver.run"]
-            env["MODE"] = "login_export"
-            label = "nodriver login_export"
-        else:
-            script = os.path.join(_PROJECT_ROOT, "scripts", "refresh_authjson.py")
-            if not os.path.exists(script):
-                return {"ok": False, "detail": f"login script not found at {script}"}
-            cmd = [python_exe, "-u", script, _store_id()]
-            label = "selenium refresh_authjson"
+        env["MODE"] = "login_export"
+        cmd = [python_exe, "-u", "-m", "grocery_browser.run"]
 
         print(
-            f"[auto-grocier] No valid session - running browser login "
-            f"({label}) to refresh auth.json (this can take a minute)...",
+            "[auto-grocier] No valid session - running nodriver login "
+            "(login_export) to refresh auth.json (this can take a minute)...",
             file=sys.stderr,
         )
         try:

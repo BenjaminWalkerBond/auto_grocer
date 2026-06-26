@@ -12,9 +12,9 @@ import tempfile
 import nodriver
 
 
-# Browser flags mirroring the old undetected_chromedriver options that reduce
-# popups/notifications and silence Chrome's update banner. Password-manager
-# prefs (an experimental option in Selenium) are approximated with flags.
+# Browser flags that reduce popups/notifications and silence Chrome's update
+# banner. Password-manager prefs are seeded via a profile (see below) since
+# nodriver takes a user-data dir rather than experimental prefs options.
 DEFAULT_BROWSER_ARGS = [
     "--disable-notifications",
     "--disable-popup-blocking",

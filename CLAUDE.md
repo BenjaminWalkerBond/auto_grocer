@@ -129,7 +129,7 @@ Test mode (`MODE=test` in `config.txt`) runs the full automation pipeline **with
 4. **Add ingredients** — Searches for each ingredient on heb.com and clicks "Add to cart". Ingredients tagged as `vegetable` or `fruit` are prefixed with "organic".
 5. **Stop** — Prints a completion message and **keeps the browser open** so you can manually inspect the cart contents. Press Enter in the terminal to close the browser.
 
-All steps are wrapped with `self_healing_call`, which uses the Claude API to automatically rewrite broken Selenium functions on failure (up to 3 retries per function). Screenshots and page HTML are sent to Claude for context. Rewritten functions are saved to `updated_functions/` for later review.
+All steps are wrapped with `self_healing_call`, which uses the Claude API to automatically rewrite broken **nodriver** flow functions on failure (up to 3 retries per function). Screenshots and page HTML are sent to Claude for context. Rewritten functions are saved to `grocery_browser/updated_functions/` for later review.
 
 No payment is processed. No order is placed.
 
@@ -151,7 +151,7 @@ python main.py
 ### 2. Watch Terminal Output Closely
 
 Monitor the terminal for:
-- Selenium/WebDriver initialization messages
+- nodriver / Chrome (CDP) initialization messages
 - Login attempts and status
 - Page navigation events
 - Element detection messages
@@ -285,7 +285,7 @@ python main.py
 
 - **Keep multiple terminal windows open:** One for running the program, one for navigating debug logs
 - **Use a diff tool:** Compare HTML files between working and broken sessions
-- **Check browser version:** Ensure Chrome/ChromeDriver versions are compatible
+- **Check browser:** nodriver auto-detects the installed Chrome/Chromium (no chromedriver to version-match)
 - **Enable verbose logging:** Set logging level to DEBUG for more detailed output
 - **Save working sessions:** Keep debug logs from successful runs for comparison
 

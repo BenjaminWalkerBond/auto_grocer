@@ -55,7 +55,6 @@ services:
       # overriding config.txt's localhost without editing it.
       DATABASE_URL: postgresql://${DATABASE_USER:-grocier_user}:${DATABASE_PASSWORD:-grocier_user_123}@postgres:5432/${DATABASE_NAME:-auto_grocier}
       # In-container login uses the nodriver (Xvfb) flow with no Chrome sandbox.
-      AUTO_GROCIER_LOGIN_MODE: nodriver
       AUTO_GROCIER_NO_SANDBOX: "1"
       AUTO_GROCIER_AUTO_LOGIN: "1"
       NODRIVER_BROWSER_PATH: /usr/bin/chromium

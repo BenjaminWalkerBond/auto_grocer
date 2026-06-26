@@ -37,7 +37,6 @@ RUN chmod +x /app/docker/entrypoint.sh
 ENV PYTHONUNBUFFERED=1 \
     PYTHONIOENCODING=utf-8 \
     DISPLAY=:99 \
-    AUTO_GROCIER_LOGIN_MODE=nodriver \
     AUTO_GROCIER_NO_SANDBOX=1 \
     NODRIVER_BROWSER_PATH=/usr/bin/chromium \
     HOME=/root

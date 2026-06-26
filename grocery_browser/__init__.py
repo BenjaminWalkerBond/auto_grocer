@@ -1,4 +1,8 @@
-"""Async nodriver implementation of the auto_grocier browser layer (Step 1 prototype).
+"""Async, nodriver-based browser automation for auto_grocier.
+
+This is the project's browser layer: it drives HEB's site over CDP (no Selenium,
+no chromedriver) to log in, reserve pickup slots, add items, and export the
+authenticated session the GraphQL/MCP path reuses.
 
 Modules:
     browser       - start/stop a nodriver Browser with auto-detected Chrome.
@@ -9,7 +13,5 @@ Modules:
     flows         - login, clear_cart, reserve_time_slot, change_store_via_ui,
                     add_ingredient, checkout (all async).
     hash_capture  - capture GraphQL persisted-query hashes via CDP Network events.
-    run           - async mode dispatcher mirroring main.py's MODES.
-
-Nothing here imports Selenium or undetected_chromedriver.
+    run           - async mode dispatcher (the program entrypoint, also used by main.py).
 """

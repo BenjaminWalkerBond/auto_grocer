@@ -1,14 +1,15 @@
-"""Capture HEB GraphQL persisted-query hashes from a live browser session.
+"""Parse + persist HEB GraphQL persisted-query hashes captured from live traffic.
 
 HEB uses Apollo "persisted queries": each GraphQL operation is sent with only a
 sha256 hash instead of the full query text. HEB rotates these hashes on every
 front-end deploy, which invalidates the hard-coded values bundled in
-``texas_grocery_mcp``. This module sniffs the hashes out of the browser's
-network traffic (via Chrome DevTools performance logs) while the user-driven
-flow exercises the real site, then writes them to a JSON override file that the
-GraphQL client loads at runtime.
+``texas_grocery_mcp``. The nodriver browser flow
+(``grocery_browser/hash_capture.py``) subscribes to CDP ``Network`` events and
+feeds request bodies into the pure parsers here; the savers write the results to
+the JSON override files the GraphQL client loads at runtime.
 
-Usage is driven by the ``update_graphql_hashes`` program mode in ``main.py``.
+Usage is driven by the ``update_graphql_hashes`` program mode
+(``MODE=update_graphql_hashes python -m grocery_browser.run``).
 """
 
 import json
@@ -39,33 +40,6 @@ TARGET_OPERATIONS = {
     "alertEntryPoint",
     "CouponClip",
 }
-
-
-def _extract_post_data(driver, message_params):
-    """Return the request body for a CDP requestWillBeSent event.
-
-    Falls back to ``Network.getRequestPostData`` when the body is not inlined
-    in the performance-log event (Chrome omits large/streamed bodies).
-    """
-    request = message_params.get("request", {}) or {}
-    post_data = request.get("postData")
-    if post_data:
-        return post_data
-
-    if not request.get("hasPostData"):
-        return None
-
-    request_id = message_params.get("requestId")
-    if not request_id:
-        return None
-
-    try:
-        result = driver.execute_cdp_cmd(
-            "Network.getRequestPostData", {"requestId": request_id}
-        )
-        return result.get("postData")
-    except Exception:  # noqa: BLE001 - body may no longer be retainable
-        return None
 
 
 def _parse_operation(post_data):
@@ -125,45 +99,6 @@ def _parse_operation_samples(post_data):
     return found
 
 
-def capture_graphql_hashes(driver):
-    """Read the browser's performance log and return {operationName: sha256Hash}.
-
-    Requires the driver to have been started with performance logging enabled
-    (``goog:loggingPrefs = {"performance": "ALL"}``).
-    """
-    hashes = {}
-
-    try:
-        logs = driver.get_log("performance")
-    except Exception as e:  # noqa: BLE001
-        print(f"    ⚠️  Could not read performance log: {e}")
-        return hashes
-
-    for entry in logs:
-        try:
-            message = json.loads(entry["message"])["message"]
-        except (KeyError, ValueError, TypeError):
-            continue
-
-        if message.get("method") != "Network.requestWillBeSent":
-            continue
-
-        params = message.get("params", {}) or {}
-        request = params.get("request", {}) or {}
-        url = request.get("url", "")
-        if "/graphql" not in url or request.get("method") != "POST":
-            continue
-
-        post_data = _extract_post_data(driver, params)
-        if not post_data:
-            continue
-
-        for name, sha in _parse_operation(post_data):
-            hashes[name] = sha
-
-    return hashes
-
-
 def save_hashes(hashes, path=None):
     """Merge captured hashes into the override file and write it.
 
@@ -192,65 +127,6 @@ def save_hashes(hashes, path=None):
     os.environ.setdefault("GRAPHQL_HASHES_PATH", str(path))
 
     return path
-
-
-def capture_graphql_operations(driver, into=None):
-    """Drain the performance log and return {operationName: {hash, variables}}.
-
-    Records the full request shape (persisted-query hash plus the request
-    ``variables``) for every GraphQL operation seen. This is how we discover
-    the operation names and payload shapes for flows the vendored GraphQL
-    client doesn't implement yet (timeslot reservation, checkout), so they can
-    later be replayed as pure GraphQL calls.
-
-    IMPORTANT: ``driver.get_log("performance")`` is DESTRUCTIVE - each call
-    returns only the entries logged since the previous call and clears the
-    buffer. The buffer is also bounded, so on a long session early requests can
-    roll off before the end. To capture reliably, call this helper repeatedly
-    throughout the flow and pass the same accumulator via ``into`` so results
-    are merged instead of lost.
-
-    Args:
-        driver: Selenium WebDriver with performance logging enabled
-            (``goog:loggingPrefs = {"performance": "ALL"}``).
-        into: Optional existing ``{name: {hash, variables}}`` dict to merge new
-            captures into. A new dict is created when omitted.
-
-    Returns:
-        The accumulator dict (the same object passed as ``into`` when given).
-    """
-    operations = into if into is not None else {}
-
-    try:
-        logs = driver.get_log("performance")
-    except Exception as e:  # noqa: BLE001
-        print(f"    ⚠️  Could not read performance log: {e}")
-        return operations
-
-    for entry in logs:
-        try:
-            message = json.loads(entry["message"])["message"]
-        except (KeyError, ValueError, TypeError):
-            continue
-
-        if message.get("method") != "Network.requestWillBeSent":
-            continue
-
-        params = message.get("params", {}) or {}
-        request = params.get("request", {}) or {}
-        url = request.get("url", "")
-        if "/graphql" not in url or request.get("method") != "POST":
-            continue
-
-        post_data = _extract_post_data(driver, params)
-        if not post_data:
-            continue
-
-        for name, sha, variables in _parse_operation_samples(post_data):
-            # Last-seen wins; later requests usually carry fuller variables.
-            operations[name] = {"hash": sha, "variables": variables}
-
-    return operations
 
 
 def save_operation_samples(operations, path=None):
