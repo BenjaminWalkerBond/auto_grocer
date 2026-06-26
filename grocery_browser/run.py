@@ -357,7 +357,15 @@ async def main():
     print(f"Mode: {mode.upper()}")
     print("=" * 60 + "\n")
 
-    ingredient_list = _load_ingredients()
+    # Only modes that actually shop need an ingredient list. login_export and
+    # update_graphql_hashes just drive the browser for auth/hash capture, so
+    # loading ingredients there is pointless — and with INGREDIENT_SOURCE=database
+    # it blocks on an interactive recipe prompt, which hangs the MCP server's
+    # non-interactive auto-login subprocess.
+    if mode in ("login_export", "update_graphql_hashes"):
+        ingredient_list = IngredientList()
+    else:
+        ingredient_list = _load_ingredients()
     logger = AsyncDriverLogger(log_dir="debug_logs")
 
     print("🌐 Starting browser...")
