@@ -69,6 +69,12 @@ services:
       # App configuration + credentials (read-only) — not baked into the image.
       # claude.py / read_email.py call load_dotenv on this file directly.
       - ../.env:/app/.env:ro
+      # Self-healing rewrites: the nodriver flows save Claude-repaired functions
+      # to grocery_browser/updated_functions/. The image bakes the code in
+      # (COPY . .) and the server runs with `--rm`, so without this bind mount
+      # those rewrites would vanish when the container exits. Mounting the host
+      # directory makes them land in the working tree for review + commit.
+      - ../grocery_browser/updated_functions:/app/grocery_browser/updated_functions
       # Persisted HEB session (auth.json + persisted_queries.json). Survives
       # restarts so the container doesn't re-login every time.
       - auto_grocier_session:/root/.texas-grocery-mcp
