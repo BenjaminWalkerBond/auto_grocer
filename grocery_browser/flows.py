@@ -65,6 +65,59 @@ async def _click_first_xpath(tab, xpath) -> bool:
     return False
 
 
+async def _find_otp_inputs(tab):
+    """Locate HEB's segmented verification-code boxes (resiliently).
+
+    The code-entry page renders six single-character inputs whose ``name``
+    attributes vary between flows (and are NOT ``code_input_N`` on the current
+    UI). Try the legacy explicit names first, then fall back to structural
+    matches (``maxlength="1"`` / numeric inputmode), excluding the hidden
+    ``otpCode``/``requestId`` helper inputs.
+    """
+    named = []
+    for i in range(1, 7):
+        el = await select_one(tab, f'input[name="code_input_{i}"]', timeout=1)
+        if el:
+            named.append(el)
+    if len(named) >= 6:
+        return named
+
+    for xp in ('//input[@maxlength="1"]', '//input[@inputmode="numeric"]'):
+        candidates = []
+        for e in await xpath_all(tab, xp):
+            name = attr(e, "name", "") or ""
+            if name in ("otpCode", "requestId"):
+                continue
+            candidates.append(e)
+        if len(candidates) >= 6:
+            return candidates
+    return named
+
+
+async def _enter_otp(tab, otp_inputs, digits):
+    """Type verification ``digits`` into the OTP boxes.
+
+    With one box per digit, fill them 1:1. Otherwise type the whole code into
+    the first box (segmented components usually auto-advance focus).
+    """
+    if otp_inputs and len(otp_inputs) >= len(digits):
+        for el, digit in zip(otp_inputs, digits):
+            try:
+                await el.send_keys(digit)
+                await asyncio.sleep(0.1)
+            except Exception:  # noqa: BLE001
+                continue
+        return
+    target = otp_inputs[0] if otp_inputs else await select_one(tab, "input", timeout=5)
+    if target:
+        for digit in digits:
+            try:
+                await target.send_keys(digit)
+                await asyncio.sleep(0.1)
+            except Exception:  # noqa: BLE001
+                continue
+
+
 # ---------------------------------------------------------------------------
 # login
 # ---------------------------------------------------------------------------
@@ -131,38 +184,79 @@ async def login(tab):
         await click_element(tab, submit)
     await random_time()
 
-    # STEP 8: email verification, if required
+    # STEP 8: email verification, if required.
+    #
+    # After the password is submitted HEB performs a client-side navigation to
+    # EITHER the logged-in site OR a "verify it's you" challenge. That transition
+    # routinely takes longer than one random_time() wait, so a single immediate
+    # check races the navigation: it sees the still-transitioning password page,
+    # matches no verification markup, and silently skips the whole email-code
+    # block — leaving a half-authenticated session with no `sat` cookie while
+    # still printing "Login successful!". Poll for up to ~20s for the challenge
+    # (or a confirmed logged-in state) instead of checking exactly once.
     print("  Step 8: Checking for verification requirement...")
-    page = await _page_source(tab)
-    if "Choose a way to verify" in page or await check_exists_by_xpath(
-        tab, '//input[@name="channel"]'
-    ):
-        print("  ⚠️  Verification required - selecting email option...")
-        await _click_first_xpath(tab, '//input[@name="channel"][@value="email"]')
-        await random_time()
-
-        print("  📧 Clicking 'Send code' button...")
-        if not await _click_first_xpath(
-            tab, '//button[@type="submit" and contains(., "Send code")]'
+    verification_required = False
+    for _ in range(20):
+        page = await _page_source(tab)
+        if (
+            "Choose a way to verify" in page
+            or "Verify it's you" in page
+            or "Enter verification code" in page
+            or await check_exists_by_xpath(tab, '//input[@name="channel"]')
+            or await check_exists_by_xpath(tab, '//input[@name="otpCode"]')
+            or await check_exists_by_xpath(tab, '//input[@name="code_input_1"]')
         ):
-            btn = await find_by_text(tab, "Send code")
-            if btn:
-                await click_element(tab, btn)
-        await random_time()
+            verification_required = True
+            break
+        # If we've left the accounts.heb.com auth flow, login completed without a
+        # challenge (recognized device) — stop waiting.
+        url = await _current_url(tab)
+        if "accounts.heb.com" not in url and "/login" not in url:
+            break
+        await asyncio.sleep(1)
+
+    if verification_required:
+        page = await _page_source(tab)
+        # Two variants: a channel-selection screen ("Choose a way to verify"),
+        # or HEB jumps straight to the code-entry screen ("Enter verification
+        # code"). Only the former needs us to pick email + click "Send code".
+        on_channel_select = (
+            "Choose a way to verify" in page
+            or await check_exists_by_xpath(tab, '//input[@name="channel"]')
+        )
+        if on_channel_select:
+            print("  ⚠️  Verification required - selecting email option...")
+            await _click_first_xpath(tab, '//input[@name="channel"][@value="email"]')
+            await random_time()
+
+            print("  📧 Clicking 'Send code' button...")
+            if not await _click_first_xpath(
+                tab, '//button[@type="submit" and contains(., "Send code")]'
+            ):
+                btn = await find_by_text(tab, "Send code")
+                if btn:
+                    await click_element(tab, btn)
+            await random_time()
+        else:
+            print("  ⚠️  Verification required - code-entry page detected...")
 
         print("  ⏳ Waiting for verification code input fields...")
-        await select_one(tab, 'input[name="code_input_1"]', timeout=15)
+        otp_inputs = []
+        for _ in range(15):
+            otp_inputs = await _find_otp_inputs(tab)
+            if otp_inputs:
+                break
+            await asyncio.sleep(1)
+        print(f"     Found {len(otp_inputs)} code input field(s).")
 
         print("  📨 Fetching verification code from email...")
         verification_code = await asyncio.to_thread(fetch_verification_code)
         print(f"  ✓ Got verification code: {verification_code}")
 
-        if verification_code and len(verification_code) >= 6:
+        digits = [c for c in (verification_code or "") if c.isdigit()][:6]
+        if len(digits) >= 6:
             print("  ⌨️  Entering verification code digits...")
-            for i, digit in enumerate(verification_code[:6], start=1):
-                field = await select_one(tab, f'input[name="code_input_{i}"]', timeout=5)
-                if field:
-                    await field.send_keys(digit)
+            await _enter_otp(tab, otp_inputs, digits)
             await random_time()
         else:
             print("  ⚠️  Verification code missing/short.")
