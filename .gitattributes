@@ -1,0 +1,43 @@
+# Normalize line endings across all platforms.
+# Git stores text with LF in the repo; on checkout it keeps LF (no CRLF on
+# Windows) so editing over a WSL/Windows mount stops producing whole-file
+# CRLF<->LF diffs.
+
+# Default: detect text files and normalize them to LF in the repository.
+* text=auto eol=lf
+
+# --- Explicit text files (LF) ---
+*.py        text eol=lf
+*.txt       text eol=lf
+*.md        text eol=lf
+*.sql       text eol=lf
+*.sh        text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.json      text eol=lf
+*.toml      text eol=lf
+*.cfg       text eol=lf
+*.ini       text eol=lf
+*.env       text eol=lf
+*.example   text eol=lf
+*.lock      text eol=lf
+Pipfile     text eol=lf
+Dockerfile* text eol=lf
+.gitignore       text eol=lf
+.gitattributes   text eol=lf
+.dockerignore    text eol=lf
+.python-version  text eol=lf
+
+# --- Binary files (never normalize / never diff as text) ---
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.ico   binary
+*.pdf   binary
+*.zip   binary
+*.gz    binary
+*.dump  binary
+*.db    binary
+*.sqlite binary

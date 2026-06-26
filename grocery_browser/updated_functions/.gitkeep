@@ -1,0 +1,8 @@
+# Keep this directory in git so the Docker bind mount
+# (docker/docker-compose.yml -> mcp service) has a pre-existing target.
+#
+# Self-healing (grocery_browser/self_healing.py) writes Claude-repaired flow
+# functions here as <func_name>.py when a nodriver flow breaks at runtime —
+# including inside the Docker container. The generated .py files are gitignored
+# (review them, then port fixes into grocery_browser/flows.py); only this
+# .gitkeep is tracked.
