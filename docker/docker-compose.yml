@@ -1,0 +1,41 @@
+# PostgreSQL for auto_grocier — portable, no host install required.
+#
+# Brings up the database the app expects (host localhost:5432, db auto_grocier,
+# user grocier_user) so config.txt works unchanged. The schema is created
+# automatically on first boot from the migration scripts mounted into
+# /docker-entrypoint-initdb.d (run once, alphabetically, on an empty volume).
+#
+# Usage (from the repo root):
+#   docker compose -f docker/docker-compose.yml up -d      # start
+#   docker compose -f docker/docker-compose.yml down       # stop (keeps data)
+#   docker compose -f docker/docker-compose.yml down -v    # stop + wipe data
+#
+# Credentials default to the values in config.txt but can be overridden via the
+# environment (DATABASE_USER / DATABASE_PASSWORD / DATABASE_NAME / DATABASE_PORT).
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: auto_grocier_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DATABASE_USER:-grocier_user}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-grocier_user_123}
+      POSTGRES_DB: ${DATABASE_NAME:-auto_grocier}
+    ports:
+      - "${DATABASE_PORT:-5432}:5432"
+    volumes:
+      - auto_grocier_pgdata:/var/lib/postgresql/data
+      # Migrations run once, in order (001, 002, 003), when the data volume is
+      # first created. Mounted read-only straight from the repo so there is no
+      # duplicated SQL to keep in sync.
+      - ../database/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER:-grocier_user} -d ${DATABASE_NAME:-auto_grocier}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  auto_grocier_pgdata:
+    name: auto_grocier_pgdata

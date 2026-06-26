@@ -1,6 +1,17 @@
 import os
+import sys
 import json
 import anthropic
+
+# Ensure stdout/stderr use UTF-8 so the project's Unicode status symbols (✓, 🥗,
+# emoji) don't crash on Windows, whose console defaults to a legacy code page
+# (cp1252). claude.py is imported first by every entry point, so reconfiguring
+# here covers the whole app. No-op on Linux/macOS (already UTF-8).
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
 
 # Claude model used across the project. Update here if the model is retired.
 MODEL = "claude-sonnet-4-5-20250929"
