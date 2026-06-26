@@ -20,7 +20,6 @@ dist/
 .ruff_cache/
 
 # Secrets / local config (mounted at runtime instead of baked in)
-config.txt
 .env
 docker/.env
 

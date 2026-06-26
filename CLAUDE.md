@@ -21,30 +21,28 @@ You should see `(venv)` in your terminal prompt when the virtual environment is 
 
 ## Configuration
 
-### Option 1: Add to config.txt (Recommended)
-The `config.txt` file now uses a labeled KEY=VALUE format. Add your Claude API key:
+### Option 1: Add to .env (Recommended)
+The `.env` file uses a labeled KEY=VALUE format. Copy `.env.example` to `.env` and add your Claude API key:
 
 ```
-# Configuration File
+# .env
 # Lines starting with # are comments and will be ignored
 # Format: KEY=VALUE
 
 EMAIL=your-email@example.com
 PASSWORD=your-password
-OPENAI_ORG=your-openai-org-id
-OPENAI_API_KEY=your-openai-key
 CLAUDE_API_KEY=your-claude-api-key-here
 MODE=test
 ```
 
-The config file supports:
+The `.env` file supports:
 - Comments (lines starting with #)
 - KEY=VALUE format
 - Empty lines are ignored
 
-### Program Mode (in config.txt)
+### Program Mode (in .env)
 
-The `MODE` key in `config.txt` controls how the program runs:
+The `MODE` key in `.env` controls how the program runs:
 
 | Mode | Description |
 |------|-------------|
@@ -81,7 +79,7 @@ set ANTHROPIC_API_KEY=your-api-key-here
 2. Sign up or log in to your account
 3. Navigate to API Keys section
 4. Create a new API key
-5. Copy the key and add it to your config.txt or environment variables
+5. Copy the key and add it to your `.env` file or environment variables
 
 ## Model Used
 
@@ -121,9 +119,9 @@ python main.py
 
 ### Test Mode Overview
 
-Test mode (`MODE=test` in `config.txt`) runs the full automation pipeline **without completing checkout**. It is the safest way to verify the program works end-to-end. The flow is:
+Test mode (`MODE=test` in `.env`) runs the full automation pipeline **without completing checkout**. It is the safest way to verify the program works end-to-end. The flow is:
 
-1. **Login** — Authenticates with HEB using credentials from `config.txt`, handling email verification and passkey prompts automatically.
+1. **Login** — Authenticates with HEB using credentials from `.env`, handling email verification and passkey prompts automatically.
 2. **Clear cart** — Navigates to the cart and removes any existing items.
 3. **Reserve time slot** — Opens the reservation modal, selects a free curbside pickup date and timeslot.
 4. **Add ingredients** — Searches for each ingredient on heb.com and clicks "Add to cart". Ingredients tagged as `vegetable` or `fruit` are prefixed with "organic".
@@ -141,7 +139,7 @@ When testing the main program with web scraping functionality, follow this syste
 # Activate virtual environment first (REQUIRED!)
 source venv/bin/activate
 
-# Ensure MODE is set to 'test' in config.txt:
+# Ensure MODE is set to 'test' in .env:
 # MODE=test
 
 # Run main program
@@ -234,7 +232,7 @@ Based on the debug artifacts:
    - Element never appears → Verify page flow
 
    **Login/Authentication Issues:**
-   - Check credentials in config.txt
+   - Check credentials in .env
    - Look for CAPTCHA or bot detection in screenshot
    - Verify login form selectors in HTML
 

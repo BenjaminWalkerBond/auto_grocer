@@ -1,6 +1,6 @@
 # --- Secrets / config ---
-config.txt
 .env
+!.env.example
 
 # --- Virtual environments ---
 venv/

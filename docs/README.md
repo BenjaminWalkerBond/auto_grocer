@@ -140,12 +140,11 @@ _Below is an example of how you can instruct your audience on installing and set
    ```sh
    pipenv install
    ```
-3. Enter your HEB login credentials on line 1 and 2 and your API organization id and key on line 3 and 4 of `config.txt`
-   ```js
-   username
-   password
-   org_key
-   api_key
+3. Copy `.env.example` to `.env` and fill in your HEB login credentials and Claude API key
+   ```
+   EMAIL=your-heb-email@example.com
+   PASSWORD=your-heb-password
+   CLAUDE_API_KEY=your-claude-api-key
    ```
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>

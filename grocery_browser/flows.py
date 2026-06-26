@@ -13,7 +13,7 @@ import os
 import asyncio
 from urllib.parse import quote_plus
 
-from claude import parse_config
+from claude import get_setting
 from utility.read_email import fetch_verification_code
 
 from grocery_browser.primitives import (
@@ -69,15 +69,13 @@ async def _click_first_xpath(tab, xpath) -> bool:
 # login
 # ---------------------------------------------------------------------------
 async def login(tab):
-    """Log in to heb.com using EMAIL/PASSWORD from config.txt (async)."""
+    """Log in to heb.com using EMAIL/PASSWORD from .env (async)."""
     print("🔐 Starting login process...")
 
-    config_path = os.path.join(os.getcwd(), "config.txt")
-    if not os.path.exists(config_path):
-        raise FileNotFoundError("config.txt not found")
-    cfg = parse_config(config_path)
-    email_address = cfg.get("EMAIL", "")
-    password = cfg.get("PASSWORD", "")
+    email_address = get_setting("EMAIL", "")
+    password = get_setting("PASSWORD", "")
+    if not email_address or not password:
+        raise ValueError("EMAIL and PASSWORD must be set in your .env file")
 
     # STEP 1: home page
     print("  Step 1: Navigating to HEB home page...")

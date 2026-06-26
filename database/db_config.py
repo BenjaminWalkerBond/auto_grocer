@@ -1,51 +1,29 @@
 """
 Database configuration module.
-Loads database connection parameters from config.txt or environment variables.
+Loads database connection parameters from the environment (.env file).
 """
 import os
+from pathlib import Path
 
+from dotenv import load_dotenv
 
-def parse_config(config_path):
-    """
-    Parse the config.txt file and return a dictionary of key-value pairs.
-    Supports KEY=VALUE format and ignores comments (lines starting with #).
-    """
-    config_dict = {}
-    
-    if not os.path.exists(config_path):
-        return config_dict
-    
-    with open(config_path, 'r') as file:
-        for line in file:
-            line = line.strip()
-            
-            # Skip empty lines and comments
-            if not line or line.startswith('#'):
-                continue
-            
-            # Parse KEY=VALUE format
-            if '=' in line:
-                key, value = line.split('=', 1)  # Split only on first =
-                config_dict[key.strip()] = value.strip()
-    
-    return config_dict
-
-
-# Find the absolute path of config.txt
-config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config.txt')
-config = parse_config(config_path)
+# Load the project's .env (repo root) so DATABASE_* settings are available even
+# when this module is imported without an entry point having loaded it first.
+# Real environment variables (e.g. DATABASE_URL from Docker Compose) take
+# precedence — load_dotenv does not override existing vars.
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 
 class DatabaseConfig:
     """Database configuration class"""
-    
-    # Get database settings from config or environment variables
-    DB_HOST = config.get('DATABASE_HOST') or os.environ.get('DATABASE_HOST', 'localhost')
-    DB_PORT = config.get('DATABASE_PORT') or os.environ.get('DATABASE_PORT', '5432')
-    DB_NAME = config.get('DATABASE_NAME') or os.environ.get('DATABASE_NAME', 'auto_grocier')
-    DB_USER = config.get('DATABASE_USER') or os.environ.get('DATABASE_USER', 'postgres')
-    DB_PASSWORD = config.get('DATABASE_PASSWORD') or os.environ.get('DATABASE_PASSWORD', '')
-    
+
+    # Database settings from the environment (.env or real env vars).
+    DB_HOST = os.environ.get('DATABASE_HOST', 'localhost')
+    DB_PORT = os.environ.get('DATABASE_PORT', '5432')
+    DB_NAME = os.environ.get('DATABASE_NAME', 'auto_grocier')
+    DB_USER = os.environ.get('DATABASE_USER', 'postgres')
+    DB_PASSWORD = os.environ.get('DATABASE_PASSWORD', '')
+
     @classmethod
     def get_database_url(cls):
         """Construct the database URL for SQLAlchemy.
@@ -53,7 +31,7 @@ class DatabaseConfig:
         A ``DATABASE_URL`` environment variable, when set, takes top priority and
         is returned verbatim. This lets the Dockerized MCP server point at the
         Postgres *service* on the compose network (host ``postgres``) without
-        editing config.txt, which otherwise hard-codes ``localhost``.
+        editing .env, whose DATABASE_HOST defaults to ``localhost``.
         """
         override = os.environ.get('DATABASE_URL')
         if override:

@@ -25,7 +25,7 @@ def setup_database():
     print("Step 1: Testing database connection...")
     if not test_connection():
         print("\n✗ Database connection failed!")
-        print("Please check your database configuration in config.txt")
+        print("Please check your database configuration in .env")
         print("Make sure PostgreSQL is running and credentials are correct.")
         return False
     print()
