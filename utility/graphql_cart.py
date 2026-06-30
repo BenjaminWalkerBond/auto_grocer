@@ -63,7 +63,7 @@ async def _clear_cart(client):
     return removed
 
 
-async def _add_ingredient(client, ingredient, store_id):
+async def _add_ingredient(client, ingredient, store_id, quantity=1):
     """Search for an ingredient and add the first available match to the cart.
 
     Returns a dict describing the outcome.
@@ -90,7 +90,7 @@ async def _add_ingredient(client, ingredient, store_id):
 
     try:
         result = await client.add_to_cart(
-            product_id=str(product_id), sku_id=str(sku_id), quantity=1
+            product_id=str(product_id), sku_id=str(sku_id), quantity=int(quantity)
         )
     except Exception as e:  # noqa: BLE001
         return {"ingredient": name, "term": term, "status": "add_error", "detail": str(e)}
@@ -112,13 +112,14 @@ async def _add_ingredient(client, ingredient, store_id):
     }
 
 
-async def run_graphql_cart_ops(ingredient_list, store_id, do_clear=True):
+async def run_graphql_cart_ops(ingredient_list, store_id, do_clear=True, quantity=1):
     """Run all GraphQL cart operations for the given ingredient list.
 
     Args:
         ingredient_list: IngredientList with the ingredients to add.
         store_id: HEB store id to operate against.
         do_clear: Whether to empty the cart before adding.
+        quantity: Quantity to add for each ingredient (default 1).
 
     Returns:
         A report dict: {"added": [...], "failed": [...], "cart": <get_cart result>}
@@ -146,7 +147,7 @@ async def run_graphql_cart_ops(ingredient_list, store_id, do_clear=True):
             await _clear_cart(client)
 
         for ingredient in ingredient_list.get_ingredients():
-            outcome = await _add_ingredient(client, ingredient, store_id)
+            outcome = await _add_ingredient(client, ingredient, store_id, quantity)
             if outcome["status"] == "added":
                 added.append(outcome)
                 price = outcome.get("price")
@@ -168,8 +169,8 @@ async def run_graphql_cart_ops(ingredient_list, store_id, do_clear=True):
         await client.close()
 
 
-def graphql_cart_sync(ingredient_list, store_id, do_clear=True):
+def graphql_cart_sync(ingredient_list, store_id, do_clear=True, quantity=1):
     """Synchronous wrapper around :func:`run_graphql_cart_ops`."""
     return asyncio.run(
-        run_graphql_cart_ops(ingredient_list, store_id, do_clear=do_clear)
+        run_graphql_cart_ops(ingredient_list, store_id, do_clear=do_clear, quantity=quantity)
     )

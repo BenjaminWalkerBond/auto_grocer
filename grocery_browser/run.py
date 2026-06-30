@@ -181,7 +181,10 @@ async def test_mode(browser, tab, logger, ingredient_list, store_id):
 
     await _add_all_ingredients(tab, logger, ingredient_list)
 
-    print("\n🧪 TEST MODE COMPLETE - browser left open for inspection.")
+    print("\n� Clearing cart at end of test...")
+    await self_healing_call(flows.clear_cart, tab, tab=tab, logger=logger)
+
+    print("\n�🧪 TEST MODE COMPLETE - browser left open for inspection.")
     await _prompt("Press Enter to close the browser and exit...")
 
 
