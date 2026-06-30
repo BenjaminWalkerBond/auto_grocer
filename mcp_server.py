@@ -267,7 +267,13 @@ def _ingredient_list_from_items(items):
 def _summarize(report: dict) -> dict:
     """Trim a graphql_cart_sync report to a chat-friendly summary."""
     added = [
-        {"ingredient": a.get("ingredient"), "product": a.get("product"), "price": a.get("price")}
+        {
+            "ingredient": a.get("ingredient"),
+            "product": a.get("product"),
+            "price": a.get("price"),
+            "size": a.get("size"),
+            "quantity": a.get("quantity", 1),
+        }
         for a in report.get("added", [])
     ]
     failed = [
@@ -434,15 +440,45 @@ def search_products(query: str, limit: int = 10, store_id: str = "") -> dict:
 @mcp.tool()
 def add_groceries(items: list[str], clear_first: bool = False, quantity: int = 1) -> dict:
     """
-    Search for and add a list of grocery items to the cart via GraphQL (fast).
+    Search HEB for each item and add the best match to the cart via GraphQL (fast).
 
-    Each item is a free-form string like "2 lb chicken breast" or "spinach".
-    Produce items are searched as organic automatically.
+    Each item is a free-form string: a bare name ("spinach") or a name with a
+    measured amount ("16 oz spinach", "2 lb chicken breast", "1 cup heavy cream").
+    Produce (fruit/vegetables) is automatically searched as organic.
+
+    HOW QUANTITY IS DECIDED
+    -----------------------
+    1. MEASURED amounts (weight/volume: oz, lb, g, cup, tbsp, ml, qt, gal, ...)
+       scale by package size automatically. The server reads each result's
+       package size and adds enough packages to cover the amount with the least
+       waste. Example: "16 oz spinach" with only 5 oz bags on the shelf adds 4
+       bags; if a 1 lb bag exists it adds that single bag instead. You do NOT
+       pass `quantity` for these — keep the amount in the item string.
+
+    2. WHOLE-ITEM COUNTS (e.g. 2 onions, 3 limes, 4 avocados) are NOT inferred
+       from the text — a leading number with no unit is ignored. To buy several
+       of a whole item, pass `quantity` with the count.
+
+    USING `quantity`
+    ----------------
+    `quantity` multiplies EVERY item in the same call. So group items that share
+    the same count, and make a SEPARATE call for each distinct count:
+      * 2 onions and 3 limes ->
+          add_groceries(["onion"], quantity=2)
+          add_groceries(["lime"], quantity=3)
+      * 1 each of many things -> a single call with the default quantity=1.
+    Do not put differently-counted items in one call expecting per-item counts.
 
     Args:
-        items: List of grocery item descriptions to add.
+        items: Grocery item descriptions to add. Bare names or name+amount.
         clear_first: If True, empty the cart before adding.
-        quantity: Number of each item to add to the cart (default 1).
+        quantity: How many of EACH item in `items` to add (applies to all of
+            them; default 1). Use this for whole-item counts, not for measured
+            amounts (put those in the item string instead).
+
+    Returns:
+        A summary dict with `added` (ingredient, product, size, price, quantity),
+        `failed`, and their counts.
     """
     if not _ensure_authed():
         return _NOT_AUTHED
