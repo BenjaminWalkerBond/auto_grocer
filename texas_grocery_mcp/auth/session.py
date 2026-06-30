@@ -178,8 +178,12 @@ def is_authenticated() -> bool:
         if not valid_session_cookies:
             return False
 
-        # Check reese84 bot detection token (required for API calls to succeed)
-        return _is_reese84_valid(state)
+        # reese84 (bot token) is intentionally NOT used as a hard gate here: its
+        # localStorage renewTime is only ~10 min, while the reese84 cookie and
+        # the sat/sst session cookies remain valid for weeks. The real limiter
+        # is the session cookies above; GraphQL hash validity is verified
+        # separately via a live probe (see auth_status).
+        return True
 
     except (json.JSONDecodeError, OSError) as e:
         logger.warning("Failed to read auth state", error=str(e))

@@ -138,6 +138,7 @@ How it works:
 | `seed_recipes(title, url, ingredients, description="")` | No | Insert one recipe (with auto-tagged ingredients) into the recipe database. Re-seeding the same URL updates it instead of duplicating. **YouTube URLs** (videos/Shorts) are auto-detected: pass the URL with empty `ingredients` and it fetches the video description, parses the ingredients with Claude, and derives the title/description. |
 | `get_cart()` | Yes | Return the current cart contents (items, quantities, totals). |
 | `clear_cart()` | Yes | Empty all items from the cart. |
+| `remove_from_cart(items)` | Yes | Remove specific items from the cart by product id, sku, or name fragment (sets their quantity to 0). |
 | `set_store(store_id)` | Yes | Set the active pickup store for GraphQL operations. |
 | `list_timeslots(store_id="")` | Yes | List available curbside pickup time slots. |
 | `reserve_timeslot(slot_id, store_id="")` | Yes | Reserve a curbside pickup time slot (use `list_timeslots` first to get a slot id). |

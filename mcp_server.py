@@ -12,6 +12,7 @@ Chat) so you can drive the whole flow conversationally:
     "add these recipes ..."  -> seed_recipes             (DB insert one recipe)
     "what's in my cart"      -> get_cart                 (GraphQL)
     "empty my cart"          -> clear_cart               (GraphQL)
+    "remove the cat food"    -> remove_from_cart         (GraphQL)
     "set store 737"          -> set_store                (GraphQL)
     "show pickup slots"      -> list_timeslots           (GraphQL)
     "reserve slot X"         -> reserve_timeslot         (GraphQL)
@@ -114,6 +115,56 @@ def _is_authed() -> bool:
         return bool(is_authenticated())
     except Exception:
         return False
+
+
+def _session_expiry() -> dict:
+    """Inspect auth.json cookies to report the real session lifespan.
+
+    The limiter is the session cookies (sat/sst) — not the short-lived reese84
+    renewTime. Returns the soonest relevant expiry and days remaining.
+    """
+    import json
+    import time
+    from datetime import datetime, timezone
+    try:
+        from texas_grocery_mcp.utils.config import get_settings
+        path = get_settings().auth_state_path
+        with open(path) as f:
+            state = json.load(f)
+    except Exception:
+        return {"session_expires": None, "days_left": None}
+
+    now = time.time()
+    soonest = None
+    for c in state.get("cookies", []):
+        if "heb.com" not in c.get("domain", ""):
+            continue
+        if c.get("name") not in ("sat", "sst"):
+            continue
+        exp = c.get("expires", -1)
+        if exp and exp != -1 and (soonest is None or exp < soonest):
+            soonest = exp
+    if not soonest:
+        return {"session_expires": None, "days_left": None}
+    return {
+        "session_expires": datetime.fromtimestamp(soonest, timezone.utc).isoformat(),
+        "days_left": round((soonest - now) / 86400, 1),
+    }
+
+
+def _hashes_ok() -> bool:
+    """Live probe: confirm the GraphQL persisted-query hashes still work.
+
+    Hashes have no timestamp; they only break when HEB rotates them. A cheap
+    authenticated call surfaces a stale hash, so checking that is the reliable
+    signal for whether re-auth/hash-refresh is needed.
+    """
+    try:
+        cart = _graphql_get_cart_sync()
+    except Exception:
+        return False
+    return isinstance(cart, dict) and not cart.get("error")
+
 
 
 def _reload_session_caches() -> None:
@@ -242,6 +293,60 @@ def _graphql_get_cart_sync() -> dict:
     return asyncio.run(_run())
 
 
+def _remove_from_cart_sync(matchers: list[str]) -> dict:
+    """Remove cart items matching any of the given identifiers.
+
+    Each matcher is compared (case-insensitive) against the item's product id,
+    sku id, or a substring of the product name. Matching items are removed by
+    setting their quantity to 0.
+    """
+    from utility.graphql_cart import _extract_sku
+
+    needles = [m.strip().lower() for m in matchers if m and m.strip()]
+
+    async def _run():
+        from texas_grocery_mcp.clients.graphql import HEBGraphQLClient
+        client = HEBGraphQLClient()
+        removed = []
+        not_found = []
+        try:
+            cart = await client.get_cart()
+            cart_data = (cart or {}).get("cartV2", {}) or {}
+            items = cart_data.get("items", []) or []
+            matched_indexes = set()
+            for needle in needles:
+                hit = False
+                for idx, item in enumerate(items):
+                    product = item.get("product", {}) or {}
+                    product_id = str(product.get("id") or "")
+                    sku_id = _extract_sku(item) or product_id
+                    name = str(
+                        product.get("displayName")
+                        or product.get("decodedDisplayName")
+                        or product.get("fullDisplayName")
+                        or product.get("name")
+                        or ""
+                    ).lower()
+                    if needle in (product_id.lower(), str(sku_id).lower()) or needle in name:
+                        if idx in matched_indexes:
+                            continue
+                        result = await client.add_to_cart(
+                            product_id=product_id, sku_id=str(sku_id), quantity=0
+                        )
+                        if isinstance(result, dict) and result.get("error"):
+                            continue
+                        matched_indexes.add(idx)
+                        removed.append({"name": product.get("displayName") or product.get("name"), "product_id": product_id})
+                        hit = True
+                if not hit:
+                    not_found.append(needle)
+            return {"removed": removed, "removed_count": len(removed), "not_found": not_found}
+        finally:
+            await client.close()
+
+    return asyncio.run(_run())
+
+
 def _search_products_sync(query: str, store_id: str, limit: int) -> list:
     async def _run():
         from texas_grocery_mcp.clients.graphql import HEBGraphQLClient
@@ -285,12 +390,22 @@ mcp = FastMCP(
 
 @mcp.tool()
 def auth_status() -> dict:
-    """Report whether a valid HEB session is available and the active store. Reads the exported session file; does not open a browser."""
-    return {
-        "authenticated": _is_authed(),
+    """Report whether a valid HEB session is available and the active store. Reads the exported session file; does not open a browser.
+
+    Session validity is driven by the sat/sst cookies (the real limiter), not the
+    short-lived reese84 token. hashes_ok is a live probe confirming the GraphQL
+    persisted-query hashes still work; if False, refresh the hashes/re-auth.
+    """
+    authed = _is_authed()
+    status = {
+        "authenticated": authed,
         "store_id": _store_id(),
         "place_order_enabled": _ALLOW_PLACE_ORDER,
+        "hashes_ok": _hashes_ok() if authed else False,
     }
+    status.update(_session_expiry())
+    return status
+
 
 
 @mcp.tool()
@@ -317,7 +432,7 @@ def search_products(query: str, limit: int = 10, store_id: str = "") -> dict:
 
 
 @mcp.tool()
-def add_groceries(items: list[str], clear_first: bool = False) -> dict:
+def add_groceries(items: list[str], clear_first: bool = False, quantity: int = 1) -> dict:
     """
     Search for and add a list of grocery items to the cart via GraphQL (fast).
 
@@ -327,11 +442,12 @@ def add_groceries(items: list[str], clear_first: bool = False) -> dict:
     Args:
         items: List of grocery item descriptions to add.
         clear_first: If True, empty the cart before adding.
+        quantity: Number of each item to add to the cart (default 1).
     """
     if not _ensure_authed():
         return _NOT_AUTHED
     IL = _ingredient_list_from_items(items)
-    report = graphql_cart_sync(IL, _store_id(), do_clear=clear_first)
+    report = graphql_cart_sync(IL, _store_id(), do_clear=clear_first, quantity=quantity)
     return _summarize(report)
 
 
@@ -743,6 +859,23 @@ def clear_cart() -> dict:
         return _NOT_AUTHED
     report = graphql_cart_sync(IngredientList(), _store_id(), do_clear=True)
     return {"status": "cleared", "cart": report.get("cart")}
+
+
+@mcp.tool()
+def remove_from_cart(items: list[str]) -> dict:
+    """
+    Remove specific items from the cart via GraphQL (without emptying it).
+
+    Each item is an identifier matched against the cart's products: a product id,
+    a sku id, or a case-insensitive substring of the product name (e.g.
+    "Friskies" or "cat food"). Matching items have their quantity set to 0.
+
+    Args:
+        items: List of product identifiers / name fragments to remove.
+    """
+    if not _ensure_authed():
+        return _NOT_AUTHED
+    return _remove_from_cart_sync(items)
 
 
 @mcp.tool()
