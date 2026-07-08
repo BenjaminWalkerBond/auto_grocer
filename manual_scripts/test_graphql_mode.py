@@ -7,8 +7,8 @@ Tests for the GraphQL mode integration.
   auth.json and network access; set RUN_LIVE=1 to enable).
 
 Run:
-    python manual_tests/test_graphql_mode.py
-    RUN_LIVE=1 python manual_tests/test_graphql_mode.py
+    python testing/test_graphql_mode.py
+    RUN_LIVE=1 python testing/test_graphql_mode.py
 """
 import asyncio
 import json
