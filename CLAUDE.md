@@ -96,7 +96,7 @@ The code uses **Claude Sonnet 4** (`claude-sonnet-4-20250514`), which is:
 
 ## Testing
 
-**All manual/ad-hoc test scripts are located in the `manual_tests/` directory (the pytest suite is in `tests/`).**
+**All manual/ad-hoc test scripts are located in the `manual_scripts/` directory (the pytest suite is in `tests/`).**
 
 To run tests:
 
@@ -104,14 +104,14 @@ To run tests:
 # First, activate virtual environment (REQUIRED!)
 source venv/bin/activate
 
-# Then run any script from the manual_tests directory
-python manual_tests/test_recipe_grabber.py
-python manual_tests/test_connection.py
-python manual_tests/test_database.py
+# Then run any script from the manual_scripts directory
+python manual_scripts/test_recipe_grabber.py
+python manual_scripts/test_connection.py
+python manual_scripts/test_database.py
 python main.py 
 ```
 
-**Note:** All manual/ad-hoc test scripts should be placed in the `manual_tests/` directory for consistency and organization.
+**Note:** All manual/ad-hoc test scripts should be placed in the `manual_scripts/` directory for consistency and organization.
 
 ## Testing Cycle for Main Program
 

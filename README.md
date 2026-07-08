@@ -57,8 +57,8 @@ An automated grocery shopping assistant that parses recipes and manages ingredie
 
 5. **Run database tests** (optional)
    ```bash
-   python manual_tests/test_connection.py
-   python manual_tests/test_database.py
+   python manual_scripts/test_connection.py
+   python manual_scripts/test_database.py
    ```
 
 ## MCP Server Operations
@@ -181,7 +181,7 @@ auto_grocier/
 ├── database/                # Database models and repositories
 ├── grocery_browser/         # Async nodriver browser automation (login, reserve, checkout)
 ├── docker/                  # Dockerized Postgres + MCP server
-├── manual_tests/            # Ad-hoc/manual test scripts (run by hand; not pytest)
+├── manual_scripts/          # Ad-hoc/manual test scripts (run by hand; not pytest)
 ├── utility/                 # Utility scripts (GraphQL, recipe parsing, email)
 ├── word_dictionaries/       # Ingredient classification data
 ├── mcp_server.py            # MCP server (pure GraphQL)
@@ -191,7 +191,7 @@ auto_grocier/
 ## Important Notes
 
 - **Always activate the virtual environment before running any commands!**
-- **Manual/ad-hoc scripts live in `manual_tests/`; the pytest suite is in `tests/`**
+- **Manual/ad-hoc scripts live in `manual_scripts/`; the pytest suite is in `tests/`**
 - Database credentials are stored in `.env` (not tracked in git)
 
 ## Configuration
