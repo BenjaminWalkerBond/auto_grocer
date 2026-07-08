@@ -16,7 +16,7 @@ from urllib.parse import quote_plus
 from claude import get_setting
 from utility.read_email import fetch_verification_code
 
-from grocery_browser.primitives import (
+from session_maintenance.primitives import (
     random_time,
     human_like_delay,
     human_like_typing,

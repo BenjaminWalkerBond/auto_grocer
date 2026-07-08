@@ -1,23 +1,26 @@
 """Async mode dispatcher for the auto_grocier browser automation (nodriver).
 
-Supported modes (read from the MODE setting in .env, or the MODE env var which overrides):
+Canonical modes (read from the MODE setting in .env, or the MODE env var which
+overrides):
 
-    login_export                  - log in and export auth.json (refresh the MCP session).
-    test                          - login, clear cart, reserve slot, add ingredients (no checkout).
-    checkout_with_prompt          - test flow, then prompt before advancing to checkout.
-    auto_checkout                 - test flow, then advance to checkout automatically.
-    graphql                       - login + export, then add ingredients via the GraphQL API.
-    graphql_checkout_with_prompt  - GraphQL add + browser timeslot, prompt before checkout.
-    graphql_auto_checkout         - GraphQL add + browser timeslot, then checkout automatically.
-    update_graphql_hashes         - login, exercise flows, capture GraphQL hashes via CDP.
+    login_export           - log in and export auth.json (refresh the MCP session).
+    update_graphql_hashes  - login, exercise flows, capture GraphQL persisted-query
+                             hashes via CDP, and re-export auth.json.
+    shop                   - end-to-end shopping. Tunables (env / .env):
+                               SHOP_SOURCE = graphql (default) | browser
+                               CHECKOUT    = none (default) | prompt | auto
 
-Note: the checkout flow only advances to HEB's checkout page; it does NOT place a
-paid order (no payment step). Placing a paid order is the MCP server's guarded
-``place_order`` tool.
+Deprecated aliases (still work; they map onto `shop` and print a warning):
+    test, checkout_with_prompt, auto_checkout,
+    graphql, graphql_checkout_with_prompt, graphql_auto_checkout
+
+Note: no mode places a paid order; checkout only advances to HEB's checkout page.
+Placing a paid order is the MCP server's guarded ``place_order`` tool. The WAF
+baseline probe is separate: ``python -m grocery_browser.waf_probe``.
 
 Run:
-    python -m grocery_browser.run        # uses MODE from .env
-    MODE=test python -m grocery_browser.run
+    python -m grocery_browser.run                    # uses MODE from .env
+    MODE=shop CHECKOUT=prompt python -m grocery_browser.run
 """
 from __future__ import annotations
 
@@ -33,12 +36,12 @@ from recipe_grabber import clean_ingredient, populate_ingredient_list
 from utility.graphql_cart import graphql_cart_sync
 from utility.graphql_hash_capture import TARGET_OPERATIONS
 
-from grocery_browser.browser import start_browser, stop_browser
-from grocery_browser.logger import AsyncDriverLogger
-from grocery_browser.auth_export import export_session_to_authjson
-from grocery_browser.self_healing import self_healing_call
-from grocery_browser.hash_capture import GraphQLHashCapturer
-from grocery_browser import flows
+from session_maintenance.browser import start_browser, stop_browser
+from session_maintenance.logger import AsyncDriverLogger
+from session_maintenance.auth_export import export_session_to_authjson
+from session_maintenance.self_healing import self_healing_call
+from session_maintenance.hash_capture import GraphQLHashCapturer
+from session_maintenance import flows
 
 
 # Hardcoded fallback ingredient list (matches main.py's sample recipe).
@@ -61,6 +64,18 @@ HARDCODED_INGREDIENTS = [
 RECIPE_URLS = [
     "https://skinnyspatula.com/salmon-gnocchi/",
 ]
+
+
+# Deprecated MODE names -> (SHOP_SOURCE, CHECKOUT) for the unified `shop` mode.
+# Kept so existing .env / scripts don't break; they print a deprecation notice.
+_DEPRECATED_MODE_ALIASES = {
+    "test": ("browser", "none"),
+    "checkout_with_prompt": ("browser", "prompt"),
+    "auto_checkout": ("browser", "auto"),
+    "graphql": ("graphql", "none"),
+    "graphql_checkout_with_prompt": ("graphql", "prompt"),
+    "graphql_auto_checkout": ("graphql", "auto"),
+}
 
 
 def _build_hardcoded_list() -> IngredientList:
@@ -168,113 +183,60 @@ async def login_export_mode(browser, tab, logger, store_id):
     print("✅ Session exported.")
 
 
-async def test_mode(browser, tab, logger, ingredient_list, store_id):
-    print("\n🧪 TEST MODE (no checkout)\n")
-    await self_healing_call(flows.login, tab, tab=tab, logger=logger)
-    await flows.dismiss_modals(tab)
-    await self_healing_call(flows.clear_cart, tab, tab=tab, logger=logger)
-    await _try_reserve(tab, logger)
+async def shop_mode(browser, tab, logger, ingredient_list, store_id, *,
+                    via_graphql=True, checkout="none"):
+    """Unified shopping flow (replaces test / *_checkout / graphql* modes).
 
-    print("\n🏠 Navigating to homepage for ingredient search...")
-    await tab.get(flows.HEB_HOME)
-    await flows.random_time()
-
-    await _add_all_ingredients(tab, logger, ingredient_list)
-
-    print("\n� Clearing cart at end of test...")
-    await self_healing_call(flows.clear_cart, tab, tab=tab, logger=logger)
-
-    print("\n�🧪 TEST MODE COMPLETE - browser left open for inspection.")
-    await _prompt("Press Enter to close the browser and exit...")
-
-
-async def checkout_with_prompt_mode(browser, tab, logger, ingredient_list, store_id):
-    print("\n🤔 CHECKOUT WITH PROMPT MODE\n")
-    await self_healing_call(flows.login, tab, tab=tab, logger=logger)
-    await flows.dismiss_modals(tab)
-    await self_healing_call(flows.clear_cart, tab, tab=tab, logger=logger)
-    await _try_reserve(tab, logger)
-
-    print("\n🏠 Navigating to homepage for ingredient search...")
-    await tab.get(flows.HEB_HOME)
-    await flows.random_time()
-
-    await _add_all_ingredients(tab, logger, ingredient_list)
-    await _checkout_with_optional_prompt(tab, logger, prompt=True)
-
-
-async def auto_checkout_mode(browser, tab, logger, ingredient_list, store_id):
-    print("\n🤖 AUTO CHECKOUT MODE\n")
-    confirm = await _prompt("Type 'CONFIRM' to proceed with automatic checkout: ")
-    if confirm != "CONFIRM":
-        print("\n❌ Auto checkout cancelled.")
-        return
-    await self_healing_call(flows.login, tab, tab=tab, logger=logger)
-    await flows.dismiss_modals(tab)
-    await self_healing_call(flows.clear_cart, tab, tab=tab, logger=logger)
-    await _try_reserve(tab, logger)
-
-    print("\n🏠 Navigating to homepage for ingredient search...")
-    await tab.get(flows.HEB_HOME)
-    await flows.random_time()
-
-    await _add_all_ingredients(tab, logger, ingredient_list)
-    await _checkout_with_optional_prompt(tab, logger, prompt=False)
-
-
-async def graphql_mode(browser, tab, logger, ingredient_list, store_id):
-    print("\n⚡ GRAPHQL MODE (add via API, no checkout)\n")
-    await self_healing_call(flows.login, tab, tab=tab, logger=logger)
-    await flows.dismiss_modals(tab)
-    print("\n🔐 Exporting browser session for GraphQL client...")
-    await export_session_to_authjson(browser, tab, store_id=store_id)
-
-    print(f"\n⚡ Adding {len(ingredient_list.get_ingredients())} ingredients via GraphQL...")
-    # graphql_cart_sync is a sync wrapper that runs its own event loop, so run
-    # it in a worker thread to avoid nesting inside this async loop.
-    report = await asyncio.to_thread(
-        graphql_cart_sync, ingredient_list, store_id, True
-    )
-    added = report.get("added", [])
-    failed = report.get("failed", [])
-    print(f"\n🛒 GraphQL cart summary: {len(added)} added, {len(failed)} failed")
-    await _prompt("\nPress Enter to close the browser and exit...")
-
-
-async def _graphql_login_add(browser, tab, logger, ingredient_list, store_id):
-    """Shared GraphQL setup: login, export session, add ingredients via the API.
-
-    Returns the graphql_cart_sync report.
+    Args:
+        via_graphql: True adds ingredients through the GraphQL API (fast); False
+            drives the browser UI (legacy path, useful for testing the flows).
+        checkout: "none" (add only, leave the browser open), "prompt" (advance to
+            HEB's checkout page after confirming), or "auto" (advance without a
+            per-step prompt). No value ever places a paid order.
     """
+    src_label = "GraphQL" if via_graphql else "browser UI"
+    print(f"\n🛒 SHOP MODE (add via {src_label}, checkout={checkout})\n")
+
+    if checkout == "auto":
+        confirm = await _prompt("Type 'CONFIRM' to proceed with automatic checkout: ")
+        if confirm != "CONFIRM":
+            print("\n❌ Auto checkout cancelled.")
+            return
+
     await self_healing_call(flows.login, tab, tab=tab, logger=logger)
     await flows.dismiss_modals(tab)
-    print("\n🔐 Exporting browser session for GraphQL client...")
-    await export_session_to_authjson(browser, tab, store_id=store_id)
 
-    print(f"\n⚡ Adding {len(ingredient_list.get_ingredients())} ingredients via GraphQL...")
-    report = await asyncio.to_thread(graphql_cart_sync, ingredient_list, store_id, True)
-    added = report.get("added", [])
-    failed = report.get("failed", [])
-    print(f"🛒 GraphQL cart summary: {len(added)} added, {len(failed)} failed")
-    return report
+    if via_graphql:
+        print("\n🔐 Exporting browser session for the GraphQL client...")
+        await export_session_to_authjson(browser, tab, store_id=store_id)
+        n = len(ingredient_list.get_ingredients())
+        print(f"\n⚡ Adding {n} ingredients via GraphQL...")
+        # graphql_cart_sync runs its own event loop, so offload to a thread.
+        report = await asyncio.to_thread(graphql_cart_sync, ingredient_list, store_id, True)
+        print(f"🛒 GraphQL cart summary: {len(report.get('added', []))} added, "
+              f"{len(report.get('failed', []))} failed")
+        # For GraphQL adds, reserve a slot only when we're actually checking out.
+        if checkout != "none":
+            await _try_reserve(tab, logger)
+    else:
+        await self_healing_call(flows.clear_cart, tab, tab=tab, logger=logger)
+        await _try_reserve(tab, logger)
+        print("\n🏠 Navigating to homepage for ingredient search...")
+        await tab.get(flows.HEB_HOME)
+        await flows.random_time()
+        await _add_all_ingredients(tab, logger, ingredient_list)
 
+    if checkout == "none":
+        if not via_graphql:
+            print("\n🧹 Clearing cart at end of browser test...")
+            await self_healing_call(flows.clear_cart, tab, tab=tab, logger=logger)
+        print("\n🧪 SHOP COMPLETE (no checkout) - browser left open for inspection.")
+    else:
+        await _checkout_with_optional_prompt(tab, logger, prompt=(checkout == "prompt"))
 
-async def graphql_checkout_with_prompt_mode(browser, tab, logger, ingredient_list, store_id):
-    print("\n⚡🤔 GRAPHQL CHECKOUT WITH PROMPT MODE\n")
-    await _graphql_login_add(browser, tab, logger, ingredient_list, store_id)
-    await _try_reserve(tab, logger)
-    await _checkout_with_optional_prompt(tab, logger, prompt=True)
-
-
-async def graphql_auto_checkout_mode(browser, tab, logger, ingredient_list, store_id):
-    print("\n⚡🤖 GRAPHQL AUTO CHECKOUT MODE\n")
-    confirm = await _prompt("Type 'CONFIRM' to proceed with automatic checkout: ")
-    if confirm != "CONFIRM":
-        print("\n❌ Auto checkout cancelled.")
-        return
-    await _graphql_login_add(browser, tab, logger, ingredient_list, store_id)
-    await _try_reserve(tab, logger)
-    await _checkout_with_optional_prompt(tab, logger, prompt=False)
+    # Leave the browser open for inspection except in fully-automatic checkout.
+    if checkout != "auto":
+        await _prompt("\nPress Enter to close the browser and exit...")
 
 
 async def update_graphql_hashes_mode(browser, tab, logger, store_id, store_search_address):
@@ -349,10 +311,25 @@ async def update_graphql_hashes_mode(browser, tab, logger, store_id, store_searc
 # ---------------------------------------------------------------------------
 async def main():
     # An explicit MODE environment variable overrides the .env MODE setting so
-    # any mode can be exercised without editing .env (e.g. MODE=test ...).
-    mode = (os.environ.get("MODE") or get_setting("MODE", "test")).strip()
+    # any mode can be exercised without editing .env (e.g. MODE=shop ...).
+    mode = (os.environ.get("MODE") or get_setting("MODE", "shop")).strip()
     store_id = (get_setting("STORE_ID", "737") or "737").strip()
     store_search_address = (get_setting("STORE_SEARCH_ADDRESS", "") or "").strip()
+
+    # Resolve deprecated aliases onto the canonical `shop` mode + its tunables.
+    shop_via_graphql = True
+    shop_checkout = "none"
+    if mode in _DEPRECATED_MODE_ALIASES:
+        src, chk = _DEPRECATED_MODE_ALIASES[mode]
+        print(f"⚠️  MODE '{mode}' is deprecated -> use "
+              f"MODE=shop SHOP_SOURCE={src} CHECKOUT={chk}")
+        shop_via_graphql = (src == "graphql")
+        shop_checkout = chk
+        mode = "shop"
+    elif mode == "shop":
+        src = (get_setting("SHOP_SOURCE", "graphql") or "graphql").strip().lower()
+        shop_via_graphql = (src != "browser")
+        shop_checkout = (get_setting("CHECKOUT", "none") or "none").strip().lower()
 
     print("\n" + "=" * 60)
     print("🥗 AUTO GROCIER - HEB AUTOMATION (nodriver)")
@@ -376,29 +353,18 @@ async def main():
     tab = await browser.get(flows.HEB_HOME)
     print("✓ Browser started\n")
 
-    keep_open = mode in ("test", "checkout_with_prompt")
     try:
         if mode == "login_export":
             await login_export_mode(browser, tab, logger, store_id)
-        elif mode == "test":
-            await test_mode(browser, tab, logger, ingredient_list, store_id)
-        elif mode == "checkout_with_prompt":
-            await checkout_with_prompt_mode(browser, tab, logger, ingredient_list, store_id)
-        elif mode == "auto_checkout":
-            await auto_checkout_mode(browser, tab, logger, ingredient_list, store_id)
-        elif mode == "graphql":
-            await graphql_mode(browser, tab, logger, ingredient_list, store_id)
-        elif mode == "graphql_checkout_with_prompt":
-            await graphql_checkout_with_prompt_mode(browser, tab, logger, ingredient_list, store_id)
-        elif mode == "graphql_auto_checkout":
-            await graphql_auto_checkout_mode(browser, tab, logger, ingredient_list, store_id)
         elif mode == "update_graphql_hashes":
             await update_graphql_hashes_mode(browser, tab, logger, store_id, store_search_address)
+        elif mode == "shop":
+            await shop_mode(browser, tab, logger, ingredient_list, store_id,
+                            via_graphql=shop_via_graphql, checkout=shop_checkout)
         else:
             print(f"❌ Unsupported MODE: '{mode}'")
-            print("Supported: login_export, test, checkout_with_prompt, auto_checkout, "
-                  "graphql, graphql_checkout_with_prompt, graphql_auto_checkout, "
-                  "update_graphql_hashes")
+            print("Supported: login_export, update_graphql_hashes, shop "
+                  "(SHOP_SOURCE=graphql|browser, CHECKOUT=none|prompt|auto).")
     except Exception as e:  # noqa: BLE001
         print(f"\n❌ Unexpected error: {e}")
         try:
@@ -406,10 +372,9 @@ async def main():
         except Exception:  # noqa: BLE001
             pass
     finally:
-        if not keep_open:
-            print("\nClosing browser...")
-            await stop_browser(browser)
-            print("✓ Browser closed\n")
+        print("\nClosing browser...")
+        await stop_browser(browser)
+        print("✓ Browser closed\n")
 
 
 if __name__ == "__main__":

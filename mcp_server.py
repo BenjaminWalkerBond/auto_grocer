@@ -10,6 +10,10 @@ Chat) so you can drive the whole flow conversationally:
     "show my saved recipes"  -> query_recipes            (DB browse/search)
     "list all my recipes"    -> list_all_recipes         (DB paginated, 10/page)
     "add these recipes ..."  -> seed_recipes             (DB insert one recipe)
+    "nutrition for X"        -> get_product_details      (GraphQL, ingredients/nutrition)
+    "find HEB near Austin"   -> search_stores            (GraphQL, geocoded)
+    "coupons for cereal"     -> list_coupons             (GraphQL)
+    "clip that coupon"       -> clip_coupon              (GraphQL)
     "what's in my cart"      -> get_cart                 (GraphQL)
     "empty my cart"          -> clear_cart               (GraphQL)
     "remove the cat food"    -> remove_from_cart         (GraphQL)
@@ -46,25 +50,25 @@ automatically by running the login_export flow.
 Run standalone:
     python mcp_server.py
 """
-import os
-import sys
 import asyncio
+import os
 import subprocess
+import sys
 import threading
 
 from fastmcp import FastMCP
 
-from claude import get_setting
-from classes.IngredientList import IngredientList
 from classes.Ingredient import Ingredient
+from classes.IngredientList import IngredientList
+from claude import get_setting
 from recipe_grabber import clean_ingredient
 from utility.graphql_cart import graphql_cart_sync
-from utility.graphql_store import select_store
 from utility.graphql_checkout import (
+    checkout_sync,
     list_timeslots_sync,
     reserve_timeslot_sync,
-    checkout_sync,
 )
+from utility.graphql_store import select_store
 
 _PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
@@ -377,6 +381,73 @@ def _search_products_sync(query: str, store_id: str, limit: int) -> list:
     return asyncio.run(_run())
 
 
+def _product_details_sync(product_id: str, store_id: str) -> dict | None:
+    async def _run():
+        from texas_grocery_mcp.clients.graphql import HEBGraphQLClient
+        client = HEBGraphQLClient()
+        try:
+            details = await client.get_product_details(
+                str(product_id), str(store_id) or None
+            )
+            return details.model_dump() if details is not None else None
+        finally:
+            await client.close()
+    return asyncio.run(_run())
+
+
+def _get_coupons_sync(search: str, category_id: int, limit: int) -> dict:
+    async def _run():
+        from texas_grocery_mcp.clients.graphql import HEBGraphQLClient
+        client = HEBGraphQLClient()
+        try:
+            result = await client.get_coupons(
+                category_id=int(category_id) or None,
+                search_query=search.strip() or None,
+                limit=int(limit),
+            )
+            return result.model_dump()
+        finally:
+            await client.close()
+    return asyncio.run(_run())
+
+
+def _clipped_coupons_sync(limit: int) -> dict:
+    async def _run():
+        from texas_grocery_mcp.clients.graphql import HEBGraphQLClient
+        client = HEBGraphQLClient()
+        try:
+            result = await client.get_clipped_coupons(limit=int(limit))
+            return result.model_dump()
+        finally:
+            await client.close()
+    return asyncio.run(_run())
+
+
+def _clip_coupon_sync(coupon_id: int) -> dict:
+    async def _run():
+        from texas_grocery_mcp.clients.graphql import HEBGraphQLClient
+        client = HEBGraphQLClient()
+        try:
+            return await client.clip_coupon(int(coupon_id))
+        finally:
+            await client.close()
+    return asyncio.run(_run())
+
+
+def _search_stores_sync(address: str, radius_miles: int) -> dict:
+    async def _run():
+        from texas_grocery_mcp.clients.graphql import HEBGraphQLClient
+        client = HEBGraphQLClient()
+        try:
+            result = await client.search_stores(
+                address=address, radius_miles=int(radius_miles)
+            )
+            return result.model_dump()
+        finally:
+            await client.close()
+    return asyncio.run(_run())
+
+
 # ---------------------------------------------------------------------------
 # MCP server + tools
 # ---------------------------------------------------------------------------
@@ -435,6 +506,31 @@ def search_products(query: str, limit: int = 10, store_id: str = "") -> dict:
         return _NOT_AUTHED
     products = _search_products_sync(query, _store_id(store_id), limit)
     return {"query": query, "count": len(products), "products": products}
+
+
+@mcp.tool()
+def get_product_details(product_id: str, store_id: str = "") -> dict:
+    """
+    Get comprehensive details for a single HEB product via GraphQL: ingredients,
+    nutrition facts, allergen/safety warnings, dietary attributes (gluten-free,
+    organic, vegan, kosher, ...), package size, and store location.
+
+    Use search_products first to get a product_id. Results are cached ~24h.
+
+    Args:
+        product_id: The product id (e.g. "127074"), from a search result.
+        store_id: Optional HEB store id. Defaults to STORE_ID in .env.
+    """
+    if not _ensure_authed():
+        return _NOT_AUTHED
+    details = _product_details_sync(product_id, _store_id(store_id))
+    if details is None:
+        return {
+            "error": True,
+            "code": "PRODUCT_NOT_FOUND",
+            "message": f"No product details found for id {product_id}.",
+        }
+    return details
 
 
 @mcp.tool()
@@ -504,9 +600,9 @@ def add_recipe_ingredients(request: str, clear_first: bool = False) -> dict:
         return _NOT_AUTHED
 
     from database.db_connection import get_db_session
-    from database.recipe_repository import RecipeRepository
     from database.ingredient_repository import IngredientRepository
-    from utility.recipe_matcher import parse_and_match, build_ingredient_list
+    from database.recipe_repository import RecipeRepository
+    from utility.recipe_matcher import build_ingredient_list, parse_and_match
 
     db = get_db_session()
     try:
@@ -583,8 +679,8 @@ def query_recipes(
         limit: Max recipes to return when listing (default 50).
     """
     from database.db_connection import get_db_session
-    from database.recipe_repository import RecipeRepository
     from database.ingredient_repository import IngredientRepository
+    from database.recipe_repository import RecipeRepository
 
     try:
         db = get_db_session()
@@ -756,8 +852,8 @@ def seed_recipes(
         cook_time: Optional cook time in minutes (0 or omit if unknown).
     """
     from database.db_connection import get_db_session
-    from database.recipe_repository import RecipeRepository
     from database.ingredient_repository import IngredientRepository
+    from database.recipe_repository import RecipeRepository
 
     if not url or not str(url).strip():
         return {"error": True, "code": "INVALID_INPUT", "message": "A recipe 'url' is required."}
@@ -926,6 +1022,63 @@ def set_store(store_id: str) -> dict:
         return _NOT_AUTHED
     result = asyncio.run(select_store(str(store_id)))
     return {"store_id": str(store_id), "result": result}
+
+
+@mcp.tool()
+def search_stores(address: str, radius_miles: int = 25) -> dict:
+    """
+    Find HEB stores near an address, zip code, neighborhood, or landmark via
+    GraphQL (geocoding-backed). Use this to discover a store id you can pass to
+    set_store.
+
+    Args:
+        address: Address, zip code, neighborhood, or landmark to search near.
+        radius_miles: Search radius in miles (default 25).
+    """
+    return _search_stores_sync(address, radius_miles)
+
+
+@mcp.tool()
+def list_coupons(search: str = "", category_id: int = 0, limit: int = 60) -> dict:
+    """
+    List or search available HEB digital coupons via GraphQL. Requires a valid
+    session. Use clip_coupon to clip one to your account before checkout.
+
+    Args:
+        search: Optional keyword to filter coupons (e.g. "cereal").
+        category_id: Optional category id to filter by (see result `categories`).
+        limit: Maximum coupons to return (max 60).
+    """
+    if not _ensure_authed():
+        return _NOT_AUTHED
+    return _get_coupons_sync(search, category_id, limit)
+
+
+@mcp.tool()
+def list_clipped_coupons(limit: int = 60) -> dict:
+    """
+    List the coupons already clipped to your HEB account via GraphQL.
+
+    Args:
+        limit: Maximum coupons to return (max 60).
+    """
+    if not _ensure_authed():
+        return _NOT_AUTHED
+    return _clipped_coupons_sync(limit)
+
+
+@mcp.tool()
+def clip_coupon(coupon_id: int) -> dict:
+    """
+    Clip a digital coupon to your HEB account via GraphQL so its discount applies
+    at checkout. Use list_coupons to find a coupon_id.
+
+    Args:
+        coupon_id: The coupon id to clip (from list_coupons).
+    """
+    if not _ensure_authed():
+        return _NOT_AUTHED
+    return _clip_coupon_sync(coupon_id)
 
 
 @mcp.tool()
