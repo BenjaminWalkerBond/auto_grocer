@@ -16,7 +16,7 @@ You can also run the package directly:
 """
 import nodriver
 
-from grocery_browser.run import main as _run_main
+from session_maintenance.run import main as _run_main
 
 
 if __name__ == "__main__":

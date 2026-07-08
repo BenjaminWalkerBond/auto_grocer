@@ -38,8 +38,10 @@ Trade-off: nodriver is fully async, so the entrypoint runs on an event loop.
 From the repo root, with the venv active and `config.txt` present:
 
 ```bash
-# MODE is read from config.txt; the MODE env var overrides it.
+# MODE is read from .env; the MODE env var overrides it.
 python -m grocery_browser.run
+
+# --- Canonical modes ---
 
 # Refresh the MCP session (login + export auth.json):
 MODE=login_export python -m grocery_browser.run
@@ -47,16 +49,20 @@ MODE=login_export python -m grocery_browser.run
 # Capture fresh GraphQL hashes (also exports auth.json):
 MODE=update_graphql_hashes python -m grocery_browser.run
 
-# Full test flow (login, reserve slot, add ingredients; no checkout):
-MODE=test python -m grocery_browser.run
+# End-to-end shopping. Tunables:
+#   SHOP_SOURCE = graphql (default) | browser
+#   CHECKOUT    = none (default) | prompt | auto   (never places a paid order)
+MODE=shop python -m grocery_browser.run
+MODE=shop CHECKOUT=prompt python -m grocery_browser.run
+MODE=shop SHOP_SOURCE=browser CHECKOUT=none python -m grocery_browser.run
 
-# Checkout flows (advance to checkout page; never place a paid order):
-MODE=checkout_with_prompt python -m grocery_browser.run
-MODE=auto_checkout python -m grocery_browser.run
-MODE=graphql python -m grocery_browser.run
-MODE=graphql_checkout_with_prompt python -m grocery_browser.run
-MODE=graphql_auto_checkout python -m grocery_browser.run
+# WAF baseline probe (fingerprint + single heb.com hit; diagnostic only):
+python -m grocery_browser.waf_probe
 ```
+
+Deprecated `MODE` names still work (they map onto `shop` and print a warning):
+`test`, `checkout_with_prompt`, `auto_checkout`, `graphql`,
+`graphql_checkout_with_prompt`, `graphql_auto_checkout`.
 
 `python main.py` is a thin shim that calls `grocery_browser.run` with the same
 modes.

@@ -1,4 +1,4 @@
-"""Cart-related MCP tools with human-in-the-loop confirmation."""
+ """Cart-related MCP tools with human-in-the-loop confirmation."""
 
 from typing import TYPE_CHECKING, Annotated, Any
 

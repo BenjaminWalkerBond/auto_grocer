@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "auto-grocier"
+version = "0.1.0"
+description = "HEB grocery automation MCP server with recipe database and GraphQL cart control."
+requires-python = ">=3.12"
+# Runtime dependencies are pinned in requirements.txt (the single source of
+# truth, used by the Docker image). Development/test-only dependencies live in
+# requirements-dev.txt. This section is intentionally left minimal so there is
+# exactly one place to edit runtime deps.
+dynamic = ["dependencies"]
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+# Let plain `async def test_*` run without decorating each one, while the copied
+# @pytest.mark.asyncio decorators keep working too.
+asyncio_mode = "auto"
+addopts = "-ra"
+markers = [
+    "integration: real API access; skipped unless --run-integration is passed",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+# Focus linting on our own code; the vendored texas_grocery_mcp library is a
+# third-party fork we keep as-is.
+extend-exclude = ["texas_grocery_mcp", "debug_logs", "word_dictionaries"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]

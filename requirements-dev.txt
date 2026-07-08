@@ -1,0 +1,11 @@
+# Development / test-only dependencies.
+#
+# Install with:  pip install -r requirements.txt -r requirements-dev.txt
+#
+# Runtime deps live in requirements.txt (the single source of truth used by the
+# Docker image). Keep this file limited to tooling so the production image stays
+# lean.
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+respx>=0.21.0
+ruff>=0.6.0

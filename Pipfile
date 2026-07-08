@@ -1,37 +1,61 @@
+# DEPRECATED — requirements.txt is the single source of truth for runtime
+# dependencies (it is what the Docker image installs). This Pipfile is kept only
+# as a convenience for pipenv users and is generated to MIRROR requirements.txt;
+# do not add dependencies here without also updating requirements.txt.
+#
+# You can safely remove this file (and Pipfile.lock) if you don't use pipenv:
+#     git rm Pipfile Pipfile.lock
+#
+# Dev/test tools live in requirements-dev.txt.
+
 [[source]]
 url = "https://pypi.org/simple"
 verify_ssl = true
 name = "pypi"
 
 [packages]
-requests = "==2.31.0"
-aiohttp = "==3.8.5"
+aiohttp = ">=3.9.5"
 aiosignal = "==1.3.1"
+anthropic = ">=0.75.0"
 async-timeout = "==4.0.3"
 attrs = "==23.1.0"
 beautifulsoup4 = "==4.12.2"
 certifi = "==2023.7.22"
 charset-normalizer = "==3.2.0"
-exceptiongroup = "==1.1.3"
-frozenlist = "==1.4.0"
+exceptiongroup = ">=1.2.2"
+frozenlist = ">=1.4.1"
 h11 = "==0.14.0"
 idna = "==3.4"
-multidict = "==6.0.4"
+imap-tools = ">=1.5.0"
+multidict = ">=6.0.5"
 openai = "==0.28.0"
+psycopg2-binary = ">=2.9.9"
+python-dotenv = ">=1.0.0"
+requests = "==2.31.0"
 sniffio = "==1.3.0"
+httpx = ">=0.27.0"
+pydantic = ">=2.7.0"
+pydantic-settings = ">=2.2.0"
+structlog = ">=24.1.0"
+tenacity = ">=8.2.0"
+keyring = ">=25.0.0"
+cryptography = ">=42.0.0"
+fastmcp = ">=2.0.0"
 soupsieve = "==2.5"
+sqlalchemy = ">=2.0.0"
 tqdm = "==4.66.1"
 nodriver = ">=0.50.3"
 mss = ">=9.0.1"
 urllib3 = "==2.0.4"
 websockets = ">=14.0"
-yarl = "==1.9.2"
-pyautogui = "*"
-python-xlib = "*"
-pandas = "*"
-playwright = "*"
+yarl = ">=1.9.4"
 
 [dev-packages]
+pytest = ">=8.0.0"
+pytest-asyncio = ">=0.23.0"
+respx = ">=0.21.0"
+ruff = ">=0.6.0"
 
 [requires]
-python_version = "3.11"
+python_version = "3.12"
+
