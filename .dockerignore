@@ -44,4 +44,4 @@ desktop.ini
 # Docs and tests aren't needed at runtime
 *.md
 docs/
-testing/
+manual_tests/
