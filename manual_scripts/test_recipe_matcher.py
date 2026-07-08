@@ -10,7 +10,7 @@ then verifies that:
      matched recipes' ingredients.
 
 Run:
-    python testing/test_recipe_matcher.py
+    python manual_scripts/test_recipe_matcher.py
 """
 import sys
 import os
