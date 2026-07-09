@@ -37,6 +37,7 @@ from texas_grocery_mcp.tools.store import (
     store_get_default,
     store_search,
 )
+from texas_grocery_mcp.tools.substitution import find_substitute
 from texas_grocery_mcp.utils.config import get_settings
 
 # Configure logging before anything else
@@ -173,6 +174,9 @@ mcp.tool()(store_change)  # Changes store on HEB.com when authenticated, or sets
 mcp.tool(annotations={"readOnlyHint": True})(product_search)
 mcp.tool(annotations={"readOnlyHint": True})(product_search_batch)
 mcp.tool(annotations={"readOnlyHint": True})(product_get)
+
+# Register substitution tool
+mcp.tool(annotations={"readOnlyHint": True})(find_substitute)
 
 # Register coupon tools
 mcp.tool(annotations={"readOnlyHint": True})(coupon_list)

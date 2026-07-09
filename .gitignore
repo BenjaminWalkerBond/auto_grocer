@@ -2,6 +2,9 @@
 .env
 !.env.example
 
+# --- Multi-agent workflow transient state ---
+.github/agents/handoffs/.subagent_start
+
 # --- Virtual environments ---
 venv/
 .venv/
