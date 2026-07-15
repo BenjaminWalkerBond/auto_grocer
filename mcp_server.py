@@ -35,7 +35,7 @@ hashes (including the timeslot/checkout operations), is the job of a SEPARATE
 maintenance workflow driven by nodriver (async CDP browser, runs under Xvfb in
 Docker):
 
-    MODE=update_graphql_hashes python -m grocery_browser.run
+    MODE=update_graphql_hashes python -m session_maintenance.run
 
 That workflow logs in, exercises the site, and writes:
   * ~/.texas-grocery-mcp/auth.json                (session for this server)
@@ -99,7 +99,7 @@ _NOT_AUTHED = {
     "message": (
         "No valid HEB session and automatic login is disabled or failed. "
         "Enable auto-login (AUTO_GROCIER_AUTO_LOGIN=1) or refresh the session "
-        "manually (MODE=login_export python -m grocery_browser.run), then call "
+        "manually (MODE=login_export python -m session_maintenance.run), then call "
         "refresh_session."
     ),
 }
@@ -189,7 +189,7 @@ def _auto_authenticate() -> dict:
     """Run the browser login-and-export workflow to refresh the HEB session.
 
     Logs in with the configured credentials (handling email verification) via the
-    async nodriver flow (``grocery_browser.run`` with MODE=login_export) and
+    async nodriver flow (``session_maintenance.run`` with MODE=login_export) and
     re-exports ~/.texas-grocery-mcp/auth.json. The browser is driven over CDP and
     runs under Xvfb inside the Docker image. Blocks until it finishes (up to
     _AUTO_LOGIN_TIMEOUT seconds). Serialized so only one login runs at a time.
@@ -207,7 +207,7 @@ def _auto_authenticate() -> dict:
         env = dict(os.environ)
         env.setdefault("DISPLAY", ":0")  # X server (WSLg on host, Xvfb in Docker)
         env["MODE"] = "login_export"
-        cmd = [python_exe, "-u", "-m", "grocery_browser.run"]
+        cmd = [python_exe, "-u", "-m", "session_maintenance.run"]
 
         print(
             "[auto-grocier] No valid session - running nodriver login "
