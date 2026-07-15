@@ -1,9 +1,83 @@
-# Claude API Setup Instructions
+# auto_grocier — Agent Instructions
 
-## Overview
-The project has been migrated from OpenAI's GPT to Anthropic's Claude Sonnet API.
+This project automates HEB grocery ordering. The primary interface is the **MCP server**
+(`auto-grocier`), which exposes grocery operations as tools over pure GraphQL.
 
-## ⚠️ IMPORTANT: Virtual Environment
+---
+
+## 🛒 MCP Server Usage (Primary Interface)
+
+### Session Check (ALWAYS DO THIS FIRST)
+
+Before using any HEB grocery tools, validate the session:
+
+1. Call `mcp_auto-grocier_auth_status`
+2. If `authenticated: false` → run the **refresh-heb-login** skill, then `refresh_session`
+3. If tools return `OPERATION_NOT_CAPTURED` → run the **refresh-graphql-hashes** skill, then `refresh_session`
+
+### Typical Workflow
+
+```
+auth_status                          # Verify session
+add_groceries / add_recipe_ingredients  # Add items to cart
+get_cart                             # Review cart
+list_timeslots                       # See pickup times
+reserve_timeslot                     # Lock a slot
+checkout                             # Review order (NO CHARGE)
+place_order                          # OPTIONAL: Final order (CHARGES CARD)
+```
+
+### Key Tools
+
+| Tool | Purpose |
+|------|---------|
+| `auth_status` | Check session validity |
+| `refresh_session` | Reload session after running refresh skills |
+| `search_products(query)` | Search HEB products |
+| `add_groceries(items)` | Add free-form items to cart |
+| `add_recipe_ingredients(request)` | Add recipe ingredients by natural language |
+| `get_cart` | View cart contents |
+| `clear_cart` | Empty cart |
+| `list_timeslots` | Available pickup slots |
+| `reserve_timeslot(slot_id)` | Reserve a slot |
+| `checkout` | Go to order review (safe, no charge) |
+| `place_order` | **⚠️ CHARGES CARD** (disabled by default) |
+
+### Error Recovery
+
+| Error | Solution |
+|-------|----------|
+| `NOT_AUTHENTICATED` | Run **refresh-heb-login** skill |
+| `OPERATION_NOT_CAPTURED` | Run **refresh-graphql-hashes** skill |
+| WAF 401 / Email verification | Wait, then retry login manually |
+
+### Starting the MCP Server
+
+**Docker (recommended):**
+```bash
+docker compose -f docker/docker-compose.yml run --rm -T mcp
+```
+
+**Local:**
+```bash
+source venv/bin/activate
+python mcp_server.py
+```
+
+VS Code auto-launches via `.vscode/mcp.json`.
+
+---
+
+## 🔧 Development & Maintenance
+
+The sections below cover the Claude API, browser automation, and debugging — used for
+developing/maintaining the automation, not for routine grocery ordering.
+
+### Claude API Setup
+
+The project uses Anthropic's Claude Sonnet API for ingredient parsing and self-healing.
+
+### ⚠️ IMPORTANT: Virtual Environment
 **ALWAYS activate the virtual environment before running any commands, scripts, or tests!**
 
 ```bash
