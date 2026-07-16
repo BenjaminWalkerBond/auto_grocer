@@ -357,6 +357,71 @@ def _remove_from_cart_sync(matchers: list[str]) -> dict:
     return asyncio.run(_run())
 
 
+def _add_by_id_sync(entries: list[dict]) -> dict:
+    """Add specific products to the cart by product id + sku (no search step).
+
+    Each entry is a dict with: product_id (str), sku (str), quantity (int,
+    default 1), and an optional name (str) used only for the response. Entries
+    missing a product_id or sku are reported as failures.
+    """
+    async def _run():
+        from texas_grocery_mcp.clients.graphql import HEBGraphQLClient
+        client = HEBGraphQLClient()
+        added = []
+        failed = []
+        try:
+            for entry in entries:
+                product_id = str(entry.get("product_id") or "").strip()
+                sku = str(entry.get("sku") or "").strip()
+                name = entry.get("name") or product_id
+                try:
+                    qty = int(entry.get("quantity", 1))
+                except (TypeError, ValueError):
+                    qty = 1
+                if qty < 1:
+                    qty = 1
+                if not product_id or not sku:
+                    failed.append(
+                        {
+                            "product_id": product_id,
+                            "name": name,
+                            "status": "missing_product_id_or_sku",
+                        }
+                    )
+                    continue
+                result = await client.add_to_cart(
+                    product_id=product_id, sku_id=sku, quantity=qty
+                )
+                if isinstance(result, dict) and result.get("error"):
+                    failed.append(
+                        {
+                            "product_id": product_id,
+                            "name": name,
+                            "status": result.get("code") or "error",
+                            "detail": result.get("message"),
+                        }
+                    )
+                    continue
+                added.append(
+                    {
+                        "product_id": product_id,
+                        "sku": sku,
+                        "name": name,
+                        "quantity": qty,
+                    }
+                )
+            return {
+                "added": added,
+                "failed": failed,
+                "added_count": len(added),
+                "failed_count": len(failed),
+            }
+        finally:
+            await client.close()
+
+    return asyncio.run(_run())
+
+
 def _search_products_sync(query: str, store_id: str, limit: int) -> list:
     async def _run():
         from texas_grocery_mcp.clients.graphql import HEBGraphQLClient
@@ -584,7 +649,36 @@ def add_groceries(items: list[str], clear_first: bool = False, quantity: int = 1
 
 
 @mcp.tool()
-def add_recipe_ingredients(request: str, clear_first: bool = False) -> dict:
+def add_products_by_id(products: list[dict], clear_first: bool = False) -> dict:
+    """
+    Add EXACT products to the cart by product id + sku, with NO search step.
+
+    Use this after search_products (or get_product_details) has already found the
+    right product, so the precise item you chose is added instead of a
+    re-searched guess. This is the reliable way to add a specific
+    replacement/substitute you have already picked — prefer it over add_groceries
+    once you know the product_id.
+
+    Args:
+        products: List of product entries. Each entry is a dict with:
+            - product_id (str, required): from a search_products result.
+            - sku (str, required): the matching sku from that same result.
+            - quantity (int, optional): how many to add (default 1).
+            - name (str, optional): display name, used only in the response.
+            Example: [{"product_id": "8075021", "sku": "4122031137",
+                       "quantity": 1, "name": "Mi Tienda Fresh Garlic, 3 ct"}]
+        clear_first: If True, empty the cart before adding.
+
+    Returns:
+        A summary dict with `added` (product_id, sku, name, quantity), `failed`
+        (with a status/detail), and their counts.
+    """
+    if not _ensure_authed():
+        return _NOT_AUTHED
+    if clear_first:
+        graphql_cart_sync(IngredientList(), _store_id(), do_clear=True)
+    return _add_by_id_sync(products or [])
+
     """
     Match a natural-language meal request against recipes in the database and add
     all matched recipes' ingredients to the cart via GraphQL.

@@ -192,3 +192,57 @@ def test_clean_ingredient_bare_count_has_no_unit():
     assert "2" in amount
     # No measurement unit for a bare count.
     assert unit == []
+
+
+def test_clean_ingredient_decimal_amount_preserved():
+    from recipe_grabber import clean_ingredient
+
+    name, amount, unit = clean_ingredient("0.5 cup heavy cream")
+    assert "heavy" in name and "cream" in name
+    # Regression: the '.' used to be stripped, turning 0.5 into 5.
+    assert amount == ["0.5"]
+    assert "cup" in unit
+
+
+def test_clean_ingredient_quarter_decimal_amount():
+    from recipe_grabber import clean_ingredient
+
+    _name, amount, _unit = clean_ingredient("0.25 cup vegetable oil")
+    # Regression: 0.25 used to parse as 25.
+    assert amount == ["0.25"]
+
+
+def test_clean_ingredient_ascii_fraction():
+    from recipe_grabber import clean_ingredient
+
+    _name, amount, _unit = clean_ingredient("1/2 cup water")
+    assert amount == ["0.5"]
+
+
+def test_clean_ingredient_mixed_number():
+    from recipe_grabber import clean_ingredient
+
+    _name, amount, _unit = clean_ingredient("1 1/2 cups flour")
+    assert amount == ["1.5"]
+
+
+def test_clean_ingredient_unicode_fraction():
+    from recipe_grabber import clean_ingredient
+
+    _name, amount, _unit = clean_ingredient("½ cup milk")
+    assert amount == ["0.5"]
+
+
+def test_decimal_amount_does_not_overorder():
+    """End-to-end regression: a 0.5 cup need must not order 3 pints."""
+    from recipe_grabber import clean_ingredient
+
+    _name, amount, unit = clean_ingredient("0.5 cup heavy cream")
+    target_base, family = _to_base(
+        _safe_float(_coerce_scalar(amount, 0)),
+        _normalize_unit(_coerce_scalar(unit, "")),
+    )
+    products = [_FakeProduct("Heavy Cream", "1 pt")]  # 1 pint ~ 473 ml
+    product, packages = _choose_best_product(products, target_base, family)
+    assert packages == 1
+

@@ -2,8 +2,8 @@
 name: "Grocery Ordering"
 description: "HEB grocery ordering specialist. Use for: adding groceries to cart, searching products, managing recipes, reserving pickup timeslots, checking out, and troubleshooting MCP session issues. Validates HEB session at startup. Has full access to auto-grocier MCP tools."
 model:
-  - "Claude Sonnet 4 (copilot)"
-  - "Claude Opus 4.5 (copilot)"
+  - "Claude Sonnet 5 (copilot)"
+  - "Claude Opus 4.8 (copilot)"
 tools:
   - auto-grocier/*
   - read
