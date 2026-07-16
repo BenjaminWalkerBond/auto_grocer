@@ -3,8 +3,7 @@ description: "Coordinator for the auto_grocier iterative development workflow. A
 name: "Orchestrator"
 model:
   - "Claude Opus 4.8 Low thinking 1M context"
-  - "Claude Opus 4.5 (copilot)"
-  - "Claude Sonnet 4.5 (copilot)"
+  - "Claude Opus 4.8 (copilot)"
 tools: [agent, read, edit, search, todo]
 agents: ["Product Designer", "Developer", "Tester"]
 user-invocable: true
