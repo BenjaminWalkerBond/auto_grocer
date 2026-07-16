@@ -269,7 +269,7 @@ async def update_graphql_hashes_mode(browser, tab, logger, store_id, store_searc
     await flows.random_time()
 
     await _run_step("📅 Exercising time slot reservation...", flows.reserve_time_slot, tab)
-    await _run_step("🛒 Visiting cart to trigger cart estimate query...", flows.clear_cart, tab)
+    await _run_step("🛒 Visiting cart to trigger cart estimate query...", flows.visit_cart, tab)
 
     print("\n➕ Adding a sample item to trigger cart mutation...")
     await tab.get(flows.HEB_HOME)
@@ -282,6 +282,12 @@ async def update_graphql_hashes_mode(browser, tab, logger, store_id, store_searc
                     flows.change_store_via_ui, tab, search_text)
     await _run_step("🧾 Walking into checkout to trigger timeslot/checkout queries...",
                     flows.checkout, tab)
+
+    # Clean up ONLY the sample 'milk' item we added above. It exists solely to
+    # trigger the cart-mutation hash; removing just this line leaves any items
+    # the user is accumulating through the week untouched (never clear the cart).
+    await _run_step("🧹 Removing sample item 'milk'...", flows.remove_ingredient,
+                    "milk", tab)
 
     print("\n🔎 Finalizing GraphQL capture...")
     hashes = capturer.hashes

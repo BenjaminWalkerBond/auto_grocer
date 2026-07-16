@@ -10,6 +10,7 @@ Step 4.5 fix), change_store_via_ui, add_ingredient, checkout.
 from __future__ import annotations
 
 import os
+import json
 import asyncio
 from urllib.parse import quote_plus
 
@@ -315,6 +316,84 @@ async def clear_cart(tab):
         await click_element(tab, home)
         await random_time()
     return 1
+
+
+async def visit_cart(tab):
+    """Navigate to the cart to trigger the cart-estimate query (async).
+
+    Non-destructive: unlike ``clear_cart`` this only loads the cart page so the
+    ``cartEstimated`` GraphQL query fires. It never empties the cart, so items
+    the user is accumulating through the week are left untouched. Returns 1.
+    """
+    close_btn = await select_one(tab, "button[aria-label='close']", timeout=2)
+    if close_btn and await is_visible(close_btn):
+        await click_element(tab, close_btn)
+        await random_time()
+
+    if "/cart" not in await _current_url(tab):
+        await tab.get(HEB_CART)
+        await random_time()
+    return 1
+
+
+async def remove_ingredient(name, tab):
+    """Remove a SINGLE named line item from the cart (async), leaving the rest.
+
+    Navigates to the cart and clicks the Remove control on the line item whose
+    product name contains ``name`` (case-insensitive). Returns 1 if an item was
+    removed, 0 if no matching item/control was found. Unlike ``clear_cart`` this
+    never empties the whole cart, so other items are preserved.
+    """
+    needle = json.dumps(str(name).strip().lower())
+
+    if "/cart" not in await _current_url(tab):
+        await tab.get(HEB_CART)
+        await random_time()
+
+    close_btn = await select_one(tab, "button[aria-label='close']", timeout=2)
+    if close_btn and await is_visible(close_btn):
+        await click_element(tab, close_btn)
+        await random_time()
+
+    # Poll while the cart grid hydrates, then locate the matching line item and
+    # click its Remove control. Done in page JS because the cart is a large,
+    # dynamically-hydrated React render.
+    js = (
+        "(() => {"
+        f"  const needle = {needle};"
+        "  const norm = s => (s || '').toLowerCase();"
+        "  const links = Array.from(document.querySelectorAll('a[href*=\"/product-detail/\"]'));"
+        "  for (const link of links) {"
+        "    if (!norm(link.textContent).includes(needle)) continue;"
+        "    let node = link;"
+        "    for (let i = 0; i < 6 && node; i++) {"
+        "      let btn = node.querySelector && node.querySelector('button[aria-label*=\"remove\" i]');"
+        "      if (!btn && node.querySelectorAll) {"
+        "        btn = Array.from(node.querySelectorAll('button'))"
+        "          .find(b => norm(b.textContent).includes('remove')"
+        "            || norm(b.getAttribute('aria-label')).includes('remove'));"
+        "      }"
+        "      if (btn) { btn.scrollIntoView({block: 'center'}); btn.click(); return 'REMOVED'; }"
+        "      node = node.parentElement;"
+        "    }"
+        "  }"
+        "  return links.length ? 'NOMATCH' : 'NOTREADY';"
+        "})()"
+    )
+
+    for _ in range(12):
+        result = await tab.evaluate(js)
+        if result == "REMOVED":
+            await random_time()
+            print(f"    \u2705 Removed '{name}' from cart")
+            return 1
+        if result == "NOMATCH":
+            print(f"    \u26a0\ufe0f  '{name}' not in cart (nothing to remove)")
+            return 0
+        await asyncio.sleep(1)
+
+    print(f"    \u26a0\ufe0f  Cart did not hydrate; could not remove '{name}'")
+    return 0
 
 
 # ---------------------------------------------------------------------------

@@ -72,7 +72,68 @@ def extract_recipe_metadata(url):
 
 
 
+def _format_amount(value):
+    """Render a numeric amount without a trailing '.0' (so '16' stays '16')."""
+    return "%g" % value
+
+
+# Unicode vulgar fractions that show up in recipe ingredient lines.
+_UNICODE_FRACTIONS = {
+    "¼": 0.25, "½": 0.5, "¾": 0.75,
+    "⅐": 1 / 7, "⅑": 1 / 9, "⅒": 0.1,
+    "⅓": 1 / 3, "⅔": 2 / 3,
+    "⅕": 0.2, "⅖": 0.4, "⅗": 0.6, "⅘": 0.8,
+    "⅙": 1 / 6, "⅚": 5 / 6,
+    "⅛": 0.125, "⅜": 0.375, "⅝": 0.625, "⅞": 0.875,
+}
+_UNICODE_FRACTION_CHARS = "".join(_UNICODE_FRACTIONS)
+
+
+def _extract_amounts(text):
+    """Extract the leading quantity from an ingredient string.
+
+    Preserves decimals and fractions so "0.5 cup" is 0.5 (not 5) and "1/2" is
+    0.5. Returns a list with a single formatted numeric string to match
+    clean_ingredient's list contract, or [] when no quantity is present.
+    """
+    if not text:
+        return []
+
+    # Mixed number: "1 1/2"
+    m = re.search(r"(\d+)\s+(\d+)\s*/\s*(\d+)", text)
+    if m:
+        whole, num, den = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        return [_format_amount(whole + num / den)] if den else []
+
+    # Simple fraction: "3/4"
+    m = re.search(r"(\d+)\s*/\s*(\d+)", text)
+    if m:
+        num, den = int(m.group(1)), int(m.group(2))
+        return [_format_amount(num / den)] if den else []
+
+    # Decimal/integer, optionally followed by a unicode fraction ("1½", "0.5", "16")
+    m = re.search(rf"(\d+(?:\.\d+)?)\s*([{_UNICODE_FRACTION_CHARS}])?", text)
+    if m:
+        value = float(m.group(1))
+        if m.group(2):
+            value += _UNICODE_FRACTIONS[m.group(2)]
+        return [_format_amount(value)]
+
+    # Standalone unicode fraction: "½ cup"
+    m = re.search(rf"([{_UNICODE_FRACTION_CHARS}])", text)
+    if m:
+        return [_format_amount(_UNICODE_FRACTIONS[m.group(1)])]
+
+    return []
+
+
 def clean_ingredient(ingredient):
+    # Parse the amount from the ORIGINAL text (with parentheticals removed) so
+    # decimals and fraction slashes survive. The character filter below strips
+    # '.' and '/', which would otherwise turn "0.5" into "05" (-> 5) or "1/2"
+    # into "12".
+    amount = _extract_amounts(re.sub(r'\([^)]*\)', '', ingredient))
+
     # filter out everything that is not a character, a space, or a number
     # print("ingredient before char, space, and num only: ", ingredient)
     cleaned_ingredient = re.sub(r'[^a-zA-Z0-9\s$]', '', ingredient)
@@ -84,11 +145,7 @@ def clean_ingredient(ingredient):
     
     # Normalize spacing - collapse multiple spaces into single spaces
     cleaned_ingredient = ' '.join(cleaned_ingredient.split())
-    
-    # create a variable called pre_amount that removes everything in the word in parenthesis
-    pre_amount = re.sub(r'\([^)]*\)', '', cleaned_ingredient)
-    amount = re.findall(r'\d+', pre_amount)
-    
+
     # get unit from line
     unit = re.findall(r'\b(?:optional|tsp|tbsp|cup|oz|lb|g|kg|ml|l|pinch|dash|can|jar|bottle|slice|slices|sliced|piece|pieces|stalk|stalks|head|heads|leaf|leaves|bunch|bunches|bag|bags|box|boxes|package|packages|container|containers|bowl|bowls|pint|pints|quart|quarts|gallon|gallons|stick|sticks|sprig|sprigs|sprinkle|sprinkles|handful|handfuls|pinch|pinches|dash|dashes|teaspoon|teaspoons|tablespoon|tablespoons|clove|cloves|head|heads|inch|inches|ounce|ounces|pound|pounds|gram|grams|kilogram|kilograms|milliliter|milliliters|liter|liters|milligram|milligrams|gallon|gallons|quart|quarts|pint|pints|cup|cups|tablespoon|tablespoons|teaspoon|teaspoons|pinch|pinches|dash|dashes|sprinkle|sprinkles|handful|handfuls|slice|slices|piece|pieces|stalk|stalks|head|heads|leaf|leaves|bunch|bunches|bag|bags|box|boxes|package|packages|container|containers|bowl|bowls|stick|sticks|sprig|sprigs|sprinkle|sprinkles|handful|handfuls|pinch|pinches|dash|dashes|teaspoon|teaspoons|tablespoon)\b', cleaned_ingredient)
     
