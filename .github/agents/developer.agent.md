@@ -2,9 +2,7 @@
 description: "Implementation specialist for auto_grocier. Use to turn a Product Designer's design into working code. Plans before coding, checks feasibility, implements, and hands off to the Tester. Invoked as a subagent by the Orchestrator."
 name: "Developer"
 model:
-  - "Claude Opus 4.8 Medium thinking 1M context"
-  - "Claude Opus 4.5 (copilot)"
-  - "Claude Sonnet 4.5 (copilot)"
+  - "Claude Opus 4.8 (copilot)"
 tools: [read, edit, search, execute, todo]
 agents: []
 user-invocable: true

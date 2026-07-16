@@ -3,8 +3,7 @@ description: "Product design specialist for auto_grocier. Use to brainstorm top 
 name: "Product Designer"
 model:
   - "Claude Opus 4.8 High thinking 1 million context"
-  - "Claude Opus 4.5 (copilot)"
-  - "Claude Sonnet 4.5 (copilot)"
+  - "Claude Opus 4.8 (copilot)"
 tools: [read, search]
 agents: []
 user-invocable: true
