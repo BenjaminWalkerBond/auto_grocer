@@ -45,6 +45,10 @@ WAF 401s and email verification.
 - `find_recipes(request)` — Preview recipe matches
 - `query_recipes(...)` / `list_all_recipes(page)` / `seed_recipes(...)`
 
+> **Adding a recipe from a URL:** ALWAYS use the **seed-recipe-from-url** skill.
+> Fetch the actual page and extract EVERY ingredient — never author the list from
+> memory. For YouTube URLs, pass the URL with empty `ingredients` (auto-parsed).
+
 ### Checkout
 - `list_timeslots` / `reserve_timeslot(slot_id)`
 - `checkout` — Review only (NO CHARGE)
