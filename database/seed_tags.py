@@ -1,8 +1,8 @@
 """
 Seed the database with predefined tags from word_dictionaries folder.
 """
-import sys
 import os
+import sys
 
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -18,11 +18,11 @@ def seed_tags():
         print("Seeding Tags from word_dictionaries")
         print("=" * 60)
         print()
-        
+
         # Get database session
         db = get_db_session()
         tag_repo = TagRepository(db)
-        
+
         # Define predefined tags (from IngredientList.tags)
         predefined_tags = [
             ("cheese", "Cheese and dairy products"),
@@ -39,10 +39,10 @@ def seed_tags():
             ("milk", "Milk products"),
             ("none", "Uncategorized ingredients")
         ]
-        
+
         created_count = 0
         existing_count = 0
-        
+
         for tag_name, description in predefined_tags:
             existing_tag = tag_repo.get_by_name(tag_name)
             if existing_tag:
@@ -52,11 +52,11 @@ def seed_tags():
                 tag_repo.create(tag_name, description)
                 print(f"  ✓ Created tag '{tag_name}'")
                 created_count += 1
-        
+
         db.close()
-        
+
         print()
-        print(f"Summary:")
+        print("Summary:")
         print(f"  - Tags created: {created_count}")
         print(f"  - Tags already existed: {existing_count}")
         print(f"  - Total tags: {created_count + existing_count}")
@@ -64,9 +64,9 @@ def seed_tags():
         print("=" * 60)
         print("Tag seeding complete!")
         print("=" * 60)
-        
+
         return True
-        
+
     except Exception as e:
         print(f"✗ Error seeding tags: {e}")
         import traceback

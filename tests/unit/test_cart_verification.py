@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from texas_grocery_mcp.tools.cart import (
+from auto_grocier_mcp.tools.cart import (
     _extract_price_from_cart_item,
     _extract_sku_from_cart_item,
 )
@@ -154,11 +154,11 @@ class TestCartAddVerification:
     @pytest.mark.asyncio
     async def test_returns_error_when_item_not_in_cart_after_add(self):
         """cart_add should return error if item not found in cart after API success."""
-        from texas_grocery_mcp.tools.cart import cart_add
+        from auto_grocier_mcp.tools.cart import cart_add
 
         with (
-            patch("texas_grocery_mcp.tools.cart.is_authenticated", return_value=True),
-            patch("texas_grocery_mcp.tools.cart._get_client") as mock_get_client,
+            patch("auto_grocier_mcp.tools.cart.is_authenticated", return_value=True),
+            patch("auto_grocier_mcp.tools.cart._get_client") as mock_get_client,
         ):
             client = AsyncMock()
             mock_get_client.return_value = client
@@ -181,11 +181,11 @@ class TestCartAddVerification:
     @pytest.mark.asyncio
     async def test_returns_success_when_item_verified_in_cart(self):
         """cart_add should return success with verified=True when item found."""
-        from texas_grocery_mcp.tools.cart import cart_add
+        from auto_grocier_mcp.tools.cart import cart_add
 
         with (
-            patch("texas_grocery_mcp.tools.cart.is_authenticated", return_value=True),
-            patch("texas_grocery_mcp.tools.cart._get_client") as mock_get_client,
+            patch("auto_grocier_mcp.tools.cart.is_authenticated", return_value=True),
+            patch("auto_grocier_mcp.tools.cart._get_client") as mock_get_client,
         ):
             client = AsyncMock()
             mock_get_client.return_value = client
@@ -221,9 +221,9 @@ class TestCartAddVerification:
     @pytest.mark.asyncio
     async def test_returns_preview_when_not_confirmed(self):
         """cart_add should return preview when confirm=False."""
-        from texas_grocery_mcp.tools.cart import cart_add
+        from auto_grocier_mcp.tools.cart import cart_add
 
-        with patch("texas_grocery_mcp.tools.cart.is_authenticated", return_value=True):
+        with patch("auto_grocier_mcp.tools.cart.is_authenticated", return_value=True):
             result = await cart_add(
                 product_id="127074",
                 sku_id="4122071073",
@@ -237,9 +237,9 @@ class TestCartAddVerification:
     @pytest.mark.asyncio
     async def test_returns_auth_required_when_not_authenticated(self):
         """cart_add should return auth_required when not logged in."""
-        from texas_grocery_mcp.tools.cart import cart_add
+        from auto_grocier_mcp.tools.cart import cart_add
 
-        with patch("texas_grocery_mcp.tools.cart.is_authenticated", return_value=False):
+        with patch("auto_grocier_mcp.tools.cart.is_authenticated", return_value=False):
             result = await cart_add(
                 product_id="127074",
                 sku_id="4122071073",
@@ -252,11 +252,11 @@ class TestCartAddVerification:
     @pytest.mark.asyncio
     async def test_returns_warning_when_cart_fetch_fails_after_add(self):
         """cart_add should return warning if can't verify due to cart fetch failure."""
-        from texas_grocery_mcp.tools.cart import cart_add
+        from auto_grocier_mcp.tools.cart import cart_add
 
         with (
-            patch("texas_grocery_mcp.tools.cart.is_authenticated", return_value=True),
-            patch("texas_grocery_mcp.tools.cart._get_client") as mock_get_client,
+            patch("auto_grocier_mcp.tools.cart.is_authenticated", return_value=True),
+            patch("auto_grocier_mcp.tools.cart._get_client") as mock_get_client,
         ):
             client = AsyncMock()
             mock_get_client.return_value = client
@@ -286,9 +286,9 @@ class TestCartAddWithRetry:
     @pytest.mark.asyncio
     async def test_returns_success_on_first_attempt(self):
         """Should return success without retry if first attempt works."""
-        from texas_grocery_mcp.tools.cart import cart_add_with_retry
+        from auto_grocier_mcp.tools.cart import cart_add_with_retry
 
-        with patch("texas_grocery_mcp.tools.cart.cart_add") as mock_cart_add:
+        with patch("auto_grocier_mcp.tools.cart.cart_add") as mock_cart_add:
             mock_cart_add.return_value = {"success": True, "verified": True}
 
             result = await cart_add_with_retry(
@@ -305,9 +305,9 @@ class TestCartAddWithRetry:
     @pytest.mark.asyncio
     async def test_returns_preview_without_retry(self):
         """Should return preview without attempting retry."""
-        from texas_grocery_mcp.tools.cart import cart_add_with_retry
+        from auto_grocier_mcp.tools.cart import cart_add_with_retry
 
-        with patch("texas_grocery_mcp.tools.cart.cart_add") as mock_cart_add:
+        with patch("auto_grocier_mcp.tools.cart.cart_add") as mock_cart_add:
             mock_cart_add.return_value = {"preview": True}
 
             result = await cart_add_with_retry(

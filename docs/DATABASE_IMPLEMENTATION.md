@@ -106,7 +106,7 @@ brew services start postgresql
 ```bash
 sudo -u postgres psql
 CREATE DATABASE auto_grocier;
-CREATE USER grocier_user WITH PASSWORD 'your_password';
+CREATE USER grocier_user WITH PASSWORD 'change-me';
 GRANT ALL PRIVILEGES ON DATABASE auto_grocier TO grocier_user;
 \q
 ```

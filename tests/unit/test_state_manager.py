@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from texas_grocery_mcp.state import StateManager
+from auto_grocier_mcp.state import StateManager
 
 
 class TestStateManagerStoreId:
@@ -42,7 +42,7 @@ class TestStateManagerStoreCache:
 
     def test_cache_and_get_store(self):
         """Should cache and retrieve stores."""
-        from texas_grocery_mcp.models import Store
+        from auto_grocier_mcp.models import Store
 
         store = Store(
             store_id="999",
@@ -62,7 +62,7 @@ class TestStateManagerStoreCache:
 
     def test_get_all_cached_stores_returns_copy(self):
         """Should return a copy of cached stores."""
-        from texas_grocery_mcp.models import Store
+        from auto_grocier_mcp.models import Store
 
         store = Store(
             store_id="888",
@@ -106,7 +106,7 @@ class TestStateManagerReset:
 
     def test_reset_sync_clears_all_state(self):
         """Should clear all state synchronously."""
-        from texas_grocery_mcp.models import Store
+        from auto_grocier_mcp.models import Store
 
         # Set some state
         StateManager.set_default_store_id_sync("123")
@@ -129,7 +129,7 @@ class TestStateManagerReset:
     @pytest.mark.asyncio
     async def test_reset_async_clears_all_state(self):
         """Should clear all state asynchronously."""
-        from texas_grocery_mcp.models import Store
+        from auto_grocier_mcp.models import Store
 
         # Set some state
         await StateManager.set_default_store_id("456")
@@ -176,7 +176,7 @@ class TestStateManagerConcurrency:
     @pytest.mark.asyncio
     async def test_concurrent_cache_updates(self):
         """Concurrent cache updates should not corrupt state."""
-        from texas_grocery_mcp.models import Store
+        from auto_grocier_mcp.models import Store
 
         async def cache_store(store_id: str):
             store = Store(

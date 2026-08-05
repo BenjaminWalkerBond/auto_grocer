@@ -4,7 +4,7 @@
 
 def test_store_model_required_fields():
     """Store model should require essential fields."""
-    from texas_grocery_mcp.models import Store
+    from auto_grocier_mcp.models import Store
 
     store = Store(
         store_id="590",
@@ -19,7 +19,7 @@ def test_store_model_required_fields():
 
 def test_product_model_minimal_fields():
     """Product model should work with minimal fields."""
-    from texas_grocery_mcp.models import Product
+    from auto_grocier_mcp.models import Product
 
     product = Product(
         sku="123456",
@@ -34,7 +34,7 @@ def test_product_model_minimal_fields():
 
 def test_product_model_full_fields():
     """Product model should accept all optional fields."""
-    from texas_grocery_mcp.models import Product
+    from auto_grocier_mcp.models import Product
 
     product = Product(
         sku="123456",
@@ -57,7 +57,7 @@ def test_product_model_full_fields():
 
 def test_cart_item_calculates_subtotal():
     """CartItem should calculate subtotal from price and quantity."""
-    from texas_grocery_mcp.models import CartItem
+    from auto_grocier_mcp.models import CartItem
 
     item = CartItem(
         sku="123456",
@@ -71,7 +71,7 @@ def test_cart_item_calculates_subtotal():
 
 def test_error_response_structure():
     """ErrorResponse should have proper structure."""
-    from texas_grocery_mcp.models import ErrorResponse
+    from auto_grocier_mcp.models import ErrorResponse
 
     error = ErrorResponse(
         code="HEB_API_TIMEOUT",
@@ -88,7 +88,7 @@ def test_error_response_structure():
 
 def test_store_model_supports_curbside_default_true():
     """Store model should have supports_curbside field defaulting to True."""
-    from texas_grocery_mcp.models import Store
+    from auto_grocier_mcp.models import Store
 
     store = Store(
         store_id="737",
@@ -102,7 +102,7 @@ def test_store_model_supports_curbside_default_true():
 
 def test_store_model_supports_curbside_explicit_false():
     """Store model should accept explicit supports_curbside=False."""
-    from texas_grocery_mcp.models import Store
+    from auto_grocier_mcp.models import Store
 
     store = Store(
         store_id="718",
@@ -116,7 +116,7 @@ def test_store_model_supports_curbside_explicit_false():
 
 def test_store_model_supports_delivery_field():
     """Store model should have supports_delivery field."""
-    from texas_grocery_mcp.models import Store
+    from auto_grocier_mcp.models import Store
 
     store = Store(
         store_id="737",
@@ -130,7 +130,7 @@ def test_store_model_supports_delivery_field():
 
 def test_store_model_supports_delivery_default_false():
     """Store model supports_delivery should default to False."""
-    from texas_grocery_mcp.models import Store
+    from auto_grocier_mcp.models import Store
 
     store = Store(
         store_id="737",
@@ -149,7 +149,7 @@ def test_store_model_supports_delivery_default_false():
 
 def test_product_details_minimal_fields():
     """ProductDetails should work with minimal required fields."""
-    from texas_grocery_mcp.models import ProductDetails
+    from auto_grocier_mcp.models import ProductDetails
 
     details = ProductDetails(
         product_id="127074",
@@ -168,7 +168,7 @@ def test_product_details_minimal_fields():
 
 def test_product_details_food_item():
     """ProductDetails should handle a typical food item with all fields."""
-    from texas_grocery_mcp.models import ExtendedNutrition, NutrientInfo, ProductDetails
+    from auto_grocier_mcp.models import ExtendedNutrition, NutrientInfo, ProductDetails
 
     nutrition = ExtendedNutrition(
         serving_size="1 Tbsp (15mL)",
@@ -229,7 +229,7 @@ def test_product_details_food_item():
 
 def test_product_details_produce_item():
     """ProductDetails should handle produce without nutrition facts."""
-    from texas_grocery_mcp.models import ProductDetails
+    from auto_grocier_mcp.models import ProductDetails
 
     details = ProductDetails(
         product_id="320228",
@@ -255,7 +255,7 @@ def test_product_details_produce_item():
 
 def test_product_details_non_food_item():
     """ProductDetails should handle non-food with warnings but no nutrition."""
-    from texas_grocery_mcp.models import ProductDetails
+    from auto_grocier_mcp.models import ProductDetails
 
     details = ProductDetails(
         product_id="1904127",
@@ -283,7 +283,7 @@ def test_product_details_non_food_item():
 
 def test_nutrient_info_with_nested_sub_items():
     """NutrientInfo should handle nested sub_items correctly."""
-    from texas_grocery_mcp.models import NutrientInfo
+    from auto_grocier_mcp.models import NutrientInfo
 
     nutrient = NutrientInfo(
         title="Total Carbohydrate",

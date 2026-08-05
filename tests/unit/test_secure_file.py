@@ -2,10 +2,11 @@
 
 import json
 import os
+import sys
 
 import pytest
 
-from texas_grocery_mcp.utils.secure_file import (
+from auto_grocier_mcp.utils.secure_file import (
     SECURE_FILE_MODE,
     ensure_secure_permissions,
     write_secure_json,
@@ -15,6 +16,10 @@ from texas_grocery_mcp.utils.secure_file import (
 class TestWriteSecureJson:
     """Tests for write_secure_json function."""
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="POSIX file-mode enforcement; Windows cannot set 0o600",
+    )
     def test_creates_file_with_correct_permissions(self, tmp_path):
         """Verify files are created with 0o600 permissions."""
         test_file = tmp_path / "test.json"
@@ -58,6 +63,10 @@ class TestWriteSecureJson:
 
         assert loaded == {"new": "data"}
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="POSIX file-mode enforcement; Windows cannot set 0o600",
+    )
     def test_fixes_insecure_permissions_on_existing_file(self, tmp_path):
         """Verify existing files get permissions corrected on rewrite."""
         test_file = tmp_path / "test.json"
@@ -96,6 +105,10 @@ class TestEnsureSecurePermissions:
         test_file = tmp_path / "nonexistent.json"
         assert ensure_secure_permissions(test_file) is True
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="POSIX file-mode enforcement; Windows cannot set 0o600",
+    )
     def test_fixes_insecure_permissions(self, tmp_path):
         """Verify insecure permissions are fixed."""
         test_file = tmp_path / "test.json"
@@ -108,6 +121,10 @@ class TestEnsureSecurePermissions:
         mode = test_file.stat().st_mode & 0o777
         assert mode == SECURE_FILE_MODE
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="POSIX file-mode enforcement; Windows cannot set 0o600",
+    )
     def test_leaves_secure_permissions_unchanged(self, tmp_path):
         """Verify already-secure files are not modified."""
         test_file = tmp_path / "test.json"
@@ -120,6 +137,10 @@ class TestEnsureSecurePermissions:
         mode = test_file.stat().st_mode & 0o777
         assert mode == SECURE_FILE_MODE
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="POSIX file-mode enforcement; Windows cannot set 0o600",
+    )
     def test_handles_world_readable_file(self, tmp_path):
         """Verify world-readable files are fixed."""
         test_file = tmp_path / "test.json"

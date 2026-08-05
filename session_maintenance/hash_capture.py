@@ -14,7 +14,6 @@ from __future__ import annotations
 from nodriver import cdp
 
 from utility.graphql_hash_capture import (
-    TARGET_OPERATIONS,
     _parse_operation_samples,
     save_hashes,
     save_operation_samples,

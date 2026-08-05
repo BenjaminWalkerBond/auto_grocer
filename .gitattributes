@@ -21,7 +21,6 @@
 *.env       text eol=lf
 *.example   text eol=lf
 *.lock      text eol=lf
-Pipfile     text eol=lf
 Dockerfile* text eol=lf
 .gitignore       text eol=lf
 .gitattributes   text eol=lf

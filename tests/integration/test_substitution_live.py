@@ -9,8 +9,8 @@ Run with: pytest tests/integration/ --run-integration
 
 import pytest
 
-from texas_grocery_mcp.tools.store import set_default_store_id
-from texas_grocery_mcp.tools.substitution import find_substitute
+from auto_grocier_mcp.tools.store import set_default_store_id
+from auto_grocier_mcp.tools.substitution import find_substitute
 
 # Known store ID
 HEIGHTS_HEB_ID = "737"
@@ -19,8 +19,8 @@ HEIGHTS_HEB_ID = "737"
 @pytest.fixture(autouse=True)
 def reset_tool_state():
     """Reset global state before each test to avoid client reuse issues."""
-    from texas_grocery_mcp.tools import product as product_module
-    from texas_grocery_mcp.tools import store as store_module
+    from auto_grocier_mcp.tools import product as product_module
+    from auto_grocier_mcp.tools import store as store_module
 
     # Reset graphql clients to avoid event loop issues
     store_module._default_store_id = None

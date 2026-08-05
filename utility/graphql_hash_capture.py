@@ -3,21 +3,20 @@
 HEB uses Apollo "persisted queries": each GraphQL operation is sent with only a
 sha256 hash instead of the full query text. HEB rotates these hashes on every
 front-end deploy, which invalidates the hard-coded values bundled in
-``texas_grocery_mcp``. The nodriver browser flow
-(``grocery_browser/hash_capture.py``) subscribes to CDP ``Network`` events and
+``auto_grocier_mcp``. The nodriver browser flow
+(``session_maintenance/hash_capture.py``) subscribes to CDP ``Network`` events and
 feeds request bodies into the pure parsers here; the savers write the results to
 the JSON override files the GraphQL client loads at runtime.
 
 Usage is driven by the ``update_graphql_hashes`` program mode
-(``MODE=update_graphql_hashes python -m grocery_browser.run``).
+(``MODE=update_graphql_hashes python -m session_maintenance.run``).
 """
 
 import json
 import os
 from pathlib import Path
 
-
-# Override file consumed by texas_grocery_mcp.clients.graphql._load_persisted_query_overrides
+# Override file consumed by auto_grocier_mcp.clients.graphql._load_persisted_query_overrides
 DEFAULT_HASHES_PATH = Path("~/.texas-grocery-mcp/persisted_queries.json").expanduser()
 
 # Sample file recording the full request shape (hash + variables) for every

@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from texas_grocery_mcp.services.geocoding import (
+from auto_grocier_mcp.services.geocoding import (
     GeocodingResult,
     GeocodingService,
 )
@@ -174,7 +174,7 @@ class TestGeocodingService:
         ]
         mock_response.raise_for_status = MagicMock()
 
-        with patch("texas_grocery_mcp.services.geocoding.httpx.AsyncClient") as mock_client_class:
+        with patch("auto_grocier_mcp.services.geocoding.httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
             mock_client.get = AsyncMock(return_value=mock_response)
             mock_client.aclose = AsyncMock()
@@ -199,7 +199,7 @@ class TestGeocodingService:
         mock_response.json.return_value = []
         mock_response.raise_for_status = MagicMock()
 
-        with patch("texas_grocery_mcp.services.geocoding.httpx.AsyncClient") as mock_client_class:
+        with patch("auto_grocier_mcp.services.geocoding.httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
             mock_client.get = AsyncMock(return_value=mock_response)
             mock_client.aclose = AsyncMock()
@@ -217,7 +217,7 @@ class TestGeocodingService:
         """geocode should return None on timeout."""
         import httpx
 
-        with patch("texas_grocery_mcp.services.geocoding.httpx.AsyncClient") as mock_client_class:
+        with patch("auto_grocier_mcp.services.geocoding.httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
             mock_client.get = AsyncMock(side_effect=httpx.TimeoutException("timeout"))
             mock_client.aclose = AsyncMock()
@@ -235,7 +235,7 @@ class TestGeocodingService:
         """geocode should return None on HTTP error."""
         import httpx
 
-        with patch("texas_grocery_mcp.services.geocoding.httpx.AsyncClient") as mock_client_class:
+        with patch("auto_grocier_mcp.services.geocoding.httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
             mock_client.get = AsyncMock(
                 side_effect=httpx.HTTPStatusError(
@@ -291,7 +291,7 @@ class TestGeocodingService:
         ]
         mock_response.raise_for_status = MagicMock()
 
-        with patch("texas_grocery_mcp.services.geocoding.httpx.AsyncClient") as mock_client_class:
+        with patch("auto_grocier_mcp.services.geocoding.httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
             mock_client.get = AsyncMock(return_value=mock_response)
             mock_client.aclose = AsyncMock()
