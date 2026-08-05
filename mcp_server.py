@@ -26,7 +26,7 @@ Chat) so you can drive the whole flow conversationally:
 ARCHITECTURE
 ------------
 This server is PURE GraphQL and contains NO browser automation. It talks to
-HEB's internal GraphQL API through the vendored ``texas_grocery_mcp`` client,
+HEB's internal GraphQL API through the vendored ``auto_grocier_mcp`` client,
 reusing an authenticated session previously exported to
 ``~/.texas-grocery-mcp/auth.json``.
 
@@ -115,7 +115,7 @@ def _store_id(override: str = "") -> str:
 def _is_authed() -> bool:
     """Return True if a valid exported HEB session is available for GraphQL."""
     try:
-        from texas_grocery_mcp.auth.session import is_authenticated
+        from auto_grocier_mcp.auth.session import is_authenticated
         return bool(is_authenticated())
     except Exception:
         return False
@@ -131,7 +131,7 @@ def _session_expiry() -> dict:
     import time
     from datetime import datetime, timezone
     try:
-        from texas_grocery_mcp.utils.config import get_settings
+        from auto_grocier_mcp.utils.config import get_settings
         path = get_settings().auth_state_path
         with open(path) as f:
             state = json.load(f)
@@ -174,12 +174,12 @@ def _hashes_ok() -> bool:
 def _reload_session_caches() -> None:
     """Drop cached settings/hashes so the next check re-reads auth.json."""
     try:
-        from texas_grocery_mcp.utils.config import get_settings
+        from auto_grocier_mcp.utils.config import get_settings
         get_settings.cache_clear()
     except Exception:
         pass
     try:
-        from texas_grocery_mcp.clients.graphql import reload_persisted_query_overrides
+        from auto_grocier_mcp.clients.graphql import reload_persisted_query_overrides
         reload_persisted_query_overrides()
     except Exception:
         pass
@@ -294,7 +294,7 @@ def _summarize(report: dict) -> dict:
 
 def _graphql_get_cart_sync() -> dict:
     async def _run():
-        from texas_grocery_mcp.clients.graphql import HEBGraphQLClient
+        from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
         client = HEBGraphQLClient()
         try:
             return await client.get_cart()
@@ -315,7 +315,7 @@ def _remove_from_cart_sync(matchers: list[str]) -> dict:
     needles = [m.strip().lower() for m in matchers if m and m.strip()]
 
     async def _run():
-        from texas_grocery_mcp.clients.graphql import HEBGraphQLClient
+        from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
         client = HEBGraphQLClient()
         removed = []
         not_found = []
@@ -365,7 +365,7 @@ def _add_by_id_sync(entries: list[dict]) -> dict:
     missing a product_id or sku are reported as failures.
     """
     async def _run():
-        from texas_grocery_mcp.clients.graphql import HEBGraphQLClient
+        from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
         client = HEBGraphQLClient()
         added = []
         failed = []
@@ -424,7 +424,7 @@ def _add_by_id_sync(entries: list[dict]) -> dict:
 
 def _search_products_sync(query: str, store_id: str, limit: int) -> list:
     async def _run():
-        from texas_grocery_mcp.clients.graphql import HEBGraphQLClient
+        from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
         client = HEBGraphQLClient()
         try:
             result = await client.search_products(
@@ -448,7 +448,7 @@ def _search_products_sync(query: str, store_id: str, limit: int) -> list:
 
 def _product_details_sync(product_id: str, store_id: str) -> dict | None:
     async def _run():
-        from texas_grocery_mcp.clients.graphql import HEBGraphQLClient
+        from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
         client = HEBGraphQLClient()
         try:
             details = await client.get_product_details(
@@ -462,7 +462,7 @@ def _product_details_sync(product_id: str, store_id: str) -> dict | None:
 
 def _get_coupons_sync(search: str, category_id: int, limit: int) -> dict:
     async def _run():
-        from texas_grocery_mcp.clients.graphql import HEBGraphQLClient
+        from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
         client = HEBGraphQLClient()
         try:
             result = await client.get_coupons(
@@ -478,7 +478,7 @@ def _get_coupons_sync(search: str, category_id: int, limit: int) -> dict:
 
 def _clipped_coupons_sync(limit: int) -> dict:
     async def _run():
-        from texas_grocery_mcp.clients.graphql import HEBGraphQLClient
+        from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
         client = HEBGraphQLClient()
         try:
             result = await client.get_clipped_coupons(limit=int(limit))
@@ -490,7 +490,7 @@ def _clipped_coupons_sync(limit: int) -> dict:
 
 def _clip_coupon_sync(coupon_id: int) -> dict:
     async def _run():
-        from texas_grocery_mcp.clients.graphql import HEBGraphQLClient
+        from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
         client = HEBGraphQLClient()
         try:
             return await client.clip_coupon(int(coupon_id))
@@ -501,7 +501,7 @@ def _clip_coupon_sync(coupon_id: int) -> dict:
 
 def _search_stores_sync(address: str, radius_miles: int) -> dict:
     async def _run():
-        from texas_grocery_mcp.clients.graphql import HEBGraphQLClient
+        from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
         client = HEBGraphQLClient()
         try:
             result = await client.search_stores(

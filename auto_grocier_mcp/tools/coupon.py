@@ -4,11 +4,11 @@ from typing import TYPE_CHECKING, Annotated, Any
 
 from pydantic import Field
 
-from texas_grocery_mcp.auth.session import ensure_session, is_authenticated
-from texas_grocery_mcp.state import StateManager
+from auto_grocier_mcp.auth.session import ensure_session, is_authenticated
+from auto_grocier_mcp.state import StateManager
 
 if TYPE_CHECKING:
-    from texas_grocery_mcp.clients.graphql import HEBGraphQLClient
+    from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
 
 # Category name to ID mapping for convenience
 CATEGORY_IDS = {

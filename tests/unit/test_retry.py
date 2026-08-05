@@ -2,7 +2,7 @@
 
 import pytest
 
-from texas_grocery_mcp.reliability.retry import RetryConfig, with_retry
+from auto_grocier_mcp.reliability.retry import RetryConfig, with_retry
 
 
 @pytest.mark.asyncio

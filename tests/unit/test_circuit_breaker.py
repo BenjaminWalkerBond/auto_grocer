@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from texas_grocery_mcp.reliability.circuit_breaker import (
+from auto_grocier_mcp.reliability.circuit_breaker import (
     CircuitBreaker,
     CircuitBreakerConfig,
     CircuitBreakerOpenError,

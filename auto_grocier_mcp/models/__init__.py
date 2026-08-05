@@ -1,14 +1,14 @@
 """Data models for Texas Grocery MCP."""
 
-from texas_grocery_mcp.models.cart import AppliedCoupon, Cart, CartItem
-from texas_grocery_mcp.models.coupon import Coupon, CouponCategory, CouponSearchResult
-from texas_grocery_mcp.models.errors import AuthRequiredResponse, ErrorResponse
-from texas_grocery_mcp.models.health import (
+from auto_grocier_mcp.models.cart import AppliedCoupon, Cart, CartItem
+from auto_grocier_mcp.models.coupon import Coupon, CouponCategory, CouponSearchResult
+from auto_grocier_mcp.models.errors import AuthRequiredResponse, ErrorResponse
+from auto_grocier_mcp.models.health import (
     CircuitBreakerStatus,
     ComponentHealth,
     HealthResponse,
 )
-from texas_grocery_mcp.models.product import (
+from auto_grocier_mcp.models.product import (
     ExtendedNutrition,
     NutrientInfo,
     Product,
@@ -18,7 +18,7 @@ from texas_grocery_mcp.models.product import (
     ProductSearchAttempt,
     ProductSearchResult,
 )
-from texas_grocery_mcp.models.store import (
+from auto_grocier_mcp.models.store import (
     GeocodedLocation,
     SearchAttempt,
     Store,

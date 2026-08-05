@@ -10,7 +10,7 @@ from typing import Any, Literal, cast
 
 import structlog
 
-from texas_grocery_mcp.models.health import (
+from auto_grocier_mcp.models.health import (
     CircuitBreakerStatus,
     ComponentHealth,
     HealthResponse,
@@ -86,7 +86,7 @@ def health_ready() -> dict[str, Any]:
 
     # Check GraphQL API status
     try:
-        from texas_grocery_mcp.clients.graphql import HEBGraphQLClient
+        from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
 
         client = HEBGraphQLClient()
         cb_status = client.circuit_breaker.get_status()
@@ -119,7 +119,7 @@ def health_ready() -> dict[str, Any]:
 
     # Check cache status (if configured)
     try:
-        from texas_grocery_mcp.utils.config import get_settings
+        from auto_grocier_mcp.utils.config import get_settings
 
         settings = get_settings()
         if settings.redis_url:

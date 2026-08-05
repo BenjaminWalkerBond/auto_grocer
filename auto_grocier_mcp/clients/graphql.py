@@ -11,8 +11,8 @@ from typing import Any, cast
 import httpx
 import structlog
 
-from texas_grocery_mcp.auth.session import get_httpx_cookies, is_authenticated
-from texas_grocery_mcp.models import (
+from auto_grocier_mcp.auth.session import get_httpx_cookies, is_authenticated
+from auto_grocier_mcp.models import (
     Coupon,
     CouponCategory,
     CouponSearchResult,
@@ -26,7 +26,7 @@ from texas_grocery_mcp.models import (
     Store,
     StoreSearchResult,
 )
-from texas_grocery_mcp.reliability import (
+from auto_grocier_mcp.reliability import (
     CircuitBreaker,
     RetryConfig,
     ThrottleConfig,
@@ -34,8 +34,8 @@ from texas_grocery_mcp.reliability import (
     TTLCache,
     with_retry,
 )
-from texas_grocery_mcp.services.geocoding import GeocodingResult, GeocodingService
-from texas_grocery_mcp.utils.config import get_settings
+from auto_grocier_mcp.services.geocoding import GeocodingResult, GeocodingService
+from auto_grocier_mcp.utils.config import get_settings
 
 logger = structlog.get_logger()
 
@@ -1334,7 +1334,7 @@ class HEBGraphQLClient:
         Returns:
             Parsed ProductDetails model
         """
-        from texas_grocery_mcp.models.product import (
+        from auto_grocier_mcp.models.product import (
             ExtendedNutrition,
             ProductDetails,
         )
@@ -1499,7 +1499,7 @@ class HEBGraphQLClient:
         Returns:
             List of NutrientInfo models
         """
-        from texas_grocery_mcp.models.product import NutrientInfo
+        from auto_grocier_mcp.models.product import NutrientInfo
 
         result = []
         for n in nutrients_data:

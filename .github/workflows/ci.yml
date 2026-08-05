@@ -30,12 +30,39 @@ jobs:
           pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Lint (ruff)
-        # Scoped to actively-maintained code + tests. The vendored
-        # texas_grocery_mcp library and legacy scripts are excluded/untargeted;
-        # a repo-wide lint cleanup is tracked separately.
-        run: ruff check mcp_server.py utility/graphql_cart.py tests/
+        # Repo-wide lint gate. The vendored auto_grocier_mcp library and the
+        # generated session_maintenance/updated_functions fragments are excluded
+        # via pyproject.toml [tool.ruff] extend-exclude.
+        run: ruff check .
 
       - name: Run unit tests
-        # Unit tests only; integration tests need a live HEB session and are
-        # skipped unless --run-integration is passed.
-        run: pytest tests/unit -v
+        # Full unit suite. On ubuntu the POSIX 0o600 permission tests run and
+        # pass; integration tests need a live HEB session and are skipped unless
+        # --run-integration is passed.
+        run: pytest tests/unit
+
+  typecheck:
+    runs-on: ubuntu-latest
+    # Advisory only this cycle: mypy reports type issues but does NOT block the
+    # build. Can be tightened / promoted to a gate in a later cycle.
+    continue-on-error: true
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Type check (mypy)
+        # First-party source only; auto_grocier_mcp and friends are excluded via
+        # [tool.mypy] in pyproject.toml.
+        run: mypy classes database session_maintenance utility mcp_server.py recipe_grabber.py claude.py main.py
