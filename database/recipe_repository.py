@@ -16,7 +16,7 @@ class RecipeRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def create(self, url: str, title: str = None, source_domain: str = None, description: str = None, cook_time: int = None) -> Recipe:
+    def create(self, url: str, title: str | None = None, source_domain: str | None = None, description: str | None = None, cook_time: int | None = None) -> Recipe:
         """
         Create a new recipe.
 
@@ -55,7 +55,7 @@ class RecipeRepository:
         """Get a recipe by its URL"""
         return self.db.query(Recipe).filter(Recipe.url == url).first()
 
-    def get_or_create(self, url: str, title: str = None, source_domain: str = None, description: str = None, cook_time: int = None) -> Recipe:
+    def get_or_create(self, url: str, title: str | None = None, source_domain: str | None = None, description: str | None = None, cook_time: int | None = None) -> Recipe:
         """
         Get an existing recipe or create a new one if it doesn't exist.
 
@@ -74,7 +74,7 @@ class RecipeRepository:
             recipe = self.create(url, title, source_domain, description, cook_time)
         return recipe
 
-    def get_all(self, limit: int = None, offset: int = 0) -> List[Recipe]:
+    def get_all(self, limit: int | None = None, offset: int = 0) -> List[Recipe]:
         """
         Get all recipes with optional pagination.
 
@@ -133,7 +133,7 @@ class RecipeRepository:
             Recipe.source_domain.ilike(f'%{domain}%')
         ).all()
 
-    def update(self, recipe_id: int, url: str = None, title: str = None, source_domain: str = None, description: str = None, cook_time: int = None) -> Optional[Recipe]:
+    def update(self, recipe_id: int, url: str | None = None, title: str | None = None, source_domain: str | None = None, description: str | None = None, cook_time: int | None = None) -> Optional[Recipe]:
         """
         Update a recipe.
 

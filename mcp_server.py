@@ -55,6 +55,7 @@ import os
 import subprocess
 import sys
 import threading
+from collections.abc import Callable
 
 from fastmcp import FastMCP
 
@@ -908,7 +909,7 @@ def list_all_recipes(page: int = 1) -> dict:
 def seed_recipes(
     title: str = "",
     url: str = "",
-    ingredients: list = None,
+    ingredients: list | None = None,
     description: str = "",
     cook_time: int = 0,
 ) -> dict:
@@ -961,6 +962,7 @@ def seed_recipes(
     # YouTube auto-detection: when a video/Short URL is given without explicit
     # ingredients, fetch + parse the description into ingredients.
     youtube_source = False
+    is_youtube_url: Callable[[str], bool] | None
     try:
         from utility.youtube import is_youtube_url, youtube_recipe_from_url
     except Exception:  # noqa: BLE001 - module optional at import time

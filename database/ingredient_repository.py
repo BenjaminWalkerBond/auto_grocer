@@ -17,7 +17,7 @@ class IngredientRepository:
         self.db = db
         self.tag_repo = TagRepository(db)
 
-    def create(self, name: str, amount: float, unit: str, tag_names: List[str] = None, recipe_id: int = None) -> Ingredient:
+    def create(self, name: str, amount: float, unit: str, tag_names: List[str] | None = None, recipe_id: int | None = None) -> Ingredient:
         """
         Create a new ingredient.
 
@@ -53,7 +53,7 @@ class IngredientRepository:
         """Get an ingredient by its ID"""
         return self.db.query(Ingredient).filter(Ingredient.id == ingredient_id).first()
 
-    def get_all(self, limit: int = None, offset: int = 0) -> List[Ingredient]:
+    def get_all(self, limit: int | None = None, offset: int = 0) -> List[Ingredient]:
         """
         Get all ingredients with optional pagination.
 
@@ -138,8 +138,8 @@ class IngredientRepository:
             Ingredient.recipe_id == recipe_id
         ).all()
 
-    def update(self, ingredient_id: int, name: str = None, amount: float = None,
-               unit: str = None, tag_names: List[str] = None) -> Optional[Ingredient]:
+    def update(self, ingredient_id: int, name: str | None = None, amount: float | None = None,
+               unit: str | None = None, tag_names: List[str] | None = None) -> Optional[Ingredient]:
         """
         Update an ingredient.
 
