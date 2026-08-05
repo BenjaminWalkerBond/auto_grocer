@@ -72,3 +72,11 @@ exclude = [
     "word_dictionaries",
     "tests",
 ]
+
+# nodriver ships py.typed, so mypy would otherwise follow imports into its
+# auto-generated CDP source. One of those files (nodriver/cdp/network.py) is not
+# valid UTF-8, which makes mypy abort with "Cannot decode file" before it can
+# check any first-party code. Skip following into it; it's a third-party dep.
+[[tool.mypy.overrides]]
+module = "nodriver.*"
+follow_imports = "skip"
