@@ -1,7 +1,5 @@
 import requests
 from bs4 import BeautifulSoup
-from claude import extract_ingredients
-
 
 url_list = [
     "https://www.cookingclassy.com/skillet-seared-salmon-with-garlic-lemon-butter-sauce/",
@@ -15,11 +13,10 @@ for url in url_list:
         soup = BeautifulSoup(response.content, "html.parser")
 
         # Find all the text on the webpage
-        # text = soup.get_text()
+        text = soup.get_text()
 
         # Find all the html on the webpage
-        
-        # Remove newlines and extra spaces in the text
+
         text = " ".join(text.split())
 
         # print the first 200 characters of the text

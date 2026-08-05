@@ -55,10 +55,10 @@ client = anthropic.Anthropic(api_key=claude_api_key) if claude_api_key else None
 def extract_ingredients(txt):
     """
     Extract ingredients from text using Claude Sonnet.
-    
+
     Args:
         txt: The text content from a recipe webpage
-        
+
     Returns:
         A list containing comma-separated ingredients with their measurements
     """

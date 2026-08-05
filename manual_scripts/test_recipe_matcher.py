@@ -12,16 +12,15 @@ then verifies that:
 Run:
     python manual_scripts/test_recipe_matcher.py
 """
-import sys
 import os
+import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database.db_connection import get_db_session
-from database.recipe_repository import RecipeRepository
 from database.ingredient_repository import IngredientRepository
+from database.recipe_repository import RecipeRepository
 from utility import recipe_matcher
-
 
 # Sentinel URLs so we can clean up after ourselves
 TEST_RECIPES = [

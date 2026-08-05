@@ -37,7 +37,7 @@ class DatabaseConfig:
         if override:
             return override
         return f"postgresql://{cls.DB_USER}:{cls.DB_PASSWORD}@{cls.DB_HOST}:{cls.DB_PORT}/{cls.DB_NAME}"
-    
+
     @classmethod
     def print_config(cls):
         """Print current database configuration (without password)"""

@@ -1,8 +1,10 @@
 # UTILITY SCRIPT TO ADD MORE FOOD TYPES FROM WIKIPEDIA TABLES.
 # WORKS FOR ANY NUMBER OF TABLES ON PAGE( as long as they are all the same structure ).
-import requests
 import re
+
+import requests
 from bs4 import BeautifulSoup
+
 
 # Function to clean a string and remove everything except letters and spaces
 def clean_string(input_string):

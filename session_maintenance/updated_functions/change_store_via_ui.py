@@ -14,7 +14,7 @@ async def change_store_via_ui(tab, search_text):
     # Try to find and click the fulfillment button in the header
     opener = None
     opened = False
-    
+
     # Look for the fulfillment button that shows store info - in the HTML it's a button with store icon
     for selector in [
         'button[aria-label*="Kyle"]',
@@ -42,7 +42,7 @@ async def change_store_via_ui(tab, search_text):
                 break
         except:
             continue
-    
+
     # If CSS selectors didn't work, try XPath to find clickable element with store info
     if not opened:
         for xp in [
@@ -59,10 +59,10 @@ async def change_store_via_ui(tab, search_text):
                 opened = True
                 print(f"    ✓ Opened selector via {xp}")
                 break
-    
+
     if not opened:
         raise Exception("Could not find the store/fulfillment selector button.")
-    
+
     await random_time()
 
     # Optional "change store" affordance.

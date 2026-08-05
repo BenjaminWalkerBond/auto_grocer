@@ -1,7 +1,8 @@
 import os
 
+
 class IngredientList:
-    
+
     tags_dict = {}
     tags= ["cheese","fish","fruit","meat","oil","pasta","spice","tree_nut","vegetable","wine"]
     tags_constant = {"eggs","milk","none"}
@@ -10,7 +11,7 @@ class IngredientList:
         # load all txt files in the word_dictionaries folder into tags_dict
         # get the parent directory of the current file
         parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    
+
         for path in os.scandir(os.path.join(parent_dir, "word_dictionaries")):
             # print(path)
             if path.is_file() and path.name.endswith(".txt"):
@@ -20,14 +21,14 @@ class IngredientList:
                     for line in f:
                         # print("line is: "+line.strip()+"\n")
                         self.tags_dict[line.strip()] = tag
-       
+
         #  initialize each dictionary with their respective word files
         print("Initialized all tag dictionaries \n")
-        
+
         self.tags_dict["eggs"] = "eggs"
         self.tags_dict["milk"] = "milk"
     def __init__(self):
-        self.init_dicts();
+        self.init_dicts()
         self.ingredients = []
     def add_ingredient(self, ingredient):
         self.ingredients.append(ingredient)
@@ -36,7 +37,7 @@ class IngredientList:
 
     # need to alter algorithim to search for compound words like "green beans"
     def get_tag(self,ingredientName):
-        ingredientName = ingredientName.lower() 
+        ingredientName = ingredientName.lower()
         tag=self.tags_dict.get(ingredientName)
         # check if self.tags.get(ingredientName) is not in the dictionary
         if tag is None:

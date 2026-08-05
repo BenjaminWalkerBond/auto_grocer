@@ -9,32 +9,28 @@ Step 4.5 fix), change_store_via_ui, add_ingredient, checkout.
 """
 from __future__ import annotations
 
-import os
-import json
 import asyncio
+import json
 from urllib.parse import quote_plus
 
 from claude import get_setting
-from utility.read_email import fetch_verification_code
-
 from session_maintenance.primitives import (
-    random_time,
-    human_like_delay,
-    human_like_typing,
-    scroll_to_element,
     attr,
-    is_visible,
-    is_enabled,
-    click_element,
-    js_click,
-    select_one,
-    select_all,
-    xpath_all,
-    select_first_of,
     check_exists_by_xpath,
+    click_element,
     find_by_text,
-    dismiss_modals,
+    human_like_typing,
+    is_enabled,
+    is_visible,
+    js_click,
+    random_time,
+    scroll_to_element,
+    select_all,
+    select_first_of,
+    select_one,
+    xpath_all,
 )
+from utility.read_email import fetch_verification_code
 
 HEB_HOME = "https://www.heb.com/"
 HEB_CART = "https://www.heb.com/cart/"

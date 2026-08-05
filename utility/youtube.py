@@ -9,14 +9,13 @@ description. This module:
   * parses that description into structured ingredient dicts via the project's
     existing Claude extractor + cleaner, so it plugs straight into seed_recipes.
 """
-import re
 import json
+import re
 from typing import Optional
 
 import requests
 
-from claude import client, MODEL, get_recipe_metadata_txt
-
+from claude import MODEL, client, get_recipe_metadata_txt
 
 # Match an 11-char YouTube video id from the common URL shapes.
 _VIDEO_ID_PATTERNS = [

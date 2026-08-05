@@ -679,6 +679,9 @@ def add_products_by_id(products: list[dict], clear_first: bool = False) -> dict:
         graphql_cart_sync(IngredientList(), _store_id(), do_clear=True)
     return _add_by_id_sync(products or [])
 
+
+@mcp.tool()
+def add_recipe_ingredients(request: str, clear_first: bool = False) -> dict:
     """
     Match a natural-language meal request against recipes in the database and add
     all matched recipes' ingredients to the cart via GraphQL.
