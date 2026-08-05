@@ -10,11 +10,55 @@ An automated grocery shopping assistant that parses recipes and manages ingredie
 2. Fill in your actual credentials in `.env`
 3. The `.gitignore` file ensures `.env` stays local only
 
+## Prerequisites
+
+The **recommended** way to run auto_grocier is the source-only Docker path: clone
+the repo and start everything with `docker compose`. The Docker image bundles
+**PostgreSQL, Chromium, and Xvfb**, so it can refresh its own HEB session with no
+host Python, Postgres, or browser install.
+
+```bash
+git clone <your-auto_grocier-repo-url>
+cd auto_grocier
+cp .env.example .env          # then fill in your credentials (see below)
+docker compose -f docker/docker-compose.yml build mcp
+docker compose -f docker/docker-compose.yml run --rm -T mcp
+```
+
+The host `python main.py` path (see [Quick Start](#quick-start)) is the
+**alternative** for local development.
+
+### What you need
+
+Regardless of path, you need the following to get from a fresh clone to a running
+MCP server:
+
+- **Docker Desktop** — for the recommended route (bundles Postgres + Chromium + Xvfb).
+- **PostgreSQL** (Postgres) — only if you run on the host *without* the
+  compose-provided database; the Docker route provides one for you.
+- **Chromium / Chrome** — only for the host login path; the Docker image bundles it.
+- **A Gmail account + app password** — HEB sends email-verification codes, which
+  are read over IMAP. Set `EMAIL` and the Gmail IMAP **app password** in `.env`.
+- **An Anthropic / Claude API key** — `CLAUDE_API_KEY` (`sk-ant-...`) for ingredient
+  parsing and self-healing.
+- **An active H-E-B account** — `EMAIL` / `PASSWORD` in `.env`.
+- **Store selection** — set your active pickup store (via the `set_store` tool or
+  the store setting in `.env`) so orders route to the right location.
+
 ## Quick Start
 
-1. **Activate virtual environment** (ALWAYS do this first!)
+1. **Create and activate a virtual environment** (Python 3.12 required)
+
+   PowerShell (Windows):
+   ```powershell
+   python -m venv .venv
+   .venv\Scripts\Activate.ps1
+   ```
+
+   bash / WSL / macOS:
    ```bash
-   source venv/bin/activate
+   python3 -m venv .venv
+   source .venv/bin/activate
    ```
 
 2. **Configure your credentials** - Copy and edit the env file:
@@ -50,9 +94,9 @@ An automated grocery shopping assistant that parses recipes and manages ingredie
    ```bash
    python main.py
    # or, equivalently:
-   python -m grocery_browser.run
+   python -m session_maintenance.run
    # override the mode without editing .env:
-   MODE=test python -m grocery_browser.run
+   MODE=test python -m session_maintenance.run
    ```
 
 5. **Run database tests** (optional)
@@ -66,12 +110,12 @@ An automated grocery shopping assistant that parses recipes and manages ingredie
 The project ships an [MCP](https://modelcontextprotocol.io/) server (`mcp_server.py`)
 that exposes HEB grocery automation as tools over **pure GraphQL** (no browser at
 runtime). It reuses an exported HEB session — run the maintenance workflow
-(`MODE=update_graphql_hashes python -m grocery_browser.run`) to log in and capture
+(`MODE=update_graphql_hashes python -m session_maintenance.run`) to log in and capture
 the GraphQL hashes, then call `refresh_session`.
 
 **Automatic login:** if no valid session is available when an authenticated tool
 is called, the server automatically runs a one-off nodriver browser login
-(`MODE=login_export python -m grocery_browser.run`) to refresh the session, then
+(`MODE=login_export python -m session_maintenance.run`) to refresh the session, then
 continues. This can take up to a minute on the first call. Disable it with
 `AUTO_GROCIER_AUTO_LOGIN=0` (tune the cap with `AUTO_GROCIER_AUTO_LOGIN_TIMEOUT`),
 in which case tools return `NOT_AUTHENTICATED` and you refresh the session
@@ -79,7 +123,7 @@ manually.
 
 Start the server:
 ```bash
-source venv/bin/activate
+source .venv/bin/activate
 python mcp_server.py
 ```
 
@@ -167,12 +211,11 @@ place_order                          # optional, guarded — CHARGES your card
 
 All documentation is located in the `docs/` directory:
 
-- **[Browser automation (nodriver)](grocery_browser/README.md)** - The async browser layer and its run modes
-- **[Claude Setup Guide](docs/CLAUDE_SETUP.md)** - API configuration and usage instructions
+- **[Browser automation (nodriver)](session_maintenance/README.md)** - The async browser layer and its run modes
+- **[Claude Setup Guide](CLAUDE.md)** - API configuration and usage instructions
 - **[PostgreSQL Installation](docs/POSTGRES_INSTALL.md)** - Database setup guide
 - **[Database Plan](docs/DATABASE_PLAN.md)** - Database architecture and design
 - **[Database Implementation](docs/DATABASE_IMPLEMENTATION.md)** - Implementation details
-- **[Full Documentation](docs/README.md)** - Complete project documentation
 
 ## Project Structure
 
@@ -181,13 +224,13 @@ auto_grocier/
 ├── docs/                    # All documentation
 ├── classes/                 # Core ingredient classes
 ├── database/                # Database models and repositories
-├── grocery_browser/         # Async nodriver browser automation (login, reserve, checkout)
+├── session_maintenance/     # Async nodriver browser automation (login, reserve, checkout)
 ├── docker/                  # Dockerized Postgres + MCP server
 ├── manual_scripts/          # Ad-hoc/manual test scripts (run by hand; not pytest)
 ├── utility/                 # Utility scripts (GraphQL, recipe parsing, email)
 ├── word_dictionaries/       # Ingredient classification data
 ├── mcp_server.py            # MCP server (pure GraphQL)
-└── main.py                  # Entrypoint shim -> grocery_browser.run
+└── main.py                  # Entrypoint shim -> session_maintenance.run
 ```
 
 ## Important Notes
