@@ -1,8 +1,11 @@
+import io
 import json
 import os
 import sys
+from typing import cast
 
 import anthropic
+from anthropic.types import TextBlock
 from dotenv import load_dotenv
 
 # Ensure stdout/stderr use UTF-8 so the project's Unicode status symbols (✓, 🥗,
@@ -11,7 +14,8 @@ from dotenv import load_dotenv
 # here covers the whole app. No-op on Linux/macOS (already UTF-8).
 for _stream in (sys.stdout, sys.stderr):
     try:
-        _stream.reconfigure(encoding="utf-8")
+        if isinstance(_stream, io.TextIOWrapper):
+            _stream.reconfigure(encoding="utf-8")
     except Exception:
         pass
 
@@ -325,7 +329,7 @@ Respond with ONLY a JSON object (no markdown, no extra text) with these exact ke
             max_tokens=1024,
             messages=[{"role": "user", "content": prompt}],
         )
-        raw = message.content[0].text.strip()
+        raw = cast(TextBlock, message.content[0]).text.strip()
 
         # Strip code fences if present
         if raw.startswith("```"):
