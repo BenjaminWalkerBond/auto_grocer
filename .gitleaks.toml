@@ -1,0 +1,30 @@
+# gitleaks configuration for auto_grocier.
+#
+# Extends gitleaks' built-in default ruleset (Claude/Anthropic keys, generic
+# API keys, passwords, etc.) and adds a narrow allowlist so the secret scanner
+# does not flag intentionally-redacted example identifiers.
+#
+# Run locally:  gitleaks detect --no-banner --redact
+# The pre-commit hook in .pre-commit-config.yaml wires this into commits.
+
+title = "auto_grocier gitleaks config"
+
+[extend]
+# Inherit all of gitleaks' default rules.
+useDefault = true
+
+[allowlist]
+description = "Redacted example identifiers and template placeholders"
+
+paths = [
+  # Multi-agent handoff notes intentionally contain redacted example account
+  # ids / order ids for context. They are not live secrets.
+  '''\.github/agents/handoffs/.*''',
+  # .env.example ships placeholder values (e.g. sk-ant-your-key-here) by design.
+  '''\.env\.example''',
+]
+
+regexes = [
+  # Documented API-key placeholder in templates/docs — never a real key.
+  '''sk-ant-(your-key-here|api03-xxxx|xxxx)''',
+]

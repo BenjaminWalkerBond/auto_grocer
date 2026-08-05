@@ -1,0 +1,38 @@
+NOTICE
+======
+
+auto_grocier
+Copyright (c) 2026 Benjamin Bond
+Licensed under the MIT License (see LICENSE).
+
+------------------------------------------------------------------------------
+Third-party components
+------------------------------------------------------------------------------
+
+auto_grocier_mcp/
+------------------
+
+The vendored `auto_grocier_mcp/` package (formerly imported as
+`texas_grocery_mcp`) is derived from the open-source project
+**texas-grocery-mcp** by Michael Walker:
+
+    https://github.com/mgwalkerjr95/texas-grocery-mcp
+
+The upstream work is licensed under the MIT License, Copyright (c) 2026
+Michael Walker. A verbatim copy of the upstream license is included at
+`auto_grocier_mcp/LICENSE`.
+
+This copy has been **modified from the original**. Summary of modifications:
+
+  - Added a persisted-query override loader (~40 LOC) in
+    `auto_grocier_mcp/clients/graphql.py`, allowing captured GraphQL
+    persisted-query hashes to be reloaded at runtime.
+  - Added a net-new tool module `auto_grocier_mcp/tools/substitution.py`,
+    with a corresponding registration line in
+    `auto_grocier_mcp/server.py`.
+  - Flattened the source tree out of the upstream `src/` layout; the upstream
+    `src/` wrapper, `pyproject.toml`, `uv.lock`, Dockerfile, CHANGELOG,
+    CONTRIBUTING, and SECURITY files are not vendored here.
+
+All other files in `auto_grocier_mcp/` remain substantially as published
+upstream and retain their original MIT license terms.

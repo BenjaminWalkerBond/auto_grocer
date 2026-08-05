@@ -2,6 +2,12 @@
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
+# Provenance: the vendored `auto_grocier_mcp/` package (formerly imported as
+# `texas_grocery_mcp`) is derived from and "modified from the original"
+# texas-grocery-mcp by Michael Walker
+# (https://github.com/mgwalkerjr95/texas-grocery-mcp), used under the MIT
+# License. See the root NOTICE file and auto_grocier_mcp/LICENSE for details.
+
 [project]
 name = "auto-grocier"
 version = "0.1.0"
