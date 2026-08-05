@@ -5,9 +5,11 @@ Defines the schema for ingredients, tags, and recipes.
 from datetime import datetime
 
 from sqlalchemy import DECIMAL, TIMESTAMP, Column, ForeignKey, Integer, String, Table, Text
-from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    pass
 
 # Junction table for many-to-many relationship between ingredients and tags
 ingredient_tags = Table(
@@ -25,13 +27,15 @@ class Tag(Base):
     """
     __tablename__ = 'tags'
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(100), unique=True, nullable=False, index=True)
-    description = Column(Text, nullable=True)
-    created_at = Column(TIMESTAMP, default=datetime.utcnow, nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, default=datetime.utcnow, nullable=False)
 
     # Relationship: A tag can be associated with many ingredients
-    ingredients = relationship('Ingredient', secondary=ingredient_tags, back_populates='tags')
+    ingredients: Mapped[list['Ingredient']] = relationship(
+        'Ingredient', secondary=ingredient_tags, back_populates='tags'
+    )
 
     def __repr__(self):
         return f"<Tag(id={self.id}, name='{self.name}')>"
@@ -53,17 +57,21 @@ class Recipe(Base):
     """
     __tablename__ = 'recipes'
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    url = Column(String(500), unique=True, nullable=False, index=True)
-    title = Column(String(500), nullable=True)
-    description = Column(Text, nullable=True)
-    source_domain = Column(String(255), nullable=True, index=True)
-    cook_time = Column(Integer, nullable=True)  # Cook time in minutes
-    created_at = Column(TIMESTAMP, default=datetime.utcnow, nullable=False)
-    updated_at = Column(TIMESTAMP, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    url: Mapped[str] = mapped_column(String(500), unique=True, nullable=False, index=True)
+    title: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_domain: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    cook_time: Mapped[int | None] = mapped_column(Integer, nullable=True)  # Cook time in minutes
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
 
     # Relationship: A recipe has many ingredients
-    ingredients = relationship('Ingredient', back_populates='recipe', cascade='all, delete-orphan')
+    ingredients: Mapped[list['Ingredient']] = relationship(
+        'Ingredient', back_populates='recipe', cascade='all, delete-orphan'
+    )
 
     def __repr__(self):
         return f"<Recipe(id={self.id}, title='{self.title}', url='{self.url}')>"
@@ -90,17 +98,24 @@ class Ingredient(Base):
     """
     __tablename__ = 'ingredients'
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    recipe_id = Column(Integer, ForeignKey('recipes.id', ondelete='CASCADE'), nullable=True, index=True)
-    name = Column(String(255), nullable=False, index=True)
-    amount = Column(DECIMAL(10, 3), nullable=False)  # Support decimals like 0.25, 1.5, etc.
-    unit = Column(String(50), nullable=False)
-    created_at = Column(TIMESTAMP, default=datetime.utcnow, nullable=False)
-    updated_at = Column(TIMESTAMP, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    recipe_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey('recipes.id', ondelete='CASCADE'), nullable=True, index=True
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    # DECIMAL column; treated as float throughout the app layer.
+    amount: Mapped[float] = mapped_column(DECIMAL(10, 3), nullable=False)
+    unit: Mapped[str] = mapped_column(String(50), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
 
     # Relationships
-    recipe = relationship('Recipe', back_populates='ingredients')
-    tags = relationship('Tag', secondary=ingredient_tags, back_populates='ingredients')
+    recipe: Mapped['Recipe | None'] = relationship('Recipe', back_populates='ingredients')
+    tags: Mapped[list['Tag']] = relationship(
+        'Tag', secondary=ingredient_tags, back_populates='ingredients'
+    )
 
     def __repr__(self):
         tag_names = [tag.name for tag in self.tags] if self.tags else []

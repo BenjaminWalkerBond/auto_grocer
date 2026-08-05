@@ -36,7 +36,7 @@ DEFAULT_URLS_FILE = os.path.join(
 
 def load_urls_from_file(path: str) -> list:
     """Read recipe URLs from a file (one per line, ignoring # comments/blanks)."""
-    urls = []
+    urls: list[str] = []
     if not os.path.exists(path):
         return urls
     with open(path, "r", encoding="utf-8") as f:
