@@ -8,7 +8,7 @@ from typing import Any
 import structlog
 from structlog.types import Processor
 
-from texas_grocery_mcp.utils.config import get_settings
+from auto_grocier_mcp.utils.config import get_settings
 
 
 def add_timestamp(

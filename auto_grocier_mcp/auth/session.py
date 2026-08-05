@@ -19,7 +19,7 @@ from typing import Any, ParamSpec, TypedDict
 
 import structlog
 
-from texas_grocery_mcp.utils.config import get_settings
+from auto_grocier_mcp.utils.config import get_settings
 
 logger = structlog.get_logger()
 
@@ -294,7 +294,7 @@ def save_browser_cookies(cookies: list[dict[str, Any]]) -> bool:
         state["cookies"] = existing_non_heb + heb_cookies
 
         # Write back with secure permissions
-        from texas_grocery_mcp.utils.secure_file import write_secure_json
+        from auto_grocier_mcp.utils.secure_file import write_secure_json
 
         write_secure_json(auth_path, state)
 
@@ -698,7 +698,7 @@ async def auto_refresh_session_if_needed() -> dict[str, Any] | None:
 
     try:
         # Import here to avoid circular imports
-        from texas_grocery_mcp.auth.browser_refresh import (
+        from auto_grocier_mcp.auth.browser_refresh import (
             BrowserRefreshError,
             LoginRequiredError,
             is_playwright_available,

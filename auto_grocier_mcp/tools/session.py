@@ -5,7 +5,7 @@ from typing import Any
 
 import structlog
 
-from texas_grocery_mcp.auth.browser_refresh import (
+from auto_grocier_mcp.auth.browser_refresh import (
     BrowserRefreshError,
     LoginRequiredError,
     PlaywrightNotInstalledError,
@@ -13,14 +13,14 @@ from texas_grocery_mcp.auth.browser_refresh import (
     is_playwright_available,
     refresh_session_with_browser,
 )
-from texas_grocery_mcp.auth.credentials import CredentialError, CredentialStore
-from texas_grocery_mcp.auth.session import (
+from auto_grocier_mcp.auth.credentials import CredentialError, CredentialStore
+from auto_grocier_mcp.auth.session import (
     check_session_freshness,
     get_session_info,
     get_session_status,
     is_authenticated,
 )
-from texas_grocery_mcp.utils.config import get_settings
+from auto_grocier_mcp.utils.config import get_settings
 
 logger = structlog.get_logger()
 
@@ -246,7 +246,7 @@ return {{
             "session:"
         ),
         "install_for_fast_refresh": (
-            "pip install texas-grocery-mcp[browser] && playwright install chromium"
+            "pip install auto-grocier-mcp[browser] && playwright install chromium"
         ),
         "current_status": {
             "authenticated": freshness.get("authenticated", False),

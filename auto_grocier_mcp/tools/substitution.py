@@ -5,13 +5,13 @@ from typing import TYPE_CHECKING, Annotated, Any
 import structlog
 from pydantic import Field
 
-from texas_grocery_mcp.auth.session import ensure_session
-from texas_grocery_mcp.state import StateManager
+from auto_grocier_mcp.auth.session import ensure_session
+from auto_grocier_mcp.state import StateManager
 
 logger = structlog.get_logger()
 
 if TYPE_CHECKING:
-    from texas_grocery_mcp.clients.graphql import HEBGraphQLClient
+    from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
 
 
 def _get_client() -> "HEBGraphQLClient":

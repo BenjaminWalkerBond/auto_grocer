@@ -2,7 +2,7 @@
 
 These cover the project-specific code in utility/graphql_cart.py and
 recipe_grabber.clean_ingredient — the package-size-aware quantity scaling and
-the free-form ingredient parser. The vendored texas_grocery_mcp library has its
+the free-form ingredient parser. The vendored auto_grocier_mcp library has its
 own tests elsewhere in tests/unit.
 """
 

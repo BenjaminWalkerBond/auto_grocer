@@ -4,7 +4,7 @@ This module provides fast session refresh (~10-15 seconds) by embedding
 Playwright directly, eliminating the orchestration overhead of the
 Playwright MCP approach (~4 minutes).
 
-Requires optional dependency: pip install texas-grocery-mcp[browser]
+Requires optional dependency: pip install auto-grocier-mcp[browser]
 After install, run: playwright install chromium
 """
 
@@ -299,7 +299,7 @@ async def refresh_session_with_browser(
     if not PLAYWRIGHT_AVAILABLE:
         raise PlaywrightNotInstalledError(
             "Playwright not installed. Install with:\n"
-            "  pip install texas-grocery-mcp[browser]\n"
+            "  pip install auto-grocier-mcp[browser]\n"
             "  playwright install chromium"
         )
 
@@ -378,7 +378,7 @@ async def refresh_session_with_browser(
                     await context.storage_state(path=str(auth_path))
 
                     # Ensure secure permissions on auth file
-                    from texas_grocery_mcp.utils.secure_file import ensure_secure_permissions
+                    from auto_grocier_mcp.utils.secure_file import ensure_secure_permissions
 
                     ensure_secure_permissions(auth_path)
 
@@ -524,7 +524,7 @@ async def refresh_session_with_browser(
                 await context.storage_state(path=str(auth_path))
 
                 # Ensure secure permissions on auth file
-                from texas_grocery_mcp.utils.secure_file import ensure_secure_permissions
+                from auto_grocier_mcp.utils.secure_file import ensure_secure_permissions
 
                 ensure_secure_permissions(auth_path)
 
@@ -801,7 +801,7 @@ async def auto_login_with_credentials(
     if not PLAYWRIGHT_AVAILABLE:
         raise PlaywrightNotInstalledError(
             "Playwright not installed. Install with:\n"
-            "  pip install texas-grocery-mcp[browser]\n"
+            "  pip install auto-grocier-mcp[browser]\n"
             "  playwright install chromium"
         )
 
@@ -1510,7 +1510,7 @@ async def _complete_login(
         await context.storage_state(path=str(auth_path))
 
         # Ensure secure permissions on auth file
-        from texas_grocery_mcp.utils.secure_file import ensure_secure_permissions
+        from auto_grocier_mcp.utils.secure_file import ensure_secure_permissions
 
         ensure_secure_permissions(auth_path)
 
