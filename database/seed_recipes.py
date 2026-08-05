@@ -16,16 +16,16 @@ passed to seed_recipes() directly.
 Usage:
     python database/seed_recipes.py
 """
-import sys
 import os
+import sys
 
 # Allow running directly: add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from recipe_grabber import populate_ingredient_list, extract_recipe_metadata
 from database.db_connection import get_db_session
 from database.ingredient_repository import IngredientRepository
 from database.recipe_repository import RecipeRepository
+from recipe_grabber import extract_recipe_metadata, populate_ingredient_list
 
 DEFAULT_URLS_FILE = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),

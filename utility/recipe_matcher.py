@@ -14,8 +14,8 @@ Matching strategy:
 """
 import re
 
-from classes.IngredientList import IngredientList
 from classes.Ingredient import Ingredient
+from classes.IngredientList import IngredientList
 
 
 def _split_request(user_text: str):

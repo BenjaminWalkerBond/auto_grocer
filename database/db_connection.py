@@ -3,7 +3,8 @@ Database connection module.
 Manages SQLAlchemy engine and session creation.
 """
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import Session, sessionmaker
+
 from .db_config import DatabaseConfig
 
 # Create database engine
@@ -16,7 +17,7 @@ try:
         pool_size=5,
         max_overflow=10
     )
-    print(f"✓ Database engine created successfully")
+    print("✓ Database engine created successfully")
 except Exception as e:
     print(f"✗ Error creating database engine: {e}")
     engine = None
@@ -32,7 +33,7 @@ def get_db() -> Session:
     """
     Get a database session.
     Use this as a context manager or with dependency injection.
-    
+
     Example:
         with get_db() as db:
             # Use db session here
@@ -40,7 +41,7 @@ def get_db() -> Session:
     """
     if SessionLocal is None:
         raise Exception("Database session factory not initialized. Check database configuration.")
-    
+
     db = SessionLocal()
     try:
         yield db
@@ -52,7 +53,7 @@ def get_db_session() -> Session:
     """
     Get a database session (non-generator version).
     Remember to close the session when done.
-    
+
     Example:
         db = get_db_session()
         try:
@@ -63,7 +64,7 @@ def get_db_session() -> Session:
     """
     if SessionLocal is None:
         raise Exception("Database session factory not initialized. Check database configuration.")
-    
+
     return SessionLocal()
 
 
