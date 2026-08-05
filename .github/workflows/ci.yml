@@ -43,9 +43,6 @@ jobs:
 
   typecheck:
     runs-on: ubuntu-latest
-    # Advisory only this cycle: mypy reports type issues but does NOT block the
-    # build. Can be tightened / promoted to a gate in a later cycle.
-    continue-on-error: true
 
     steps:
       - name: Check out repository
@@ -65,4 +62,7 @@ jobs:
       - name: Type check (mypy)
         # First-party source only; auto_grocier_mcp and friends are excluded via
         # [tool.mypy] in pyproject.toml.
+        # Advisory only this cycle: mypy still runs and prints issues, but its
+        # failure does NOT fail the job (green). Promote to a gate in a later cycle.
+        continue-on-error: true
         run: mypy classes database session_maintenance utility mcp_server.py recipe_grabber.py claude.py main.py
