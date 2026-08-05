@@ -112,8 +112,10 @@ How it works:
   `.env` change needed).
 - **In-container login:** when no valid session exists, the container refreshes
   it itself using the async **nodriver** flow (`AUTO_GROCIER_LOGIN_MODE=nodriver`)
-  driving Chromium headfully under Xvfb — validated against HEB's Imperva WAF.
-  The exported session persists in the `auto_grocier_session` volume.
+  driving Chromium headfully under Xvfb, completing HEB's normal browser-based
+  sign-in (including its standard bot-protection challenge) the same way a real
+  browser session does. The exported session persists in the
+  `auto_grocier_session` volume.
 - **Mounts:** `.env` (all credentials — HEB login, Gmail IMAP for email
   verification, Claude key, store) is mounted read-only — never baked into the
   image. The MCP service also loads it via `env_file`.
@@ -206,4 +208,33 @@ DATABASE_PASSWORD=your_password
 CLAUDE_API_KEY=your_api_key
 ```
 
-See `docs/CLAUDE_SETUP.md` and `docs/POSTGRES_INSTALL.md` for detailed setup instructions.
+See `CLAUDE.md` and `docs/POSTGRES_INSTALL.md` for detailed setup instructions.
+
+## Disclaimer
+
+This project is **not affiliated with or endorsed by H-E-B** (and is not
+sponsored by H-E-B). "H-E-B" and all related names, logos, and marks are
+trademarks of their respective owners and are used here only for descriptive,
+identifying purposes.
+
+auto_grocier is provided for **personal and educational use only**. You are
+responsible for using it in accordance with H-E-B's terms of service and all
+applicable laws. It automates actions against your own account with your own
+credentials and does not attempt to gain unauthorized access to anything.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED. See [LICENSE](LICENSE) for the full terms.
+
+## Credits
+
+auto_grocier vendors and builds on **texas-grocery-mcp** by Michael Walker,
+used under the MIT License:
+
+- Upstream project: https://github.com/mgwalkerjr95/texas-grocery-mcp
+
+The vendored code lives in `auto_grocier_mcp/` (formerly imported as
+`texas_grocery_mcp`) and has been modified from the original — see
+[NOTICE](NOTICE) and `auto_grocier_mcp/LICENSE` for the
+attribution and a summary of the changes. Thanks to Michael Walker for the
+original work.
+
