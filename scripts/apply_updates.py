@@ -2,13 +2,13 @@
 Apply Updated Functions (self-healing review tool)
 
 Reads the Claude-rewritten functions that the nodriver self-healing layer
-(``grocery_browser/self_healing.py``) saves to
-``grocery_browser/updated_functions/`` and splices each one back into its
-original source file (e.g. ``grocery_browser/flows.py``).
+(``session_maintenance/self_healing.py``) saves to
+``session_maintenance/updated_functions/`` and splices each one back into its
+original source file (e.g. ``session_maintenance/flows.py``).
 
 These rewrites are produced at runtime whenever a flow function breaks — both
 locally and inside the Docker container (the compose file bind-mounts
-``grocery_browser/updated_functions`` so in-container heals land in your working
+``session_maintenance/updated_functions`` so in-container heals land in your working
 tree). This script lets you review them and apply the good ones.
 
 Usage:
@@ -19,19 +19,18 @@ Usage:
 
 After applying, review the diff and run the flow again before committing.
 """
+import glob
 import os
 import re
 import sys
-import glob
-
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-UPDATED_FUNCTIONS_DIR = os.path.join(REPO_ROOT, "grocery_browser", "updated_functions")
+UPDATED_FUNCTIONS_DIR = os.path.join(REPO_ROOT, "session_maintenance", "updated_functions")
 
 # Where to look for a function when the recorded source path can't be used
-# (e.g. it was captured inside Docker as /app/grocery_browser/flows.py).
+# (e.g. it was captured inside Docker as /app/session_maintenance/flows.py).
 _SEARCH_GLOBS = (
-    os.path.join(REPO_ROOT, "grocery_browser", "*.py"),
+    os.path.join(REPO_ROOT, "session_maintenance", "*.py"),
     os.path.join(REPO_ROOT, "utility", "*.py"),
 )
 
@@ -138,7 +137,7 @@ def _candidate_source_paths(recorded_path):
     """Yield possible host paths for a recorded (possibly container) source path.
 
     The header's ``Source file`` comes from ``inspect.getfile`` and may be an
-    absolute path captured inside Docker (e.g. ``/app/grocery_browser/flows.py``)
+    absolute path captured inside Docker (e.g. ``/app/session_maintenance/flows.py``)
     that does not exist on the host. Re-root anything under a known package
     directory back into this repo.
     """
@@ -146,12 +145,12 @@ def _candidate_source_paths(recorded_path):
         return
     yield recorded_path
     norm = recorded_path.replace("\\", "/")
-    for seg in ("grocery_browser/", "utility/"):
+    for seg in ("session_maintenance/", "utility/"):
         idx = norm.find(seg)
         if idx != -1:
             yield os.path.join(REPO_ROOT, *norm[idx:].split("/"))
-    # Last resort: same basename under grocery_browser/.
-    yield os.path.join(REPO_ROOT, "grocery_browser", os.path.basename(norm))
+    # Last resort: same basename under session_maintenance/.
+    yield os.path.join(REPO_ROOT, "session_maintenance", os.path.basename(norm))
 
 
 def resolve_source_file(recorded_path, func_name):
@@ -178,7 +177,7 @@ def resolve_source_file(recorded_path, func_name):
 def list_updates():
     """List all available function updates."""
     if not os.path.exists(UPDATED_FUNCTIONS_DIR):
-        print("No grocery_browser/updated_functions/ directory found.")
+        print("No session_maintenance/updated_functions/ directory found.")
         return []
 
     updates = []
@@ -299,7 +298,7 @@ def main():
     updates = list_updates()
 
     if not updates:
-        print("No function updates found in grocery_browser/updated_functions/")
+        print("No function updates found in session_maintenance/updated_functions/")
         return
 
     if command == "--list":

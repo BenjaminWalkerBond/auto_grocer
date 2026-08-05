@@ -201,7 +201,7 @@ Test mode (`MODE=test` in `.env`) runs the full automation pipeline **without co
 4. **Add ingredients** — Searches for each ingredient on heb.com and clicks "Add to cart". Ingredients tagged as `vegetable` or `fruit` are prefixed with "organic".
 5. **Stop** — Prints a completion message and **keeps the browser open** so you can manually inspect the cart contents. Press Enter in the terminal to close the browser.
 
-All steps are wrapped with `self_healing_call`, which uses the Claude API to automatically rewrite broken **nodriver** flow functions on failure (up to 3 retries per function). Screenshots and page HTML are sent to Claude for context. Rewritten functions are saved to `grocery_browser/updated_functions/` for later review.
+All steps are wrapped with `self_healing_call`, which uses the Claude API to automatically rewrite broken **nodriver** flow functions on failure (up to 3 retries per function). Screenshots and page HTML are sent to Claude for context. Rewritten functions are saved to `session_maintenance/updated_functions/` for later review.
 
 No payment is processed. No order is placed.
 

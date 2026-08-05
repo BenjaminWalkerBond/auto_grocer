@@ -73,7 +73,7 @@ modes.
   Docker image runs Chromium under Xvfb automatically.
 - **Docker / root:** set `AUTO_GROCIER_NO_SANDBOX=1` (Chrome's sandbox refuses to
   run as root) and `NODRIVER_BROWSER_PATH` to the Chromium binary.
-- Self-healing rewrites are saved to `grocery_browser/updated_functions/`
+- Self-healing rewrites are saved to `session_maintenance/updated_functions/`
   (gitignored, regenerated at runtime).
 - The checkout flow stops at HEB's checkout page; placing a paid order is the MCP
   server's guarded `place_order` tool.
