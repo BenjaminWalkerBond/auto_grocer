@@ -2,12 +2,16 @@
 Database connection module.
 Manages SQLAlchemy engine and session creation.
 """
+from collections.abc import Iterator
+
 from sqlalchemy import create_engine
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from .db_config import DatabaseConfig
 
 # Create database engine
+engine: Engine | None
 try:
     DATABASE_URL = DatabaseConfig.get_database_url()
     engine = create_engine(
@@ -23,13 +27,14 @@ except Exception as e:
     engine = None
 
 # Create session factory
+SessionLocal: sessionmaker[Session] | None
 if engine:
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 else:
     SessionLocal = None
 
 
-def get_db() -> Session:
+def get_db() -> Iterator[Session]:
     """
     Get a database session.
     Use this as a context manager or with dependency injection.

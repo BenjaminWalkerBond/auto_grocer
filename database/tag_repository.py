@@ -15,7 +15,7 @@ class TagRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def create(self, name: str, description: str = None) -> Tag:
+    def create(self, name: str, description: str | None = None) -> Tag:
         """
         Create a new tag.
 
@@ -40,7 +40,7 @@ class TagRepository:
         """Get a tag by its name"""
         return self.db.query(Tag).filter(Tag.name == name.lower()).first()
 
-    def get_or_create(self, name: str, description: str = None) -> Tag:
+    def get_or_create(self, name: str, description: str | None = None) -> Tag:
         """
         Get an existing tag or create a new one if it doesn't exist.
 
@@ -60,7 +60,7 @@ class TagRepository:
         """Get all tags"""
         return self.db.query(Tag).order_by(Tag.name).all()
 
-    def update(self, tag_id: int, name: str = None, description: str = None) -> Optional[Tag]:
+    def update(self, tag_id: int, name: str | None = None, description: str | None = None) -> Optional[Tag]:
         """
         Update a tag.
 

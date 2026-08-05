@@ -22,6 +22,7 @@ import json
 import os
 import time
 from datetime import datetime
+from typing import Any
 
 import nodriver
 
@@ -224,7 +225,7 @@ async def run_probe() -> dict:
     minted = bool(reese84_ls or reese84_cookie)
     passed = (reese84_valid or minted) and not challenge and real_content
 
-    report = {
+    report: dict[str, Any] = {
         "timestamp": datetime.now().isoformat(),
         "display": display,
         "env": {

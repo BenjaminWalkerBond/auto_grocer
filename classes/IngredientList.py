@@ -3,7 +3,7 @@ import os
 
 class IngredientList:
 
-    tags_dict = {}
+    tags_dict: dict[str, str] = {}
     tags= ["cheese","fish","fruit","meat","oil","pasta","spice","tree_nut","vegetable","wine"]
     tags_constant = {"eggs","milk","none"}
 
