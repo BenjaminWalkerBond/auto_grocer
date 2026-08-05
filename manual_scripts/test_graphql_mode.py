@@ -2,7 +2,7 @@
 Tests for the GraphQL mode integration.
 
 - Verifies the nodriver -> Playwright auth.json export produces the structure the
-  texas_grocery_mcp client expects (offline, uses fake CDP cookie/tab objects).
+  auto_grocier_mcp client expects (offline, uses fake CDP cookie/tab objects).
 - Provides an opt-in live smoke test for product search (requires a valid
   auth.json and network access; set RUN_LIVE=1 to enable).
 
@@ -108,7 +108,7 @@ def test_live_search():
         print("Skipping live search test (set RUN_LIVE=1 to enable).")
         return
 
-    from texas_grocery_mcp.clients.graphql import HEBGraphQLClient
+    from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
 
     store_id = os.environ.get("STORE_ID", "737")
 

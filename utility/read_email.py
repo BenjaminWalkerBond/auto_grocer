@@ -1,9 +1,9 @@
-from dotenv import load_dotenv
-from imap_tools import MailBox, AND
-
 import os
-import time
 import re
+import time
+
+from dotenv import load_dotenv
+from imap_tools import AND, MailBox
 
 load_dotenv()
 
@@ -34,7 +34,7 @@ if __name__ == "__main__":
     print(f"Email user: {email_user}")
     print(f"Email password set: {'Yes' if email_password else 'No'}")
     print("\nFetching verification code (waiting 10 seconds)...")
-    
+
     try:
         code = fetch_verification_code()
         if code:

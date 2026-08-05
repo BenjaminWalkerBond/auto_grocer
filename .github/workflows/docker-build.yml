@@ -1,0 +1,49 @@
+name: Docker build
+
+# Scoped to the release path only. The MCP image installs Chromium/nodriver,
+# which is heavy, slow, and network-flake-prone, so this does NOT run on every
+# dev-branch PR — only on pushes to main and PRs targeting main, and only when
+# Docker-relevant files change. A separate workflow is required because per-job
+# trigger/path scoping is not possible within a single workflow's `on:`.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docker/**"
+      - "requirements.txt"
+      - "requirements-dev.txt"
+      - "mcp_server.py"
+      - "auto_grocier_mcp/**"
+      - "pyproject.toml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "docker/**"
+      - "requirements.txt"
+      - "requirements-dev.txt"
+      - "mcp_server.py"
+      - "auto_grocier_mcp/**"
+      - "pyproject.toml"
+
+jobs:
+  docker-build:
+    runs-on: ubuntu-latest
+    env:
+      # `docker compose build` interpolates the ENTIRE compose file first, and
+      # docker/docker-compose.yml uses ${DATABASE_PASSWORD:?...} (mandatory var),
+      # which aborts at parse time if unset. A throwaway value is enough — the
+      # build never starts Postgres, so no real secret is needed.
+      DATABASE_PASSWORD: ci
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Provide empty .env for compose interpolation
+        # The mcp service declares `env_file: ../.env` (gitignored, absent in CI).
+        # `docker compose build` errors on a missing required env_file, so create
+        # an empty one. DATABASE_PASSWORD above still supplies the mandatory var.
+        run: touch .env
+
+      - name: Build MCP image
+        run: docker compose -f docker/docker-compose.yml build mcp

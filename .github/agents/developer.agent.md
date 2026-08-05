@@ -35,7 +35,7 @@ with a summary in `reason` and return for escalation.
 - Activate the venv for any Python command: `source venv/bin/activate` (see
   [CLAUDE.md](../../CLAUDE.md)).
 - Keep the code lint-clean with ruff (line-length 100). Do NOT modify the vendored
-  `texas_grocery_mcp` library.
+  `auto_grocier_mcp` library.
 - Never hammer heb.com; auth/hash refresh is handled by the `refresh-heb-login` and
   `refresh-graphql-hashes` skills, not ad-hoc logins (see
   [.github/copilot-instructions.md](../copilot-instructions.md)).

@@ -8,9 +8,9 @@ error JSON) but uses nodriver's async tab API instead of the Selenium driver:
 """
 from __future__ import annotations
 
-import os
-import json
 import datetime
+import json
+import os
 import traceback
 
 

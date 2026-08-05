@@ -9,7 +9,7 @@ import pytest
 @pytest.fixture(autouse=True)
 def reset_tool_state():
     """Reset global state before each test."""
-    from texas_grocery_mcp.tools import store as store_module
+    from auto_grocier_mcp.tools import store as store_module
 
     store_module._default_store_id = None
     store_module._graphql_client = None
@@ -112,7 +112,7 @@ class TestFindSubstitute:
     @pytest.mark.asyncio
     async def test_requires_store_id(self):
         """find_substitute should error when no store available."""
-        from texas_grocery_mcp.tools.substitution import find_substitute
+        from auto_grocier_mcp.tools.substitution import find_substitute
 
         result = await find_substitute(ingredient_name="butter")
 
@@ -122,8 +122,8 @@ class TestFindSubstitute:
     @pytest.mark.asyncio
     async def test_rejects_empty_ingredient_name(self):
         """find_substitute should reject empty ingredient names."""
-        from texas_grocery_mcp.tools.store import set_default_store_id
-        from texas_grocery_mcp.tools.substitution import find_substitute
+        from auto_grocier_mcp.tools.store import set_default_store_id
+        from auto_grocier_mcp.tools.substitution import find_substitute
 
         set_default_store_id("590")
 
@@ -137,13 +137,13 @@ class TestFindSubstitute:
         self, mock_all_available_products
     ):
         """find_substitute should indicate no substitution when best match is available."""
-        from texas_grocery_mcp.tools.store import set_default_store_id
-        from texas_grocery_mcp.tools.substitution import find_substitute
+        from auto_grocier_mcp.tools.store import set_default_store_id
+        from auto_grocier_mcp.tools.substitution import find_substitute
 
         set_default_store_id("590")
 
         with patch(
-            "texas_grocery_mcp.tools.substitution._search_products",
+            "auto_grocier_mcp.tools.substitution._search_products",
             new_callable=AsyncMock,
             return_value=mock_all_available_products,
         ):
@@ -157,13 +157,13 @@ class TestFindSubstitute:
         self, mock_available_products, mock_claude_response
     ):
         """find_substitute should call Claude to evaluate candidates."""
-        from texas_grocery_mcp.tools.store import set_default_store_id
-        from texas_grocery_mcp.tools.substitution import find_substitute
+        from auto_grocier_mcp.tools.store import set_default_store_id
+        from auto_grocier_mcp.tools.substitution import find_substitute
 
         set_default_store_id("590")
 
         with patch(
-            "texas_grocery_mcp.tools.substitution._search_products",
+            "auto_grocier_mcp.tools.substitution._search_products",
             new_callable=AsyncMock,
             return_value=mock_available_products,
         ), patch(
@@ -185,13 +185,13 @@ class TestFindSubstitute:
         self, mock_available_products
     ):
         """find_substitute should filter to available=true before calling Claude."""
-        from texas_grocery_mcp.tools.store import set_default_store_id
-        from texas_grocery_mcp.tools.substitution import find_substitute
+        from auto_grocier_mcp.tools.store import set_default_store_id
+        from auto_grocier_mcp.tools.substitution import find_substitute
 
         set_default_store_id("590")
 
         with patch(
-            "texas_grocery_mcp.tools.substitution._search_products",
+            "auto_grocier_mcp.tools.substitution._search_products",
             new_callable=AsyncMock,
             return_value=mock_available_products,
         ), patch(
@@ -219,13 +219,13 @@ class TestFindSubstitute:
         self, mock_available_products, mock_claude_response, mock_croissant_context
     ):
         """find_substitute should pass recipe context to Claude."""
-        from texas_grocery_mcp.tools.store import set_default_store_id
-        from texas_grocery_mcp.tools.substitution import find_substitute
+        from auto_grocier_mcp.tools.store import set_default_store_id
+        from auto_grocier_mcp.tools.substitution import find_substitute
 
         set_default_store_id("590")
 
         with patch(
-            "texas_grocery_mcp.tools.substitution._search_products",
+            "auto_grocier_mcp.tools.substitution._search_products",
             new_callable=AsyncMock,
             return_value=mock_available_products,
         ), patch(
@@ -244,13 +244,13 @@ class TestFindSubstitute:
     @pytest.mark.asyncio
     async def test_fallback_when_claude_unavailable(self, mock_available_products):
         """find_substitute should fall back to category match when Claude fails."""
-        from texas_grocery_mcp.tools.store import set_default_store_id
-        from texas_grocery_mcp.tools.substitution import find_substitute
+        from auto_grocier_mcp.tools.store import set_default_store_id
+        from auto_grocier_mcp.tools.substitution import find_substitute
 
         set_default_store_id("590")
 
         with patch(
-            "texas_grocery_mcp.tools.substitution._search_products",
+            "auto_grocier_mcp.tools.substitution._search_products",
             new_callable=AsyncMock,
             return_value=mock_available_products,
         ), patch(
@@ -268,13 +268,13 @@ class TestFindSubstitute:
     @pytest.mark.asyncio
     async def test_no_products_found(self):
         """find_substitute should handle no products found."""
-        from texas_grocery_mcp.tools.store import set_default_store_id
-        from texas_grocery_mcp.tools.substitution import find_substitute
+        from auto_grocier_mcp.tools.store import set_default_store_id
+        from auto_grocier_mcp.tools.substitution import find_substitute
 
         set_default_store_id("590")
 
         with patch(
-            "texas_grocery_mcp.tools.substitution._search_products",
+            "auto_grocier_mcp.tools.substitution._search_products",
             new_callable=AsyncMock,
             return_value=[],
         ):
@@ -426,28 +426,28 @@ class TestCategoryTermExtraction:
 
     def test_extracts_butter_terms(self):
         """Should extract butter-related terms."""
-        from texas_grocery_mcp.tools.substitution import _extract_category_terms
+        from auto_grocier_mcp.tools.substitution import _extract_category_terms
 
         terms = _extract_category_terms("unsalted butter")
         assert "butter" in terms or "unsalted butter" in terms
 
     def test_extracts_chicken_terms(self):
         """Should extract chicken-related terms."""
-        from texas_grocery_mcp.tools.substitution import _extract_category_terms
+        from auto_grocier_mcp.tools.substitution import _extract_category_terms
 
         terms = _extract_category_terms("chicken breast")
         assert any("chicken" in t.lower() for t in terms)
 
     def test_extracts_leafy_greens_terms(self):
         """Should recognize leafy greens."""
-        from texas_grocery_mcp.tools.substitution import _extract_category_terms
+        from auto_grocier_mcp.tools.substitution import _extract_category_terms
 
         terms = _extract_category_terms("fresh spinach")
         assert "fresh spinach" in terms or "leafy greens" in [t.lower() for t in terms]
 
     def test_limits_to_three_terms(self):
         """Should limit to 3 search terms max."""
-        from texas_grocery_mcp.tools.substitution import _extract_category_terms
+        from auto_grocier_mcp.tools.substitution import _extract_category_terms
 
         terms = _extract_category_terms("some ingredient")
         assert len(terms) <= 3
@@ -459,8 +459,8 @@ class TestCroissantButterSubstitution:
     @pytest.mark.asyncio
     async def test_croissant_margarine_rejection(self):
         """For croissants, Claude should reject margarine as a substitute for butter."""
-        from texas_grocery_mcp.tools.store import set_default_store_id
-        from texas_grocery_mcp.tools.substitution import find_substitute
+        from auto_grocier_mcp.tools.store import set_default_store_id
+        from auto_grocier_mcp.tools.substitution import find_substitute
 
         set_default_store_id("590")
 
@@ -498,7 +498,7 @@ class TestCroissantButterSubstitution:
         }
 
         with patch(
-            "texas_grocery_mcp.tools.substitution._search_products",
+            "auto_grocier_mcp.tools.substitution._search_products",
             new_callable=AsyncMock,
             return_value=mock_products,
         ), patch(

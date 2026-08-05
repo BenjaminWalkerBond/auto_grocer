@@ -7,7 +7,7 @@ import pytest
 
 def test_health_live_returns_alive():
     """health_live should return alive status."""
-    from texas_grocery_mcp.observability.health import health_live
+    from auto_grocier_mcp.observability.health import health_live
 
     result = health_live()
 
@@ -16,7 +16,7 @@ def test_health_live_returns_alive():
 
 def test_health_ready_returns_components():
     """health_ready should return component statuses."""
-    from texas_grocery_mcp.observability.health import health_ready
+    from auto_grocier_mcp.observability.health import health_ready
 
     result = health_ready()
 
@@ -34,7 +34,7 @@ class TestRedisHealthCheck:
         # Redis is an optional dependency not shipped with auto_grocier (we use
         # the in-memory cache). Skip when the package isn't installed.
         pytest.importorskip("redis")
-        from texas_grocery_mcp.observability.health import _check_redis_health_sync
+        from auto_grocier_mcp.observability.health import _check_redis_health_sync
 
         with patch("redis.from_url") as mock_from_url:
             mock_client = MagicMock()
@@ -52,7 +52,7 @@ class TestRedisHealthCheck:
         """Verify Redis health check returns down when connection fails."""
         # Optional dependency — skip when redis isn't installed (see above).
         pytest.importorskip("redis")
-        from texas_grocery_mcp.observability.health import _check_redis_health_sync
+        from auto_grocier_mcp.observability.health import _check_redis_health_sync
 
         with patch("redis.from_url") as mock_from_url:
             mock_from_url.side_effect = ConnectionError("Connection refused")
@@ -68,10 +68,10 @@ class TestRedisHealthCheck:
         with (
             patch.dict("sys.modules", {"redis": None}),
             patch(
-                "texas_grocery_mcp.observability.health._check_redis_health_sync"
+                "auto_grocier_mcp.observability.health._check_redis_health_sync"
             ) as mock_check,
         ):
-            from texas_grocery_mcp.models.health import ComponentHealth
+            from auto_grocier_mcp.models.health import ComponentHealth
 
             mock_check.return_value = ComponentHealth(
                 status="up",
@@ -86,22 +86,22 @@ class TestRedisHealthCheck:
     def test_health_ready_with_redis_configured(self):
         """Verify health_ready checks Redis when configured."""
         with patch(
-            "texas_grocery_mcp.utils.config.get_settings"
+            "auto_grocier_mcp.utils.config.get_settings"
         ) as mock_get_settings:
             mock_settings = MagicMock()
             mock_settings.redis_url = "redis://localhost:6379"
             mock_get_settings.return_value = mock_settings
 
             with patch(
-                "texas_grocery_mcp.observability.health._check_redis_health_sync"
+                "auto_grocier_mcp.observability.health._check_redis_health_sync"
             ) as mock_check:
-                from texas_grocery_mcp.models.health import ComponentHealth
+                from auto_grocier_mcp.models.health import ComponentHealth
 
                 mock_check.return_value = ComponentHealth(
                     status="up", message="Redis 7.0.0"
                 )
 
-                from texas_grocery_mcp.observability.health import health_ready
+                from auto_grocier_mcp.observability.health import health_ready
 
                 result = health_ready()
 
@@ -111,22 +111,22 @@ class TestRedisHealthCheck:
     def test_health_ready_degraded_when_redis_down(self):
         """Verify health_ready returns degraded when Redis is unreachable."""
         with patch(
-            "texas_grocery_mcp.utils.config.get_settings"
+            "auto_grocier_mcp.utils.config.get_settings"
         ) as mock_get_settings:
             mock_settings = MagicMock()
             mock_settings.redis_url = "redis://localhost:6379"
             mock_get_settings.return_value = mock_settings
 
             with patch(
-                "texas_grocery_mcp.observability.health._check_redis_health_sync"
+                "auto_grocier_mcp.observability.health._check_redis_health_sync"
             ) as mock_check:
-                from texas_grocery_mcp.models.health import ComponentHealth
+                from auto_grocier_mcp.models.health import ComponentHealth
 
                 mock_check.return_value = ComponentHealth(
                     status="down", message="Connection failed: Connection refused"
                 )
 
-                from texas_grocery_mcp.observability.health import health_ready
+                from auto_grocier_mcp.observability.health import health_ready
 
                 result = health_ready()
 

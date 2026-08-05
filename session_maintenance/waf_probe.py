@@ -9,12 +9,12 @@ Reuses the SAME ``start_browser`` config the container/login flow uses, then:
      and whether the response looks like an Incapsula challenge.
 
 Run standalone (host, real display):
-    DISPLAY=:0 python -m grocery_browser.waf_probe
+    DISPLAY=:0 python -m session_maintenance.waf_probe
 
 Run in the container (Xvfb via the image entrypoint):
     docker run --rm --network host \
         -v auto_grocier_session:/root/.texas-grocery-mcp --env-file .env \
-        auto_grocier_mcp python -m grocery_browser.waf_probe
+        auto_grocier_mcp python -m session_maintenance.waf_probe
 """
 from __future__ import annotations
 
@@ -26,7 +26,6 @@ from datetime import datetime
 import nodriver
 
 from session_maintenance.browser import start_browser, stop_browser
-
 
 HEB_HOME = "https://www.heb.com/"
 

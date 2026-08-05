@@ -8,8 +8,8 @@ from httpx import Response
 @pytest.fixture(autouse=True)
 def reset_tool_state():
     """Reset global state before each test."""
-    from texas_grocery_mcp.tools import product as product_module
-    from texas_grocery_mcp.tools import store as store_module
+    from auto_grocier_mcp.tools import product as product_module
+    from auto_grocier_mcp.tools import store as store_module
 
     store_module._default_store_id = "737"  # Set default store for tests
     store_module._graphql_client = None
@@ -116,7 +116,7 @@ def mock_ssr_success_html():
 @respx.mock
 async def test_product_search_returns_data_source(mock_typeahead_response):
     """product_search should include data_source field."""
-    from texas_grocery_mcp.tools.product import product_search
+    from auto_grocier_mcp.tools.product import product_search
 
     respx.post("https://www.heb.com/graphql").mock(
         return_value=Response(200, json=mock_typeahead_response)
@@ -132,11 +132,11 @@ async def test_product_search_returns_data_source(mock_typeahead_response):
 @respx.mock
 async def test_product_search_includes_authenticated_field(mock_typeahead_response, monkeypatch):
     """product_search should include authenticated field."""
-    from texas_grocery_mcp.tools.product import product_search
+    from auto_grocier_mcp.tools.product import product_search
 
     # Mock as NOT authenticated to test typeahead fallback
     monkeypatch.setattr(
-        "texas_grocery_mcp.clients.graphql.is_authenticated",
+        "auto_grocier_mcp.clients.graphql.is_authenticated",
         lambda: False,
     )
 
@@ -155,7 +155,7 @@ async def test_product_search_includes_authenticated_field(mock_typeahead_respon
 @respx.mock
 async def test_product_search_includes_attempts_summary(mock_typeahead_response):
     """product_search should include attempts summary."""
-    from texas_grocery_mcp.tools.product import product_search
+    from auto_grocier_mcp.tools.product import product_search
 
     respx.post("https://www.heb.com/graphql").mock(
         return_value=Response(200, json=mock_typeahead_response)
@@ -171,7 +171,7 @@ async def test_product_search_includes_attempts_summary(mock_typeahead_response)
 
 def test_detect_security_challenge_identifies_incapsula():
     """_detect_security_challenge should detect Incapsula challenges."""
-    from texas_grocery_mcp.clients.graphql import HEBGraphQLClient
+    from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
 
     client = HEBGraphQLClient()
 
@@ -188,7 +188,7 @@ def test_detect_security_challenge_identifies_incapsula():
 
 def test_detect_security_challenge_case_insensitive():
     """_detect_security_challenge should be case insensitive."""
-    from texas_grocery_mcp.clients.graphql import HEBGraphQLClient
+    from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
 
     client = HEBGraphQLClient()
 
@@ -199,7 +199,7 @@ def test_detect_security_challenge_case_insensitive():
 
 def test_determine_fallback_reason_not_authenticated():
     """_determine_fallback_reason should explain no auth."""
-    from texas_grocery_mcp.clients.graphql import HEBGraphQLClient
+    from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
 
     client = HEBGraphQLClient()
 
@@ -214,8 +214,8 @@ def test_determine_fallback_reason_not_authenticated():
 
 def test_determine_fallback_reason_security_challenge():
     """_determine_fallback_reason should explain security challenge."""
-    from texas_grocery_mcp.clients.graphql import HEBGraphQLClient
-    from texas_grocery_mcp.models import ProductSearchAttempt
+    from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
+    from auto_grocier_mcp.models import ProductSearchAttempt
 
     client = HEBGraphQLClient()
 
@@ -235,8 +235,8 @@ def test_determine_fallback_reason_security_challenge():
 
 def test_determine_fallback_reason_empty_results():
     """_determine_fallback_reason should explain empty results."""
-    from texas_grocery_mcp.clients.graphql import HEBGraphQLClient
-    from texas_grocery_mcp.models import ProductSearchAttempt
+    from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
+    from auto_grocier_mcp.models import ProductSearchAttempt
 
     client = HEBGraphQLClient()
 
@@ -256,7 +256,7 @@ def test_determine_fallback_reason_empty_results():
 
 def test_get_playwright_search_instructions_format():
     """_get_playwright_search_instructions should return proper format."""
-    from texas_grocery_mcp.clients.graphql import HEBGraphQLClient
+    from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
 
     client = HEBGraphQLClient()
 
@@ -271,7 +271,7 @@ def test_get_playwright_search_instructions_format():
 
 def test_get_playwright_search_instructions_encodes_query():
     """_get_playwright_search_instructions should URL encode query."""
-    from texas_grocery_mcp.clients.graphql import HEBGraphQLClient
+    from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
 
     client = HEBGraphQLClient()
 
@@ -286,15 +286,15 @@ async def test_product_search_playwright_fallback_when_challenged(
     mock_typeahead_response, mock_security_challenge_html, monkeypatch
 ):
     """product_search should provide Playwright fallback when security challenged."""
-    from texas_grocery_mcp.tools.product import product_search
+    from auto_grocier_mcp.tools.product import product_search
 
     # Mock as authenticated
     monkeypatch.setattr(
-        "texas_grocery_mcp.clients.graphql.is_authenticated",
+        "auto_grocier_mcp.clients.graphql.is_authenticated",
         lambda: True,
     )
     monkeypatch.setattr(
-        "texas_grocery_mcp.clients.graphql.get_httpx_cookies",
+        "auto_grocier_mcp.clients.graphql.get_httpx_cookies",
         lambda: {"sat": "test-token"},
     )
 
@@ -319,15 +319,15 @@ async def test_product_search_playwright_fallback_when_challenged(
 @respx.mock
 async def test_product_search_ssr_success(mock_ssr_success_html, monkeypatch):
     """product_search should return SSR data source on success."""
-    from texas_grocery_mcp.tools.product import product_search
+    from auto_grocier_mcp.tools.product import product_search
 
     # Mock as authenticated
     monkeypatch.setattr(
-        "texas_grocery_mcp.clients.graphql.is_authenticated",
+        "auto_grocier_mcp.clients.graphql.is_authenticated",
         lambda: True,
     )
     monkeypatch.setattr(
-        "texas_grocery_mcp.clients.graphql.get_httpx_cookies",
+        "auto_grocier_mcp.clients.graphql.get_httpx_cookies",
         lambda: {"sat": "test-token"},
     )
 
@@ -346,7 +346,7 @@ async def test_product_search_ssr_success(mock_ssr_success_html, monkeypatch):
 
 def test_product_search_result_model():
     """ProductSearchResult model should have all required fields."""
-    from texas_grocery_mcp.models import Product, ProductSearchAttempt, ProductSearchResult
+    from auto_grocier_mcp.models import Product, ProductSearchAttempt, ProductSearchResult
 
     result = ProductSearchResult(
         products=[Product(sku="123", name="Test", price=1.99, available=True)],
@@ -370,7 +370,7 @@ def test_product_search_result_model():
 
 def test_product_search_attempt_model():
     """ProductSearchAttempt model should validate correctly."""
-    from texas_grocery_mcp.models import ProductSearchAttempt
+    from auto_grocier_mcp.models import ProductSearchAttempt
 
     attempt = ProductSearchAttempt(
         query="eggs",

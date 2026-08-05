@@ -22,9 +22,9 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-import mcp_server as M
-from recipe_grabber import extract_recipe_metadata
-from utility.youtube import is_youtube_url, parse_ingredients_from_text
+import mcp_server as M  # noqa: E402
+from recipe_grabber import extract_recipe_metadata  # noqa: E402
+from utility.youtube import is_youtube_url, parse_ingredients_from_text  # noqa: E402
 
 _seed = getattr(M.seed_recipes, "fn", M.seed_recipes)
 

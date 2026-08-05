@@ -1,6 +1,6 @@
 """GraphQL-based timeslot reservation and checkout for auto_grocier.
 
-The vendored ``texas_grocery_mcp`` GraphQL client implements product search,
+The vendored ``auto_grocier_mcp`` GraphQL client implements product search,
 cart, store, and coupon operations, but it has **no** operations for reserving
 a pickup time slot or for checkout / placing an order. HEB's real operation
 names, persisted-query sha256 hashes, and request-variable shapes for those
@@ -32,7 +32,6 @@ Public sync entry points (used by ``mcp_server.py``):
 import asyncio
 import json
 from pathlib import Path
-
 
 DEFAULT_OPERATIONS_PATH = Path(
     "~/.texas-grocery-mcp/captured_operations.json"
@@ -132,7 +131,7 @@ def _register_hash(op_name, sha):
     Also re-applies the persisted_queries.json overrides so any rotated hashes
     are current.
     """
-    from texas_grocery_mcp.clients import graphql as gql
+    from auto_grocier_mcp.clients import graphql as gql
 
     gql.reload_persisted_query_overrides()
     gql.PERSISTED_QUERIES[op_name] = sha
@@ -149,7 +148,7 @@ async def _run_operation(client, op_name, variables):
 
 
 async def _list_timeslots(store_id):
-    from texas_grocery_mcp.clients.graphql import HEBGraphQLClient
+    from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
 
     samples = _load_samples()
     op_name, sample = _resolve(_TIMESLOT_LIST, samples)
@@ -176,7 +175,7 @@ async def _list_timeslots(store_id):
 
 
 async def _reserve_timeslot(slot_id, store_id, extra_variables):
-    from texas_grocery_mcp.clients.graphql import HEBGraphQLClient
+    from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
 
     samples = _load_samples()
     op_name, sample = _resolve(_TIMESLOT_RESERVE, samples)
@@ -215,7 +214,7 @@ async def _reserve_timeslot(slot_id, store_id, extra_variables):
 
 
 async def _checkout(place_order):
-    from texas_grocery_mcp.clients.graphql import HEBGraphQLClient
+    from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
 
     samples = _load_samples()
     spec = _PLACE_ORDER if place_order else _CHECKOUT_REVIEW

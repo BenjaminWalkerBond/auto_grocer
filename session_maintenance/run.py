@@ -16,33 +16,31 @@ Deprecated aliases (still work; they map onto `shop` and print a warning):
 
 Note: no mode places a paid order; checkout only advances to HEB's checkout page.
 Placing a paid order is the MCP server's guarded ``place_order`` tool. The WAF
-baseline probe is separate: ``python -m grocery_browser.waf_probe``.
+baseline probe is separate: ``python -m session_maintenance.waf_probe``.
 
 Run:
-    python -m grocery_browser.run                    # uses MODE from .env
-    MODE=shop CHECKOUT=prompt python -m grocery_browser.run
+    python -m session_maintenance.run                # uses MODE from .env
+    MODE=shop CHECKOUT=prompt python -m session_maintenance.run
 """
 from __future__ import annotations
 
-import os
 import asyncio
+import os
 
 import nodriver
 
-from claude import get_setting
-from classes.IngredientList import IngredientList
 from classes.Ingredient import Ingredient
+from classes.IngredientList import IngredientList
+from claude import get_setting
 from recipe_grabber import clean_ingredient, populate_ingredient_list
+from session_maintenance import flows
+from session_maintenance.auth_export import export_session_to_authjson
+from session_maintenance.browser import start_browser, stop_browser
+from session_maintenance.hash_capture import GraphQLHashCapturer
+from session_maintenance.logger import AsyncDriverLogger
+from session_maintenance.self_healing import self_healing_call
 from utility.graphql_cart import graphql_cart_sync
 from utility.graphql_hash_capture import TARGET_OPERATIONS
-
-from session_maintenance.browser import start_browser, stop_browser
-from session_maintenance.logger import AsyncDriverLogger
-from session_maintenance.auth_export import export_session_to_authjson
-from session_maintenance.self_healing import self_healing_call
-from session_maintenance.hash_capture import GraphQLHashCapturer
-from session_maintenance import flows
-
 
 # Hardcoded fallback ingredient list (matches main.py's sample recipe).
 HARDCODED_INGREDIENTS = [
@@ -97,9 +95,9 @@ def _load_ingredients() -> IngredientList:
     if source == "database":
         print("🗄️  Loading recipes from the database...\n")
         from database.db_connection import get_db_session
-        from database.recipe_repository import RecipeRepository
         from database.ingredient_repository import IngredientRepository
-        from utility.recipe_matcher import parse_and_match, build_ingredient_list
+        from database.recipe_repository import RecipeRepository
+        from utility.recipe_matcher import build_ingredient_list, parse_and_match
 
         user_request = input("What recipes do you want this week? ").strip()
         db = get_db_session()

@@ -2,8 +2,8 @@
 Test database operations.
 Creates sample ingredients and verifies CRUD operations.
 """
-import sys
 import os
+import sys
 
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -20,16 +20,16 @@ def test_database():
     print("Testing Database Operations")
     print("=" * 60)
     print()
-    
+
     try:
         # Get database session
         db = get_db_session()
-        
+
         # Create repositories
         tag_repo = TagRepository(db)
         recipe_repo = RecipeRepository(db)
         ingredient_repo = IngredientRepository(db)
-        
+
         # Test 1: Create a recipe
         print("Test 1: Creating a recipe...")
         recipe = recipe_repo.get_or_create(
@@ -38,10 +38,10 @@ def test_database():
         )
         print(f"  ✓ Created recipe: {recipe}")
         print()
-        
+
         # Test 2: Create ingredients
         print("Test 2: Creating ingredients...")
-        
+
         ingredient1 = ingredient_repo.create(
             name="salmon",
             amount=1.5,
@@ -50,7 +50,7 @@ def test_database():
             recipe_id=recipe.id
         )
         print(f"  ✓ Created: {ingredient1}")
-        
+
         ingredient2 = ingredient_repo.create(
             name="olive oil",
             amount=2,
@@ -59,7 +59,7 @@ def test_database():
             recipe_id=recipe.id
         )
         print(f"  ✓ Created: {ingredient2}")
-        
+
         ingredient3 = ingredient_repo.create(
             name="spinach",
             amount=100,
@@ -69,13 +69,13 @@ def test_database():
         )
         print(f"  ✓ Created: {ingredient3}")
         print()
-        
+
         # Test 3: Retrieve ingredients
         print("Test 3: Retrieving ingredients...")
         all_ingredients = ingredient_repo.get_all()
         print(f"  ✓ Total ingredients in database: {len(all_ingredients)}")
         print()
-        
+
         # Test 4: Search by tag
         print("Test 4: Searching by tag...")
         fish_ingredients = ingredient_repo.get_by_tag("fish")
@@ -83,7 +83,7 @@ def test_database():
         for ing in fish_ingredients:
             print(f"    - {ing}")
         print()
-        
+
         # Test 5: Search by name
         print("Test 5: Searching by name...")
         salmon_results = ingredient_repo.search_by_name("salmon")
@@ -91,7 +91,7 @@ def test_database():
         for ing in salmon_results:
             print(f"    - {ing}")
         print()
-        
+
         # Test 6: Get ingredients by recipe
         print("Test 6: Getting ingredients by recipe...")
         recipe_ingredients = ingredient_repo.get_by_recipe(recipe.id)
@@ -99,7 +99,7 @@ def test_database():
         for ing in recipe_ingredients:
             print(f"    - {ing}")
         print()
-        
+
         # Test 7: Update ingredient
         print("Test 7: Updating an ingredient...")
         updated = ingredient_repo.update(
@@ -109,7 +109,7 @@ def test_database():
         )
         print(f"  ✓ Updated: {updated}")
         print()
-        
+
         # Test 8: Count operations
         print("Test 8: Counting...")
         total_ingredients = ingredient_repo.count()
@@ -119,7 +119,7 @@ def test_database():
         print(f"  ✓ Total recipes: {total_recipes}")
         print(f"  ✓ Total tags: {total_tags}")
         print()
-        
+
         # Test 9: Tag statistics
         print("Test 9: Tag statistics...")
         all_tags = tag_repo.get_all()
@@ -129,17 +129,17 @@ def test_database():
             if count > 0:
                 print(f"    - {tag.name}: {count} ingredient(s)")
         print()
-        
+
         # Close session
         db.close()
-        
+
         print("=" * 60)
         print("All tests passed! ✓")
         print("=" * 60)
         print()
-        
+
         return True
-        
+
     except Exception as e:
         print(f"\n✗ Test failed: {e}")
         import traceback

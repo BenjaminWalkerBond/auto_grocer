@@ -111,7 +111,7 @@ async def select_all(tab, css, timeout=5):
 async def xpath_all(tab, xpath, timeout=2.5):
     """Return all elements matching an XPath (empty list on failure)."""
     try:
-        return [e for e in (await tab.xpath(xpath, timeout=timeout) or []) if e] 
+        return [e for e in (await tab.xpath(xpath, timeout=timeout) or []) if e]
     except Exception:  # noqa: BLE001
         return []
 

@@ -5,12 +5,11 @@ binary and no version pin (the old code forced ``uc.Chrome(version_main=116)``).
 """
 from __future__ import annotations
 
-import os
 import json
+import os
 import tempfile
 
 import nodriver
-
 
 # Browser flags that reduce popups/notifications and silence Chrome's update
 # banner. Password-manager prefs are seeded via a profile (see below) since

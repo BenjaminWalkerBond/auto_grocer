@@ -11,7 +11,7 @@ class TestThrottleConfig:
 
     def test_default_values(self):
         """Should have sensible defaults."""
-        from texas_grocery_mcp.reliability.throttle import ThrottleConfig
+        from auto_grocier_mcp.reliability.throttle import ThrottleConfig
 
         config = ThrottleConfig()
 
@@ -22,7 +22,7 @@ class TestThrottleConfig:
 
     def test_custom_values(self):
         """Should accept custom configuration."""
-        from texas_grocery_mcp.reliability.throttle import ThrottleConfig
+        from auto_grocier_mcp.reliability.throttle import ThrottleConfig
 
         config = ThrottleConfig(
             max_concurrent=5,
@@ -43,7 +43,7 @@ class TestThrottler:
     @pytest.mark.asyncio
     async def test_limits_concurrency(self):
         """Should limit concurrent requests to max_concurrent."""
-        from texas_grocery_mcp.reliability.throttle import ThrottleConfig, Throttler
+        from auto_grocier_mcp.reliability.throttle import ThrottleConfig, Throttler
 
         config = ThrottleConfig(max_concurrent=2, min_delay_ms=0, jitter_ms=0)
         throttler = Throttler(config)
@@ -67,7 +67,7 @@ class TestThrottler:
     @pytest.mark.asyncio
     async def test_enforces_minimum_delay(self):
         """Should enforce minimum delay between requests."""
-        from texas_grocery_mcp.reliability.throttle import ThrottleConfig, Throttler
+        from auto_grocier_mcp.reliability.throttle import ThrottleConfig, Throttler
 
         config = ThrottleConfig(max_concurrent=10, min_delay_ms=100, jitter_ms=0)
         throttler = Throttler(config)
@@ -91,7 +91,7 @@ class TestThrottler:
     @pytest.mark.asyncio
     async def test_jitter_adds_randomness(self):
         """Should add random jitter to delays."""
-        from texas_grocery_mcp.reliability.throttle import ThrottleConfig, Throttler
+        from auto_grocier_mcp.reliability.throttle import ThrottleConfig, Throttler
 
         config = ThrottleConfig(max_concurrent=10, min_delay_ms=0, jitter_ms=100)
         throttler = Throttler(config)
@@ -120,7 +120,7 @@ class TestThrottler:
     @pytest.mark.asyncio
     async def test_disabled_throttling_bypasses_limits(self):
         """Should bypass all limits when disabled."""
-        from texas_grocery_mcp.reliability.throttle import ThrottleConfig, Throttler
+        from auto_grocier_mcp.reliability.throttle import ThrottleConfig, Throttler
 
         config = ThrottleConfig(
             max_concurrent=1,
@@ -145,7 +145,7 @@ class TestThrottler:
     @pytest.mark.asyncio
     async def test_config_property_accessible(self):
         """Should expose config via property."""
-        from texas_grocery_mcp.reliability.throttle import ThrottleConfig, Throttler
+        from auto_grocier_mcp.reliability.throttle import ThrottleConfig, Throttler
 
         config = ThrottleConfig(max_concurrent=7)
         throttler = Throttler(config, name="test")
@@ -155,7 +155,7 @@ class TestThrottler:
     @pytest.mark.asyncio
     async def test_releases_semaphore_on_exception(self):
         """Should release semaphore even if task raises exception."""
-        from texas_grocery_mcp.reliability.throttle import ThrottleConfig, Throttler
+        from auto_grocier_mcp.reliability.throttle import ThrottleConfig, Throttler
 
         config = ThrottleConfig(max_concurrent=1, min_delay_ms=0, jitter_ms=0)
         throttler = Throttler(config)
@@ -182,7 +182,7 @@ class TestThrottler:
     @pytest.mark.asyncio
     async def test_concurrent_delay_enforcement(self):
         """Should enforce delay even with concurrent requests."""
-        from texas_grocery_mcp.reliability.throttle import ThrottleConfig, Throttler
+        from auto_grocier_mcp.reliability.throttle import ThrottleConfig, Throttler
 
         config = ThrottleConfig(max_concurrent=2, min_delay_ms=100, jitter_ms=0)
         throttler = Throttler(config)

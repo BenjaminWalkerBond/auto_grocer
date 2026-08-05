@@ -1,6 +1,6 @@
 # Database package initialization
-from .db_connection import get_db, engine, SessionLocal
-from .models import Base, Ingredient, Tag, Recipe
+from .db_connection import SessionLocal, engine, get_db
+from .models import Base, Ingredient, Recipe, Tag
 
 __all__ = [
     'get_db',

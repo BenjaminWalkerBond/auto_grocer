@@ -1,5 +1,6 @@
 from .IngredientList import IngredientList
 
+
 class Ingredient(IngredientList):
     def __init__(self, name, amount=1, unit="none"):
         self.name = name
@@ -20,4 +21,4 @@ class Ingredient(IngredientList):
         return self.amount
     def get_unit(self):
         return self.unit
-    
+

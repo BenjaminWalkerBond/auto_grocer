@@ -8,7 +8,7 @@ import pytest
 @pytest.fixture(autouse=True)
 def reset_auth_state():
     """Reset auth state before each test."""
-    from texas_grocery_mcp.auth.session import _reset_auth_state
+    from auto_grocier_mcp.auth.session import _reset_auth_state
     _reset_auth_state()
     yield
     _reset_auth_state()
@@ -17,9 +17,9 @@ def reset_auth_state():
 @pytest.mark.asyncio
 async def test_cart_add_without_confirm_returns_preview():
     """cart_add without confirm should return preview."""
-    from texas_grocery_mcp.tools.cart import cart_add
+    from auto_grocier_mcp.tools.cart import cart_add
 
-    with patch("texas_grocery_mcp.tools.cart.is_authenticated", return_value=True):
+    with patch("auto_grocier_mcp.tools.cart.is_authenticated", return_value=True):
         result = await cart_add(product_id="123456", quantity=2)
 
     assert result["preview"] is True
@@ -30,9 +30,9 @@ async def test_cart_add_without_confirm_returns_preview():
 @pytest.mark.asyncio
 async def test_cart_add_requires_auth():
     """cart_add should require authentication."""
-    from texas_grocery_mcp.tools.cart import cart_add
+    from auto_grocier_mcp.tools.cart import cart_add
 
-    with patch("texas_grocery_mcp.tools.cart.is_authenticated", return_value=False):
+    with patch("auto_grocier_mcp.tools.cart.is_authenticated", return_value=False):
         result = await cart_add(product_id="123456", quantity=1)
 
     assert result["auth_required"] is True
@@ -41,10 +41,10 @@ async def test_cart_add_requires_auth():
 
 def test_cart_check_auth_returns_status():
     """cart_check_auth should return auth status."""
-    from texas_grocery_mcp.tools.cart import cart_check_auth
+    from auto_grocier_mcp.tools.cart import cart_check_auth
 
     # check_auth internally calls is_authenticated via auth.session
-    with patch("texas_grocery_mcp.auth.session.is_authenticated", return_value=False):
+    with patch("auto_grocier_mcp.auth.session.is_authenticated", return_value=False):
         result = cart_check_auth()
 
     assert "authenticated" in result
@@ -54,9 +54,9 @@ def test_cart_check_auth_returns_status():
 @pytest.mark.asyncio
 async def test_cart_get_requires_auth():
     """cart_get should require authentication."""
-    from texas_grocery_mcp.tools.cart import cart_get
+    from auto_grocier_mcp.tools.cart import cart_get
 
-    with patch("texas_grocery_mcp.tools.cart.is_authenticated", return_value=False):
+    with patch("auto_grocier_mcp.tools.cart.is_authenticated", return_value=False):
         result = await cart_get()
 
     assert result["auth_required"] is True
@@ -66,9 +66,9 @@ async def test_cart_get_requires_auth():
 @pytest.mark.asyncio
 async def test_cart_remove_requires_auth():
     """cart_remove should require authentication."""
-    from texas_grocery_mcp.tools.cart import cart_remove
+    from auto_grocier_mcp.tools.cart import cart_remove
 
-    with patch("texas_grocery_mcp.tools.cart.is_authenticated", return_value=False):
+    with patch("auto_grocier_mcp.tools.cart.is_authenticated", return_value=False):
         result = await cart_remove(product_id="123456")
 
     assert result["auth_required"] is True
@@ -78,8 +78,8 @@ async def test_cart_remove_requires_auth():
 @pytest.mark.asyncio
 async def test_cart_remove_without_confirm_returns_preview():
     """cart_remove without confirm should return preview."""
-    import texas_grocery_mcp.auth.session as session_module
-    from texas_grocery_mcp.tools.cart import cart_remove
+    import auto_grocier_mcp.auth.session as session_module
+    from auto_grocier_mcp.tools.cart import cart_remove
     session_module._is_authenticated = True
 
     result = await cart_remove(product_id="123456")
@@ -95,9 +95,9 @@ class TestCartAddMany:
     @pytest.mark.asyncio
     async def test_requires_auth(self):
         """cart_add_many should require authentication."""
-        from texas_grocery_mcp.tools.cart import cart_add_many
+        from auto_grocier_mcp.tools.cart import cart_add_many
 
-        with patch("texas_grocery_mcp.tools.cart.is_authenticated", return_value=False):
+        with patch("auto_grocier_mcp.tools.cart.is_authenticated", return_value=False):
             result = await cart_add_many(
                 items=[{"product_id": "123", "sku_id": "123-HEB", "quantity": 1}]
             )
@@ -107,9 +107,9 @@ class TestCartAddMany:
     @pytest.mark.asyncio
     async def test_preview_mode_returns_items(self):
         """cart_add_many without confirm should return preview."""
-        from texas_grocery_mcp.tools.cart import cart_add_many
+        from auto_grocier_mcp.tools.cart import cart_add_many
 
-        with patch("texas_grocery_mcp.tools.cart.is_authenticated", return_value=True):
+        with patch("auto_grocier_mcp.tools.cart.is_authenticated", return_value=True):
             result = await cart_add_many(
                 items=[
                     {"product_id": "123", "sku_id": "123-HEB", "quantity": 2},
@@ -125,9 +125,9 @@ class TestCartAddMany:
     @pytest.mark.asyncio
     async def test_rejects_empty_items(self):
         """cart_add_many should reject empty items list."""
-        from texas_grocery_mcp.tools.cart import cart_add_many
+        from auto_grocier_mcp.tools.cart import cart_add_many
 
-        with patch("texas_grocery_mcp.tools.cart.is_authenticated", return_value=True):
+        with patch("auto_grocier_mcp.tools.cart.is_authenticated", return_value=True):
             result = await cart_add_many(items=[], confirm=True)
 
         assert result["error"] is True
@@ -136,14 +136,14 @@ class TestCartAddMany:
     @pytest.mark.asyncio
     async def test_rejects_over_100_items(self):
         """cart_add_many should reject more than 100 items."""
-        from texas_grocery_mcp.tools.cart import cart_add_many
+        from auto_grocier_mcp.tools.cart import cart_add_many
 
         items = [
             {"product_id": str(i), "sku_id": f"{i}-HEB", "quantity": 1}
             for i in range(101)
         ]
 
-        with patch("texas_grocery_mcp.tools.cart.is_authenticated", return_value=True):
+        with patch("auto_grocier_mcp.tools.cart.is_authenticated", return_value=True):
             result = await cart_add_many(items=items, confirm=True)
 
         assert result["error"] is True
@@ -152,9 +152,9 @@ class TestCartAddMany:
     @pytest.mark.asyncio
     async def test_validates_required_fields(self):
         """cart_add_many should reject items missing required fields."""
-        from texas_grocery_mcp.tools.cart import cart_add_many
+        from auto_grocier_mcp.tools.cart import cart_add_many
 
-        with patch("texas_grocery_mcp.tools.cart.is_authenticated", return_value=True):
+        with patch("auto_grocier_mcp.tools.cart.is_authenticated", return_value=True):
             result = await cart_add_many(
                 items=[
                     {"product_id": "123"},  # Missing sku_id and quantity
@@ -170,9 +170,9 @@ class TestCartAddMany:
     @pytest.mark.asyncio
     async def test_validates_quantity_positive(self):
         """cart_add_many should reject quantity < 1."""
-        from texas_grocery_mcp.tools.cart import cart_add_many
+        from auto_grocier_mcp.tools.cart import cart_add_many
 
-        with patch("texas_grocery_mcp.tools.cart.is_authenticated", return_value=True):
+        with patch("auto_grocier_mcp.tools.cart.is_authenticated", return_value=True):
             result = await cart_add_many(
                 items=[
                     {"product_id": "123", "sku_id": "123-HEB", "quantity": 0},
@@ -189,7 +189,7 @@ class TestCartAddMany:
         """cart_add_many should return success when all items add successfully."""
         from unittest.mock import AsyncMock, MagicMock
 
-        from texas_grocery_mcp.tools.cart import cart_add_many
+        from auto_grocier_mcp.tools.cart import cart_add_many
 
         mock_client = MagicMock()
         mock_client.add_to_cart = AsyncMock(return_value={"success": True})
@@ -213,8 +213,8 @@ class TestCartAddMany:
         })
 
         with (
-            patch("texas_grocery_mcp.tools.cart.is_authenticated", return_value=True),
-            patch("texas_grocery_mcp.tools.cart._get_client", return_value=mock_client),
+            patch("auto_grocier_mcp.tools.cart.is_authenticated", return_value=True),
+            patch("auto_grocier_mcp.tools.cart._get_client", return_value=mock_client),
         ):
             result = await cart_add_many(
                 items=[
@@ -235,7 +235,7 @@ class TestCartAddMany:
         """cart_add_many should return failure if any item fails (strict mode)."""
         from unittest.mock import AsyncMock, MagicMock
 
-        from texas_grocery_mcp.tools.cart import cart_add_many
+        from auto_grocier_mcp.tools.cart import cart_add_many
 
         mock_client = MagicMock()
 
@@ -259,8 +259,8 @@ class TestCartAddMany:
         })
 
         with (
-            patch("texas_grocery_mcp.tools.cart.is_authenticated", return_value=True),
-            patch("texas_grocery_mcp.tools.cart._get_client", return_value=mock_client),
+            patch("auto_grocier_mcp.tools.cart.is_authenticated", return_value=True),
+            patch("auto_grocier_mcp.tools.cart._get_client", return_value=mock_client),
         ):
             result = await cart_add_many(
                 items=[
@@ -284,7 +284,7 @@ class TestCartAddMany:
         """cart_add_many should report error if item not found in cart after add."""
         from unittest.mock import AsyncMock, MagicMock
 
-        from texas_grocery_mcp.tools.cart import cart_add_many
+        from auto_grocier_mcp.tools.cart import cart_add_many
 
         mock_client = MagicMock()
         mock_client.add_to_cart = AsyncMock(return_value={"success": True})
@@ -294,8 +294,8 @@ class TestCartAddMany:
         })
 
         with (
-            patch("texas_grocery_mcp.tools.cart.is_authenticated", return_value=True),
-            patch("texas_grocery_mcp.tools.cart._get_client", return_value=mock_client),
+            patch("auto_grocier_mcp.tools.cart.is_authenticated", return_value=True),
+            patch("auto_grocier_mcp.tools.cart._get_client", return_value=mock_client),
         ):
             result = await cart_add_many(
                 items=[

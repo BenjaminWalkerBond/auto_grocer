@@ -19,11 +19,11 @@ def mock_auth_path(tmp_path, monkeypatch):
         return MockSettings()
 
     monkeypatch.setattr(
-        "texas_grocery_mcp.auth.session.get_settings",
+        "auto_grocier_mcp.auth.session.get_settings",
         mock_get_settings,
     )
     monkeypatch.setattr(
-        "texas_grocery_mcp.tools.session.get_settings",
+        "auto_grocier_mcp.tools.session.get_settings",
         mock_get_settings,
     )
 
@@ -212,7 +212,7 @@ def stale_session_cookies():
 
 def test_get_session_status_no_auth_file(mock_auth_path):
     """get_session_status should indicate no auth when file missing."""
-    from texas_grocery_mcp.auth.session import get_session_status
+    from auto_grocier_mcp.auth.session import get_session_status
 
     result = get_session_status()
 
@@ -225,7 +225,7 @@ def test_get_session_status_no_auth_file(mock_auth_path):
 
 def test_get_session_status_valid_session(mock_auth_path, valid_session_cookies):
     """get_session_status should show healthy session with time remaining."""
-    from texas_grocery_mcp.auth.session import get_session_status
+    from auto_grocier_mcp.auth.session import get_session_status
 
     mock_auth_path.write_text(json.dumps(valid_session_cookies))
 
@@ -243,7 +243,7 @@ def test_get_session_status_valid_session(mock_auth_path, valid_session_cookies)
 
 def test_get_session_status_refresh_recommended(mock_auth_path, expiring_soon_session_cookies):
     """get_session_status should recommend refresh when < 4 hours remaining."""
-    from texas_grocery_mcp.auth.session import get_session_status
+    from auto_grocier_mcp.auth.session import get_session_status
 
     mock_auth_path.write_text(json.dumps(expiring_soon_session_cookies))
 
@@ -259,7 +259,7 @@ def test_get_session_status_refresh_recommended(mock_auth_path, expiring_soon_se
 
 def test_get_session_status_expired(mock_auth_path, expired_session_cookies):
     """get_session_status should detect expired session."""
-    from texas_grocery_mcp.auth.session import get_session_status
+    from auto_grocier_mcp.auth.session import get_session_status
 
     mock_auth_path.write_text(json.dumps(expired_session_cookies))
 
@@ -273,7 +273,7 @@ def test_get_session_status_expired(mock_auth_path, expired_session_cookies):
 
 def test_get_session_status_missing_reese84(mock_auth_path):
     """get_session_status should detect missing reese84 token."""
-    from texas_grocery_mcp.auth.session import get_session_status
+    from auto_grocier_mcp.auth.session import get_session_status
 
     # Session without reese84
     cookies = {
@@ -298,7 +298,7 @@ def test_get_session_status_missing_reese84(mock_auth_path):
 
 def test_get_session_status_corrupted_file(mock_auth_path):
     """get_session_status should handle corrupted auth file."""
-    from texas_grocery_mcp.auth.session import get_session_status
+    from auto_grocier_mcp.auth.session import get_session_status
 
     mock_auth_path.write_text("not valid json {{{")
 
@@ -317,7 +317,7 @@ def test_get_session_status_corrupted_file(mock_auth_path):
 @pytest.mark.asyncio
 async def test_session_status_no_auth_file(mock_auth_path):
     """session_status tool should indicate no auth when file missing."""
-    from texas_grocery_mcp.tools.session import session_status
+    from auto_grocier_mcp.tools.session import session_status
 
     result = await session_status()
 
@@ -329,7 +329,7 @@ async def test_session_status_no_auth_file(mock_auth_path):
 @pytest.mark.asyncio
 async def test_session_status_valid_session(mock_auth_path, valid_session_cookies):
     """session_status tool should show healthy session with time remaining."""
-    from texas_grocery_mcp.tools.session import session_status
+    from auto_grocier_mcp.tools.session import session_status
 
     mock_auth_path.write_text(json.dumps(valid_session_cookies))
 
@@ -346,7 +346,7 @@ async def test_session_status_valid_session(mock_auth_path, valid_session_cookie
 @pytest.mark.asyncio
 async def test_session_status_refresh_recommended(mock_auth_path, expiring_soon_session_cookies):
     """session_status tool should recommend refresh when < 4 hours remaining."""
-    from texas_grocery_mcp.tools.session import session_status
+    from auto_grocier_mcp.tools.session import session_status
 
     mock_auth_path.write_text(json.dumps(expiring_soon_session_cookies))
 
@@ -365,7 +365,7 @@ async def test_session_status_refresh_recommended(mock_auth_path, expiring_soon_
 def mock_no_playwright(monkeypatch):
     """Mock Playwright as unavailable to test fallback behavior."""
     monkeypatch.setattr(
-        "texas_grocery_mcp.tools.session.is_playwright_available",
+        "auto_grocier_mcp.tools.session.is_playwright_available",
         lambda: False,
     )
 
@@ -376,7 +376,7 @@ async def test_session_refresh_returns_commands_when_no_playwright(
     mock_no_playwright,
 ):
     """session_refresh should return structured Playwright commands when browser not available."""
-    from texas_grocery_mcp.tools.session import session_refresh
+    from auto_grocier_mcp.tools.session import session_refresh
 
     result = await session_refresh()
 
@@ -403,7 +403,7 @@ async def test_session_refresh_returns_commands_when_no_playwright(
 @pytest.mark.asyncio
 async def test_session_refresh_includes_auth_path(mock_auth_path, mock_no_playwright):
     """session_refresh should include the auth file path."""
-    from texas_grocery_mcp.tools.session import session_refresh
+    from auto_grocier_mcp.tools.session import session_refresh
 
     result = await session_refresh()
 
@@ -419,7 +419,7 @@ async def test_session_refresh_includes_current_status(
     valid_session_cookies,
 ):
     """session_refresh should include current session status."""
-    from texas_grocery_mcp.tools.session import session_refresh
+    from auto_grocier_mcp.tools.session import session_refresh
 
     mock_auth_path.write_text(json.dumps(valid_session_cookies))
 
@@ -433,7 +433,7 @@ async def test_session_refresh_includes_current_status(
 @pytest.mark.asyncio
 async def test_session_refresh_includes_troubleshooting(mock_auth_path, mock_no_playwright):
     """session_refresh should include troubleshooting tips."""
-    from texas_grocery_mcp.tools.session import session_refresh
+    from auto_grocier_mcp.tools.session import session_refresh
 
     result = await session_refresh()
 
@@ -446,7 +446,7 @@ async def test_session_refresh_includes_troubleshooting(mock_auth_path, mock_no_
 @pytest.mark.asyncio
 async def test_session_refresh_code_saves_to_correct_path(mock_auth_path, mock_no_playwright):
     """session_refresh code should save to the correct auth path."""
-    from texas_grocery_mcp.tools.session import session_refresh
+    from auto_grocier_mcp.tools.session import session_refresh
 
     result = await session_refresh()
 
@@ -462,7 +462,7 @@ async def test_session_refresh_code_saves_to_correct_path(mock_auth_path, mock_n
 
 def test_session_clear_removes_file(mock_auth_path, valid_session_cookies):
     """session_clear should remove auth file."""
-    from texas_grocery_mcp.tools.session import session_clear
+    from auto_grocier_mcp.tools.session import session_clear
 
     mock_auth_path.write_text(json.dumps(valid_session_cookies))
     assert mock_auth_path.exists()
@@ -476,7 +476,7 @@ def test_session_clear_removes_file(mock_auth_path, valid_session_cookies):
 
 def test_session_clear_handles_missing_file(mock_auth_path):
     """session_clear should handle missing file gracefully."""
-    from texas_grocery_mcp.tools.session import session_clear
+    from auto_grocier_mcp.tools.session import session_clear
 
     result = session_clear()
 
@@ -491,7 +491,7 @@ def test_session_clear_handles_missing_file(mock_auth_path):
 
 def test_check_session_freshness_with_valid_localstorage(mock_auth_path, valid_session_cookies):
     """check_session_freshness should check localStorage renewTime."""
-    from texas_grocery_mcp.auth.session import check_session_freshness
+    from auto_grocier_mcp.auth.session import check_session_freshness
 
     mock_auth_path.write_text(json.dumps(valid_session_cookies))
 
@@ -503,7 +503,7 @@ def test_check_session_freshness_with_valid_localstorage(mock_auth_path, valid_s
 
 def test_get_reese84_info_from_localstorage(mock_auth_path):
     """get_reese84_info should extract from localStorage when no cookie."""
-    from texas_grocery_mcp.auth.session import get_reese84_info
+    from auto_grocier_mcp.auth.session import get_reese84_info
 
     future_time = time.time() + 86400
     cookies_with_reese84_in_localstorage = {
@@ -549,7 +549,7 @@ def test_get_reese84_info_from_localstorage(mock_auth_path):
 
 def test_get_reese84_info_from_cookie(mock_auth_path, stale_session_cookies):
     """get_reese84_info should fall back to cookie expires."""
-    from texas_grocery_mcp.auth.session import get_reese84_info
+    from auto_grocier_mcp.auth.session import get_reese84_info
 
     mock_auth_path.write_text(json.dumps(stale_session_cookies))
 
@@ -562,7 +562,7 @@ def test_get_reese84_info_from_cookie(mock_auth_path, stale_session_cookies):
 
 def test_get_reese84_info_missing(mock_auth_path):
     """get_reese84_info should return None when no reese84 present."""
-    from texas_grocery_mcp.auth.session import get_reese84_info
+    from auto_grocier_mcp.auth.session import get_reese84_info
 
     cookies = {
         "cookies": [
@@ -590,7 +590,7 @@ def test_get_reese84_info_missing(mock_auth_path):
 
 def test_is_authenticated_with_valid_session(mock_auth_path, valid_session_cookies):
     """is_authenticated should return True when both cookies and reese84 are valid."""
-    from texas_grocery_mcp.auth.session import is_authenticated
+    from auto_grocier_mcp.auth.session import is_authenticated
 
     mock_auth_path.write_text(json.dumps(valid_session_cookies))
 
@@ -606,7 +606,7 @@ def test_is_authenticated_with_expired_reese84(mock_auth_path, expired_session_c
     cookie session is considered authenticated. (get_session_status still tracks
     reese84 lifecycle for diagnostics — see the divergence test below.)
     """
-    from texas_grocery_mcp.auth.session import is_authenticated
+    from auto_grocier_mcp.auth.session import is_authenticated
 
     mock_auth_path.write_text(json.dumps(expired_session_cookies))
 
@@ -619,7 +619,7 @@ def test_is_authenticated_with_missing_reese84(mock_auth_path):
     auto_grocier fork behavior: reese84 absence does not fail authentication;
     the sat/DYN_USER_ID session cookies drive validity.
     """
-    from texas_grocery_mcp.auth.session import is_authenticated
+    from auto_grocier_mcp.auth.session import is_authenticated
 
     # Valid cookies but no reese84 in localStorage
     future_time = time.time() + 86400
@@ -649,7 +649,7 @@ def test_is_authenticated_with_missing_reese84(mock_auth_path):
 
 def test_is_authenticated_with_no_auth_file(mock_auth_path):
     """is_authenticated should return False when auth file doesn't exist."""
-    from texas_grocery_mcp.auth.session import is_authenticated
+    from auto_grocier_mcp.auth.session import is_authenticated
 
     # Don't create the auth file
     assert is_authenticated() is False
@@ -657,7 +657,7 @@ def test_is_authenticated_with_no_auth_file(mock_auth_path):
 
 def test_is_authenticated_with_expired_cookies(mock_auth_path):
     """is_authenticated should return False when session cookies are expired."""
-    from texas_grocery_mcp.auth.session import is_authenticated
+    from auto_grocier_mcp.auth.session import is_authenticated
 
     past_time = time.time() - 3600  # 1 hour ago
     expired_cookies = {
@@ -708,7 +708,7 @@ def test_is_authenticated_diverges_from_get_session_status_on_expired_reese84(
       * get_session_status() -> a richer diagnostic that still tracks the reese84
         lifecycle, so it reports authenticated=False when reese84 is expired.
     """
-    from texas_grocery_mcp.auth.session import get_session_status, is_authenticated
+    from auto_grocier_mcp.auth.session import get_session_status, is_authenticated
 
     mock_auth_path.write_text(json.dumps(expired_session_cookies))
 
@@ -726,7 +726,7 @@ def test_is_authenticated_consistency_with_get_session_status_valid(
     valid_session_cookies,
 ):
     """is_authenticated and get_session_status should agree on valid sessions."""
-    from texas_grocery_mcp.auth.session import get_session_status, is_authenticated
+    from auto_grocier_mcp.auth.session import get_session_status, is_authenticated
 
     mock_auth_path.write_text(json.dumps(valid_session_cookies))
 
@@ -753,7 +753,7 @@ class TestSecurityChallengeDetection:
 
     def test_normal_heb_homepage_not_detected_as_waf(self):
         """Normal HEB homepage should NOT be detected as WAF challenge."""
-        from texas_grocery_mcp.auth.browser_refresh import _detect_security_challenge_html
+        from auto_grocier_mcp.auth.browser_refresh import _detect_security_challenge_html
 
         # Simulated normal HEB homepage HTML (simplified)
         normal_page_html = """
@@ -788,7 +788,7 @@ class TestSecurityChallengeDetection:
 
     def test_page_with_reese84_script_not_detected(self):
         """Page containing reese84 script should NOT be detected as WAF."""
-        from texas_grocery_mcp.auth.browser_refresh import _detect_security_challenge_html
+        from auto_grocier_mcp.auth.browser_refresh import _detect_security_challenge_html
 
         html_with_reese84 = """
         <!DOCTYPE html>
@@ -816,7 +816,7 @@ class TestSecurityChallengeDetection:
 
     def test_page_with_incapsula_headers_not_detected(self):
         """Page with incapsula in headers should NOT be detected as WAF if it has content."""
-        from texas_grocery_mcp.auth.browser_refresh import _detect_security_challenge_html
+        from auto_grocier_mcp.auth.browser_refresh import _detect_security_challenge_html
 
         html_with_incapsula = """
         <!DOCTYPE html>
@@ -841,7 +841,7 @@ class TestSecurityChallengeDetection:
 
     def test_real_waf_challenge_page_detected(self):
         """Actual WAF challenge interstitial should be detected."""
-        from texas_grocery_mcp.auth.browser_refresh import _detect_security_challenge_html
+        from auto_grocier_mcp.auth.browser_refresh import _detect_security_challenge_html
 
         waf_challenge_html = """
         <!DOCTYPE html>
@@ -858,7 +858,7 @@ class TestSecurityChallengeDetection:
 
     def test_cloudflare_challenge_detected(self):
         """Cloudflare-style challenge should be detected."""
-        from texas_grocery_mcp.auth.browser_refresh import _detect_security_challenge_html
+        from auto_grocier_mcp.auth.browser_refresh import _detect_security_challenge_html
 
         cloudflare_html = """
         <!DOCTYPE html>
@@ -877,7 +877,7 @@ class TestSecurityChallengeDetection:
 
     def test_blocked_page_detected(self):
         """'Sorry, you have been blocked' page should be detected."""
-        from texas_grocery_mcp.auth.browser_refresh import _detect_security_challenge_html
+        from auto_grocier_mcp.auth.browser_refresh import _detect_security_challenge_html
 
         blocked_html = """
         <!DOCTYPE html>
@@ -895,7 +895,7 @@ class TestSecurityChallengeDetection:
 
     def test_minimal_incapsula_challenge_detected(self):
         """Minimal page with _incapsula_resource should be detected as challenge."""
-        from texas_grocery_mcp.auth.browser_refresh import _detect_security_challenge_html
+        from auto_grocier_mcp.auth.browser_refresh import _detect_security_challenge_html
 
         # A small challenge page (< 5000 chars) with incapsula resource
         minimal_challenge = """
@@ -914,7 +914,7 @@ class TestSecurityChallengeDetection:
 
     def test_large_page_with_incapsula_not_detected(self):
         """Large page (> 5000 chars) with incapsula should NOT be detected."""
-        from texas_grocery_mcp.auth.browser_refresh import _detect_security_challenge_html
+        from auto_grocier_mcp.auth.browser_refresh import _detect_security_challenge_html
 
         # Create a large HTML page that includes _incapsula_resource but is clearly a real page
         large_page = """

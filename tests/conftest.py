@@ -6,7 +6,7 @@ import pytest
 @pytest.fixture(autouse=True)
 def reset_state():
     """Reset all shared state between tests."""
-    from texas_grocery_mcp.state import StateManager
+    from auto_grocier_mcp.state import StateManager
 
     StateManager.reset_sync()
     yield
