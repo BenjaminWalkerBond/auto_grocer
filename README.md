@@ -12,38 +12,26 @@ An automated grocery shopping assistant that parses recipes and manages ingredie
 
 ## Prerequisites
 
-The **recommended** way to run auto_grocier is the source-only Docker path: clone
-the repo and start everything with `docker compose`. The Docker image bundles
-**PostgreSQL, Chromium, and Xvfb**, so it can refresh its own HEB session with no
-host Python, Postgres, or browser install.
+To run the `auto-grocier` MCP server from your coding agent, all you need is
+**Docker Desktop** and a filled-in `.env` — the Docker image bundles everything
+else (PostgreSQL, Chromium, and Xvfb) and refreshes its own HEB session, so there
+is no host Python, Postgres, or browser install.
+
+- **Docker Desktop** — runs the whole stack.
+- **An active H-E-B account** — `EMAIL` / `PASSWORD` in `.env`.
+- **A Gmail account + app password** — HEB emails verification codes, which are
+  read over IMAP. Set `EMAIL` and the Gmail IMAP **app password** in `.env`.
+- **An Anthropic / Claude API key** — `CLAUDE_API_KEY` (`sk-ant-...`) for
+  ingredient parsing.
 
 ```bash
 git clone <your-auto_grocier-repo-url>
 cd auto_grocier
-cp .env.example .env          # then fill in your credentials (see below)
-docker compose -f docker/docker-compose.yml build mcp
-docker compose -f docker/docker-compose.yml run --rm -T mcp
+cp .env.example .env          # then fill in your credentials
 ```
 
-The host `python main.py` path (see [Quick Start](#quick-start-usage)) is the
-**alternative** for local development.
-
-### What you need
-
-Regardless of path, you need the following to get from a fresh clone to a running
-MCP server:
-
-- **Docker Desktop** — for the recommended route (bundles Postgres + Chromium + Xvfb).
-- **PostgreSQL** (Postgres) — only if you run on the host *without* the
-  compose-provided database; the Docker route provides one for you.
-- **Chromium / Chrome** — only for the host login path; the Docker image bundles it.
-- **A Gmail account + app password** — HEB sends email-verification codes, which
-  are read over IMAP. Set `EMAIL` and the Gmail IMAP **app password** in `.env`.
-- **An Anthropic / Claude API key** — `CLAUDE_API_KEY` (`sk-ant-...`) for ingredient
-  parsing and self-healing.
-- **An active H-E-B account** — `EMAIL` / `PASSWORD` in `.env`.
-- **Store selection** — set your active pickup store (via the `set_store` tool or
-  the store setting in `.env`) so orders route to the right location.
+Then head to [Quick Start](#quick-start-usage). To run the automation from a host
+checkout instead, see [Development](#development).
 
 ## Quick Start (Usage)
 
@@ -196,21 +184,35 @@ This section covers running the automation and the MCP server from a host checko
 plus the database tests and project layout. For usage from an MCP client, see
 [Quick Start (Usage)](#quick-start-usage).
 
-### Local setup (virtual environment)
+### Prerequisites
 
-Python 3.12 required.
+Running on the host (outside Docker) needs the runtime prerequisites from
+[Prerequisites](#prerequisites) plus:
 
-PowerShell (Windows):
-```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-```
+- **Python 3.12** — for the host `main.py` / `session_maintenance.run` path and
+  the host-run MCP server.
+- **PostgreSQL** — only if you run against a host database instead of the
+  compose-provided one; the Docker route provides Postgres for you.
+- **Chromium / Chrome** — only for the host login path; the Docker image bundles it.
+- **Store selection** — set your active pickup store (via the `set_store` tool or
+  the store setting in `.env`) so orders route to the right location.
 
-bash / WSL / macOS:
+### Local setup (uv)
+
+Python 3.12 required. [uv](https://docs.astral.sh/uv/) manages the virtual
+environment and dependencies from `pyproject.toml` + `uv.lock`.
+
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
+# Install uv (see https://docs.astral.sh/uv/getting-started/installation/)
+# Fetch the pinned interpreter if it is missing:
+uv python install 3.12
+
+# Create/refresh the local .venv and install all deps (incl. dev tools):
+uv sync
 ```
+
+`uv sync` creates a local `.venv` automatically (already gitignored). Prefix
+commands with `uv run` to run them inside it — no manual activation needed.
 
 ### Configuration
 
@@ -252,18 +254,17 @@ See `CLAUDE.md` and `docs/POSTGRES_INSTALL.md` for detailed setup instructions.
 ### Running the automation
 
 ```bash
-python main.py
+uv run python main.py
 # or, equivalently:
-python -m session_maintenance.run
+uv run python -m session_maintenance.run
 # override the mode without editing .env:
-MODE=test python -m session_maintenance.run
+MODE=test uv run python -m session_maintenance.run
 ```
 
 ### Running the MCP server on the host
 
 ```bash
-source .venv/bin/activate
-python mcp_server.py
+uv run python mcp_server.py
 ```
 
 ### Running it fully in Docker
@@ -311,8 +312,8 @@ How it works:
 ### Database tests
 
 ```bash
-python manual_scripts/test_connection.py
-python manual_scripts/test_database.py
+uv run python manual_scripts/test_connection.py
+uv run python manual_scripts/test_database.py
 ```
 
 ### Project Structure
@@ -333,7 +334,7 @@ auto_grocier/
 
 ### Important Notes
 
-- **Always activate the virtual environment before running any commands!**
+- **Use `uv run` to run commands in the project environment (`uv sync` first)!**
 - **Manual/ad-hoc scripts live in `manual_scripts/`; the pytest suite is in `tests/`**
 - Database credentials are stored in `.env` (not tracked in git)
 

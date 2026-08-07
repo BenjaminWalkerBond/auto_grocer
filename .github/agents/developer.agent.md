@@ -32,8 +32,8 @@ Track `dev_attempts` — if the same failure persists after 3 attempts, set `sta
 with a summary in `reason` and return for escalation.
 
 ## Project conventions (must follow)
-- Activate the venv for any Python command: `source venv/bin/activate` (see
-  [CLAUDE.md](../../CLAUDE.md)).
+- Run Python commands through uv (`uv sync` once, then `uv run ...`); see
+  [CLAUDE.md](../../CLAUDE.md).
 - Keep the code lint-clean with ruff (line-length 100). Do NOT modify the vendored
   `auto_grocier_mcp` library.
 - Never hammer heb.com; auth/hash refresh is handled by the `refresh-heb-login` and
