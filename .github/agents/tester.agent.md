@@ -21,12 +21,12 @@ before running anything**.
    - Write a `test_plan` section into the status file: which suites/commands you will run,
      which acceptance criterion each check maps to, expected outcomes, and environment
      prerequisites (venv active, HEB session valid for integration).
-3. **Execute** only after the `test_plan` is recorded. Always activate the venv first:
-   `source venv/bin/activate` (see [CLAUDE.md](../../CLAUDE.md)). Run:
-   - `pytest -ra`
-   - `ruff check .`
-   - `pytest --run-integration` (integration marker)
-   - `python main.py` with `MODE=test` (test-mode run — adds to cart, no checkout/charge)
+3. **Execute** only after the `test_plan` is recorded. Run everything through uv
+   (`uv sync` once, then prefix with `uv run`; see [CLAUDE.md](../../CLAUDE.md)):
+   - `uv run pytest -ra`
+   - `uv run ruff check .`
+   - `uv run pytest --run-integration` (integration marker)
+   - `uv run python main.py` with `MODE=test` (test-mode run — adds to cart, no checkout/charge)
 4. Record results in the status file under `## Test results`.
 
 ## Verdicts

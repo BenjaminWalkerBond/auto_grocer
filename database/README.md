@@ -58,11 +58,8 @@ DATABASE_PASSWORD=your_secure_password
 ### 1. Install Python Dependencies
 
 ```bash
-# Activate your virtual environment
-source venv/bin/activate
-
-# Install requirements
-pip install -r requirements.txt
+# Install all project dependencies into the uv-managed .venv
+uv sync
 ```
 
 This will install:

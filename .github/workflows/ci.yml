@@ -18,28 +18,26 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
         with:
+          enable-cache: true
           python-version: ${{ matrix.python-version }}
-          cache: pip
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt -r requirements-dev.txt
+        run: uv sync --frozen
 
       - name: Lint (ruff)
         # Repo-wide lint gate. The vendored auto_grocier_mcp library and the
         # generated session_maintenance/updated_functions fragments are excluded
         # via pyproject.toml [tool.ruff] extend-exclude.
-        run: ruff check .
+        run: uv run ruff check .
 
       - name: Run unit tests
         # Full unit suite. On ubuntu the POSIX 0o600 permission tests run and
         # pass; integration tests need a live HEB session and are skipped unless
         # --run-integration is passed.
-        run: pytest tests/unit
+        run: uv run pytest tests/unit
 
   typecheck:
     runs-on: ubuntu-latest
@@ -48,16 +46,14 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
         with:
+          enable-cache: true
           python-version: "3.12"
-          cache: pip
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt -r requirements-dev.txt
+        run: uv sync --frozen
 
       - name: Type check (mypy)
         # First-party source only; auto_grocier_mcp and friends are excluded via
@@ -66,4 +62,4 @@ jobs:
         # session_maintenance) and MUST report zero errors. A mypy failure fails
         # the job. Achieved via genuine SQLAlchemy 2.0 typing + real annotations,
         # not blanket suppression.
-        run: mypy classes database session_maintenance utility mcp_server.py recipe_grabber.py claude.py main.py
+        run: uv run mypy classes database session_maintenance utility mcp_server.py recipe_grabber.py claude.py main.py

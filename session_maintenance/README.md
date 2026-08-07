@@ -35,36 +35,37 @@ Trade-off: nodriver is fully async, so the entrypoint runs on an event loop.
 
 ## Running
 
-From the repo root, with the venv active and `config.txt` present:
+From the repo root, after `uv sync`, with `config.txt` present (prefix commands
+with `uv run`):
 
 ```bash
 # MODE is read from .env; the MODE env var overrides it.
-python -m session_maintenance.run
+uv run python -m session_maintenance.run
 
 # --- Canonical modes ---
 
 # Refresh the MCP session (login + export auth.json):
-MODE=login_export python -m session_maintenance.run
+MODE=login_export uv run python -m session_maintenance.run
 
 # Capture fresh GraphQL hashes (also exports auth.json):
-MODE=update_graphql_hashes python -m session_maintenance.run
+MODE=update_graphql_hashes uv run python -m session_maintenance.run
 
 # End-to-end shopping. Tunables:
 #   SHOP_SOURCE = graphql (default) | browser
 #   CHECKOUT    = none (default) | prompt | auto   (never places a paid order)
-MODE=shop python -m session_maintenance.run
-MODE=shop CHECKOUT=prompt python -m session_maintenance.run
-MODE=shop SHOP_SOURCE=browser CHECKOUT=none python -m session_maintenance.run
+MODE=shop uv run python -m session_maintenance.run
+MODE=shop CHECKOUT=prompt uv run python -m session_maintenance.run
+MODE=shop SHOP_SOURCE=browser CHECKOUT=none uv run python -m session_maintenance.run
 
 # WAF baseline probe (fingerprint + single heb.com hit; diagnostic only):
-python -m session_maintenance.waf_probe
+uv run python -m session_maintenance.waf_probe
 ```
 
 Deprecated `MODE` names still work (they map onto `shop` and print a warning):
 `test`, `checkout_with_prompt`, `auto_checkout`, `graphql`,
 `graphql_checkout_with_prompt`, `graphql_auto_checkout`.
 
-`python main.py` is a thin shim that calls `session_maintenance.run` with the same
+`uv run python main.py` is a thin shim that calls `session_maintenance.run` with the same
 modes.
 
 ## Notes

@@ -123,8 +123,7 @@ DATABASE_PASSWORD=your_password
 
 ### 4. Install Python Dependencies
 ```bash
-source venv/bin/activate
-pip install -r requirements.txt
+uv sync
 ```
 
 ### 5. Run Setup

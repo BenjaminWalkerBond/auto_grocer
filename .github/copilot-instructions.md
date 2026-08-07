@@ -24,7 +24,7 @@ and recover automatically:
 3. Re-run `mcp_auto-grocier_auth_status` and proceed once it returns
    `authenticated:true`.
 
-Both skills require running login flows on the host with `source venv/bin/activate`,
+Both skills require running login flows on the host with `uv run python -m session_maintenance.run`,
 then syncing files into the `auto_grocier_session` Docker volume and calling
 `mcp_auto-grocier_refresh_session`. Never hammer heb.com — repeated hits trigger
 WAF 401s and email verification.
