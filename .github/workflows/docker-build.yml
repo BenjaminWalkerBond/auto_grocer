@@ -10,8 +10,7 @@ on:
     branches: [main]
     paths:
       - "docker/**"
-      - "requirements.txt"
-      - "requirements-dev.txt"
+      - "uv.lock"
       - "mcp_server.py"
       - "auto_grocier_mcp/**"
       - "pyproject.toml"
@@ -19,8 +18,7 @@ on:
     branches: [main]
     paths:
       - "docker/**"
-      - "requirements.txt"
-      - "requirements-dev.txt"
+      - "uv.lock"
       - "mcp_server.py"
       - "auto_grocier_mcp/**"
       - "pyproject.toml"

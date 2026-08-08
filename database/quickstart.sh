@@ -20,29 +20,15 @@ fi
 echo "✓ PostgreSQL is installed"
 echo ""
 
-# Check if virtual environment is activated
-if [[ -z "$VIRTUAL_ENV" ]]; then
-    echo "Activating virtual environment..."
-    source venv/bin/activate
-fi
-
-echo "✓ Virtual environment activated"
-echo ""
-
-# Install Python dependencies if needed
-echo "Checking Python dependencies..."
-pip list | grep -q sqlalchemy
-if [ $? -ne 0 ]; then
-    echo "Installing SQLAlchemy and psycopg2..."
-    pip install sqlalchemy psycopg2-binary
-else
-    echo "✓ Dependencies already installed"
-fi
+# Install Python dependencies via uv (creates/updates the project .venv)
+echo "Syncing Python dependencies with uv..."
+uv sync
+echo "✓ Dependencies installed"
 echo ""
 
 # Check if database exists
 echo "Checking database configuration..."
-python -c "from database.db_config import DatabaseConfig; DatabaseConfig.print_config()"
+uv run python -c "from database.db_config import DatabaseConfig; DatabaseConfig.print_config()"
 echo ""
 
 echo "=========================================="
@@ -60,9 +46,9 @@ echo ""
 echo "3. Update .env with your database credentials"
 echo ""
 echo "4. Run the setup:"
-echo "   python database/setup_database.py"
+echo "   uv run python database/setup_database.py"
 echo ""
 echo "5. Test it:"
-echo "   python database/test_database.py"
+echo "   uv run python database/test_database.py"
 echo ""
 echo "=========================================="
