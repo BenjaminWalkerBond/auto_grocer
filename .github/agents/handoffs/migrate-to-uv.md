@@ -14,8 +14,8 @@ Rules:
 
 topic: migrate-to-uv
 chosen_idea: Migrate dependency management from pip + requirements*.txt to uv, with pyproject.toml [project] as the source of truth and a hash-pinned uv.lock; switch Docker and CI to uv; update docs.
-status: READY_FOR_TEST   # READY_FOR_DESIGN | READY_FOR_DEV | INFEASIBLE | READY_FOR_TEST | TESTS_FAILED | PASSED | ERROR | BLOCKED
-next_agent: developer
+status: PASSED   # READY_FOR_DESIGN | READY_FOR_DEV | INFEASIBLE | READY_FOR_TEST | TESTS_FAILED | PASSED | ERROR | BLOCKED
+next_agent: none
 
 ## Attempt counters
 design_attempts: 0
@@ -481,10 +481,13 @@ per_criterion:
     docker-build.yml path triggers reference `uv.lock` + `pyproject.toml` (no
     requirements*.txt). Authoritative Linux run: see CI conclusion below.
 ci_result:
-  pr:
-  test_job:
-  typecheck_job:
-failures:
+  pr: "#12 — https://github.com/BenjaminWalkerBond/auto_grocier/pull/12 (base dev, head chore/migrate-to-uv @ 880c56e)"
+  run: "31185919217 — completed/success in 32s"
+  test_job: PASS — CI/test (3.12) (pull_request) ✓ 19s
+  typecheck_job: PASS — CI/typecheck (pull_request) ✓ 28s (mypy hard gate green on Linux)
+  overall: "All checks were successful — 2 successful, 0 failing, 0 pending."
+failures: none — all 11 criteria PASS locally (Linux) AND both PR CI jobs green.
+  PR NOT merged (left for Orchestrator/user decision per brief).
 
 ## Feedback / handoff log
 
@@ -554,3 +557,23 @@ a PR so Linux CI runs the uv gates, plus a BOUNDED docker build (not a blocking
   python`, and/or `run mcp < /dev/null` (immediate EOF → clean start+exit).
   Orchestrator unblocking and routing to Developer to run bounded checks, confirm
   commit/push, and open the PR so Linux CI validates the uv gates.
+
+- 2026-08-07 — Verify-and-ship (non-hanging): COMPLETE → status PASSED. Ran on
+  WSL2 Ubuntu-24.04 with uv 0.12.2 (linux-gnu) + Docker Desktop 29.5.3 (docker.exe).
+  STEP 0: migration was STAGED-but-UNCOMMITTED and the branch was unpushed;
+  committed as `880c56e` ("chore: migrate dependency management to uv", author
+  Benjamin Bond <benbond96@gmail.com>) and pushed `-u origin chore/migrate-to-uv`.
+  Left the unrelated untracked `public-release-prep.md` alone; removed a stray
+  junk file (`tatus --porcelain`) left by a pager mishap. STEP 1 (Linux gates):
+  `uv lock --check` clean (111 pkgs), `uv sync --frozen` exit 0, ruff "All checks
+  passed!", mypy "Success: no issues found in 41 source files", pytest 344 passed /
+  2 skipped / 0 failed (Linux baseline — 6 POSIX file-mode tests run here, only 2
+  redis tests skip; == 338/8 mapped to Linux), dep-set identical 34/34 + 5/5,
+  dangling-ref grep only historical hits. STEP 2 (bounded Docker): `build mcp` exit
+  0 via pinned ghcr.io/astral-sh/uv:0.12.2 + `uv sync --frozen --no-dev` (no pip);
+  `--entrypoint python` import smoke → `imports-ok`; `run -T mcp < /dev/null` →
+  FastMCP stdio server starts + clean EOF exit, 0 import errors. STEP 3 (CI static):
+  ci.yml both jobs pinned setup-uv@v6 + uv sync --frozen + uv run, mypy scope
+  byte-identical, no continue-on-error; docker-build.yml triggers on uv.lock. STEP 4:
+  opened PR #12 → dev; Linux CI GREEN (run 31185919217, success 32s): CI/test (3.12)
+  ✓ 19s, CI/typecheck ✓ 28s. NOT merged — left for Orchestrator/user. next_agent: none.
