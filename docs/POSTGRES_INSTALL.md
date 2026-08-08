@@ -53,8 +53,7 @@ DATABASE_PASSWORD=your_secure_password
 ### Step 4: Test Connection
 ```bash
 cd /mnt/c/Users/benbo/OneDrive/Desktop/Development/GitHub/Python/auto_grocier
-source venv/bin/activate
-python database/test_connection.py
+uv run python database/test_connection.py
 ```
 
 ---

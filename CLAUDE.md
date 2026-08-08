@@ -60,8 +60,7 @@ docker compose -f docker/docker-compose.yml run --rm -T mcp
 
 **Local:**
 ```bash
-source venv/bin/activate
-python mcp_server.py
+uv run python mcp_server.py
 ```
 
 VS Code auto-launches via `.vscode/mcp.json`.
@@ -77,21 +76,21 @@ developing/maintaining the automation, not for routine grocery ordering.
 
 The project uses Anthropic's Claude Sonnet API for ingredient parsing and self-healing.
 
-### ⚠️ IMPORTANT: Virtual Environment
-**ALWAYS activate the virtual environment before running any commands, scripts, or tests!**
+### ⚠️ IMPORTANT: Environment (uv)
+**Run project commands through `uv run` so they use the project environment.**
+Run `uv sync` once to create/update the local `.venv` (uv manages it on all
+platforms — no manual activation needed):
 
 ```bash
-# In WSL/Linux/Mac:
-source venv/bin/activate
+# One-time (or after deps change):
+uv sync
 
-# In Windows PowerShell:
-.\venv\Scripts\Activate.ps1
-
-# In Windows Command Prompt:
-.\venv\Scripts\activate.bat
+# Then run anything inside the project env:
+uv run python main.py
+uv run pytest tests/unit
 ```
 
-You should see `(venv)` in your terminal prompt when the virtual environment is active.
+If the 3.12 interpreter is missing, run `uv python install 3.12` first.
 
 ## Configuration
 
@@ -175,14 +174,11 @@ The code uses **Claude Sonnet 4** (`claude-sonnet-4-20250514`), which is:
 To run tests:
 
 ```bash
-# First, activate virtual environment (REQUIRED!)
-source venv/bin/activate
-
-# Then run any script from the manual_scripts directory
-python manual_scripts/test_recipe_grabber.py
-python manual_scripts/test_connection.py
-python manual_scripts/test_database.py
-python main.py 
+# Run any script from the manual_scripts directory via uv
+uv run python manual_scripts/test_recipe_grabber.py
+uv run python manual_scripts/test_connection.py
+uv run python manual_scripts/test_database.py
+uv run python main.py
 ```
 
 **Note:** All manual/ad-hoc test scripts should be placed in the `manual_scripts/` directory for consistency and organization.
@@ -210,14 +206,11 @@ When testing the main program with web scraping functionality, follow this syste
 ### 1. Run the Program in Test Mode
 
 ```bash
-# Activate virtual environment first (REQUIRED!)
-source venv/bin/activate
-
 # Ensure MODE is set to 'test' in .env:
 # MODE=test
 
-# Run main program
-python main.py
+# Run main program via uv
+uv run python main.py
 ```
 
 ### 2. Watch Terminal Output Closely

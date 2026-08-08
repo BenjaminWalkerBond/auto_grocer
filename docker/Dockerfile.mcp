@@ -23,9 +23,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
+# --- uv (pinned static binary; no pip) ---
+COPY --from=ghcr.io/astral-sh/uv:0.12.2 /uv /usr/local/bin/uv
+
+# Install deps into the image's SYSTEM Python (not a project .venv) so the
+# unchanged CMD `python mcp_server.py`, compose/skill invocations of
+# `python -m session_maintenance.run`, and .vscode/mcp.json all keep working with
+# bare `python`. UV_LINK_MODE=copy avoids cross-layer hardlink warnings.
+ENV UV_PROJECT_ENVIRONMENT=/usr/local \
+    UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1
+
 # --- Python deps (cached layer) ---
-COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy only the lock inputs first so this layer is reused unless deps change.
+# `[tool.uv] package = false` makes sync install ONLY dependencies (no project
+# build), so --no-install-project is not required.
+COPY pyproject.toml uv.lock .python-version ./
+RUN uv sync --frozen --no-dev
 
 # --- Application code ---
 COPY . .

@@ -8,6 +8,16 @@ Pre-1.0.0 releases may change interfaces between minor versions.
 
 ## [Unreleased]
 
+### Changed
+
+- **Dependency management migrated to [uv](https://docs.astral.sh/uv/).**
+  `pyproject.toml` (with static `[project.dependencies]` + a `dev`
+  `[dependency-groups]`) and a committed, hash-pinned `uv.lock` are now the single
+  source of truth. `requirements.txt` / `requirements-dev.txt` were removed, and
+  Docker, CI, and the docs now install via `uv sync --frozen` / run via `uv run`.
+  Same dependency set and version constraints — packaging change only. Also fixed
+  `.python-version` (`3.10.12` → `3.12`) to match `requires-python`.
+
 ## [0.1.0] - 2026-07-31
 
 Initial public release. auto_grocier automates H-E-B grocery ordering through an

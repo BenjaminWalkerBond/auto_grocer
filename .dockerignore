@@ -1,6 +1,6 @@
 # Build context excludes — keep the image small and free of secrets/host state.
 
-# Virtual environments (host-specific; deps are installed from requirements.txt)
+# Virtual environments (host-specific; deps are installed from pyproject.toml/uv.lock)
 venv/
 .venv/
 .venv-win/
