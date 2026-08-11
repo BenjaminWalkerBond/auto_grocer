@@ -33,7 +33,7 @@ from classes.Ingredient import Ingredient
 from classes.IngredientList import IngredientList
 from claude import get_setting
 from recipe_grabber import clean_ingredient, populate_ingredient_list
-from session_maintenance import flows
+from session_maintenance import flows, primitives
 from session_maintenance.auth_export import export_session_to_authjson
 from session_maintenance.browser import start_browser, stop_browser
 from session_maintenance.hash_capture import GraphQLHashCapturer
@@ -175,7 +175,7 @@ async def _checkout_with_optional_prompt(tab, logger, *, prompt: bool):
 async def login_export_mode(browser, tab, logger, store_id):
     print("\n🔐 LOGIN + EXPORT MODE (refresh auth.json)\n")
     await self_healing_call(flows.login, tab, tab=tab, logger=logger)
-    await flows.dismiss_modals(tab)
+    await primitives.dismiss_modals(tab)
     print("\n🔐 Exporting browser session for the GraphQL/MCP client...")
     await export_session_to_authjson(browser, tab, store_id=store_id)
     print("✅ Session exported.")
@@ -202,7 +202,7 @@ async def shop_mode(browser, tab, logger, ingredient_list, store_id, *,
             return
 
     await self_healing_call(flows.login, tab, tab=tab, logger=logger)
-    await flows.dismiss_modals(tab)
+    await primitives.dismiss_modals(tab)
 
     if via_graphql:
         print("\n🔐 Exporting browser session for the GraphQL client...")
@@ -261,7 +261,7 @@ async def update_graphql_hashes_mode(browser, tab, logger, store_id, store_searc
 
     # Login + homepage to trigger navigation queries.
     await self_healing_call(flows.login, tab, tab=tab, logger=logger)
-    await flows.dismiss_modals(tab)
+    await primitives.dismiss_modals(tab)
     print("\n🏠 Loading homepage to trigger navigation queries...")
     await tab.get(flows.HEB_HOME)
     await flows.random_time()

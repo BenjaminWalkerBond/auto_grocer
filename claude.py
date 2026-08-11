@@ -28,7 +28,7 @@ _ENV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
 load_dotenv(_ENV_PATH)
 
 # Claude model used across the project. Update here if the model is retired.
-MODEL = "claude-sonnet-4-5-20250929"
+MODEL = "claude-sonnet-5"
 
 
 def get_setting(key, default=""):
