@@ -25,6 +25,13 @@ DEFAULT_HASHES_PATH = Path("~/.texas-grocery-mcp/persisted_queries.json").expand
 # reservation, checkout). Consumed by utility/graphql_checkout.py.
 DEFAULT_OPERATIONS_PATH = Path("~/.texas-grocery-mcp/captured_operations.json").expanduser()
 
+# Full GraphQL query documents keyed by operation name. HEB rotates persisted
+# query hashes on every deploy, and an operation that falls out of their APQ
+# cache answers PersistedQueryNotFound forever after. Holding the document lets
+# the client re-register it under a hash we compute ourselves
+# (sha256 of the document), which makes us immune to hash rotation.
+DEFAULT_DOCUMENTS_PATH = Path("~/.texas-grocery-mcp/persisted_documents.json").expanduser()
+
 # Operations we care about for cart/store flows. We still record any others seen.
 # The timeslot/checkout names below are *candidates* - HEB's real operation
 # names are discovered at capture time; these just flag the ones we're hunting
@@ -68,13 +75,14 @@ def _parse_operation(post_data):
 
 
 def _parse_operation_samples(post_data):
-    """Extract (operationName, sha256Hash, variables) from a GraphQL request body.
+    """Extract (operationName, sha256Hash, variables, query) from a request body.
 
     Like :func:`_parse_operation` but also captures the request ``variables`` so
     we learn the payload shape of operations the GraphQL client doesn't
-    implement yet (timeslot reservation, checkout). Returns a list of
-    (name, hash, variables) tuples for every operation carrying a persisted
-    query hash.
+    implement yet (timeslot reservation, checkout), plus the full ``query``
+    document when Apollo includes it (which it does on an APQ cache miss).
+    Returns a list of (name, hash, variables, query) tuples for every operation
+    carrying a persisted query hash; ``query`` is None when absent.
     """
     try:
         payload = json.loads(post_data)
@@ -94,7 +102,9 @@ def _parse_operation_samples(post_data):
             variables = op.get("variables")
             if not isinstance(variables, dict):
                 variables = {}
-            found.append((str(name), str(sha), variables))
+            query = op.get("query")
+            query = query if isinstance(query, str) and query.strip() else None
+            found.append((str(name), str(sha), variables, query))
     return found
 
 
@@ -156,3 +166,38 @@ def save_operation_samples(operations, path=None):
 
     return path
 
+
+def save_documents(documents, path=None):
+    """Merge captured GraphQL query documents into the documents file.
+
+    ``documents`` maps operationName -> query document text. Existing entries
+    are preserved unless a freshly captured document replaces them. Returns the
+    path written to, or None when there is nothing to save.
+    """
+    documents = {
+        name: text
+        for name, text in (documents or {}).items()
+        if isinstance(name, str) and isinstance(text, str) and text.strip()
+    }
+    if not documents:
+        return None
+
+    path = Path(path).expanduser() if path else DEFAULT_DOCUMENTS_PATH
+
+    existing = {}
+    if path.exists():
+        try:
+            with open(path, encoding="utf-8") as f:
+                loaded = json.load(f)
+            if isinstance(loaded, dict):
+                existing = loaded
+        except (json.JSONDecodeError, OSError):
+            existing = {}
+
+    merged = {**existing, **documents}
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(merged, f, indent=2, sort_keys=True)
+
+    return path

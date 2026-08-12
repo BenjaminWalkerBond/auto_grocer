@@ -73,6 +73,10 @@ services:
       AUTO_GROCIER_AUTO_LOGIN: "1"
       NODRIVER_BROWSER_PATH: /usr/bin/chromium
       DISPLAY: ":99"
+      # The container otherwise reports UTC while the HEB account lives in
+      # Texas. A timezone that disagrees with the account's region is a free
+      # inconsistency for bot detection to notice.
+      TZ: ${TZ:-America/Chicago}
     volumes:
       # App configuration + credentials (read-only) — not baked into the image.
       # claude.py / read_email.py call load_dotenv on this file directly.
@@ -83,6 +87,11 @@ services:
       # those rewrites would vanish when the container exits. Mounting the host
       # directory makes them land in the working tree for review + commit.
       - ../session_maintenance/updated_functions:/app/session_maintenance/updated_functions
+      # Failure screenshots + HTML snapshots, for the same reason as
+      # updated_functions above: the flows write them on error, and with `--rm`
+      # they would otherwise be destroyed with the container - which is exactly
+      # when they are needed to diagnose HEB markup changes.
+      - ../debug_logs:/app/debug_logs
       # Persisted HEB session (auth.json + persisted_queries.json). Survives
       # restarts so the container doesn't re-login every time.
       - auto_grocier_session:/root/.texas-grocery-mcp

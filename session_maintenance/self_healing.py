@@ -14,11 +14,33 @@ import inspect
 import os
 import re
 import textwrap
+import time
 import traceback
 
 from claude import MODEL, client
+from session_maintenance.waf_block import WafBlockedError
 
 UPDATED_FUNCTIONS_DIR = os.path.join(os.path.dirname(__file__), "updated_functions")
+
+# Hard wall-clock budget for a SINGLE attempt at a flow function — the original
+# and every Claude rewrite alike. An attempt that has not returned within this
+# many seconds is treated as a failure (with full diagnostics) and handed to the
+# normal heal-and-retry loop, so a hung selector wait can never stall the run.
+CALL_TIMEOUT = float(os.getenv("AUTO_GROCIER_CALL_TIMEOUT", "60"))
+
+# Set AUTO_GROCIER_SELF_HEAL=0 for diagnostic runs: the flow fails fast on the
+# real error (with its screenshot + HTML snapshot) instead of spending three
+# Claude rewrites masking which selector actually broke.
+SELF_HEAL_ENABLED = os.getenv("AUTO_GROCIER_SELF_HEAL", "1").strip().lower() not in (
+    "0",
+    "false",
+    "no",
+    "off",
+)
+
+
+class SelfHealingTimeout(Exception):
+    """A flow function attempt exceeded CALL_TIMEOUT seconds."""
 
 
 # A short cheatsheet so Claude rewrites against the right async API.
@@ -65,6 +87,20 @@ def _save_updated_function(func_name, new_code, source_file, attempt, error_msg)
     return filepath
 
 
+def _response_text(response):
+    """Return the first text block from an Anthropic response.
+
+    Not simply ``content[0].text``: with extended thinking enabled the first
+    block is a ThinkingBlock, which has no ``.text`` and used to raise
+    AttributeError - silently disabling self-healing for every failed step.
+    """
+    for block in getattr(response, "content", None) or []:
+        text = getattr(block, "text", None)
+        if isinstance(text, str) and text.strip():
+            return text
+    return ""
+
+
 def _extract_function_code(response_text):
     cleaned = re.sub(r"^```(?:python)?\s*\n", "", response_text.strip())
     cleaned = re.sub(r"\n```\s*$", "", cleaned)
@@ -101,6 +137,69 @@ def _build_heal_prompt(func_name, source, error, tb_str, html_context=None):
     return prompt
 
 
+async def _log_call_timeout(
+    func_name, attempt, healed, saved_path, source_file, tab, logger, elapsed,
+    tb_str=None, call_timeout=None,
+):
+    """Print and persist a rich report for a timed-out attempt.
+
+    Returns the SelfHealingTimeout to hand to the heal-and-retry loop.
+    """
+    call_timeout = CALL_TIMEOUT if call_timeout is None else call_timeout
+    url = title = None
+    if tab is not None:
+        try:
+            url = await asyncio.wait_for(tab.evaluate("location.href"), timeout=5)
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            title = await asyncio.wait_for(tab.evaluate("document.title"), timeout=5)
+        except Exception:  # noqa: BLE001
+            pass
+
+    variant = "rewritten" if healed else "original"
+    print(f"\n    ⏱️  self_healing TIMEOUT: {variant} {func_name} exceeded "
+          f"{call_timeout:.0f}s (ran {elapsed:.1f}s).")
+    print(f"        attempt      : {attempt}")
+    print(f"        source file  : {source_file}")
+    if healed:
+        print(f"        rewrite saved: {saved_path}")
+    print(f"        page url     : {url}")
+    print(f"        page title   : {title}")
+    if tb_str:
+        print("        traceback    :")
+        for line in tb_str.rstrip().splitlines():
+            print(f"          {line}")
+    print("        Attempt hung (likely awaiting a selector that never appears).")
+
+    error = SelfHealingTimeout(
+        f"{variant} {func_name} exceeded {call_timeout:.0f}s on attempt "
+        f"{attempt} (ran {elapsed:.1f}s). Page: {url}"
+    )
+    if logger is not None and tab is not None:
+        try:
+            await logger.log_failure(
+                tab,
+                func_name,
+                error,
+                additional_info={
+                    "reason": "call_timeout",
+                    "variant": variant,
+                    "timeout_seconds": call_timeout,
+                    "elapsed_seconds": round(elapsed, 1),
+                    "attempt": attempt,
+                    "source_file": source_file,
+                    "rewrite_path": saved_path,
+                    "page_url": url,
+                    "page_title": title,
+                    "traceback": tb_str,
+                },
+            )
+        except Exception as log_err:  # noqa: BLE001
+            print(f"        ⚠️  Could not persist timeout artifacts: {log_err}")
+    return error
+
+
 def _build_message_content(prompt_text, screenshot_b64=None):
     content = []
     if screenshot_b64:
@@ -117,7 +216,8 @@ def _build_message_content(prompt_text, screenshot_b64=None):
 
 
 async def self_healing_call(
-    func, *args, max_retries=3, tab=None, logger=None, html_context=None, **kwargs
+    func, *args, max_retries=3, tab=None, logger=None, html_context=None,
+    timeout=None, **kwargs
 ):
     """Call an async function with Claude-powered auto-repair on failure.
 
@@ -128,6 +228,7 @@ async def self_healing_call(
         tab: nodriver Tab, used to grab a screenshot + HTML on error.
         logger: AsyncDriverLogger for screenshot capture (optional).
         html_context: Optional page HTML override.
+        timeout: Per-attempt wall-clock budget in seconds (default CALL_TIMEOUT).
         **kwargs: Keyword args for func.
 
     Returns:
@@ -136,31 +237,69 @@ async def self_healing_call(
     Raises:
         The last exception if all retries are exhausted.
     """
-    if client is None:
+    if not SELF_HEAL_ENABLED:
+        # Diagnostic mode: surface the genuine failure on the first attempt.
+        max_retries = 0
+    elif client is None:
         raise RuntimeError(
             "Claude API client not initialized. Cannot self-heal without an API key."
         )
 
+    call_timeout = CALL_TIMEOUT if timeout is None else float(timeout)
     source = textwrap.dedent(inspect.getsource(func))
     source_file = inspect.getfile(func)
     current_func = func
+    saved_path = None
 
     for attempt in range(max_retries + 1):
+        healed = current_func is not func
+        started = time.monotonic()
         try:
-            return await current_func(*args, **kwargs)
+            # Every attempt — original and rewrites alike — gets the same hard
+            # wall-clock budget so a hung selector wait can't stall the run.
+            return await asyncio.wait_for(
+                current_func(*args, **kwargs), timeout=call_timeout
+            )
         except Exception as e:
+            elapsed = time.monotonic() - started
             tb_str = traceback.format_exc()
+
+            timed_out = (
+                isinstance(e, (asyncio.TimeoutError, TimeoutError))
+                and elapsed >= call_timeout * 0.95
+            )
+            if timed_out:
+                e = await _log_call_timeout(
+                    func.__name__,
+                    attempt,
+                    healed,
+                    saved_path,
+                    source_file,
+                    tab,
+                    logger,
+                    elapsed,
+                    tb_str,
+                    call_timeout,
+                )
+                tb_str = f"{tb_str}\nTimed out after {elapsed:.1f}s (limit {call_timeout:.0f}s)."
 
             if "Connection refused" in str(e) or "NewConnectionError" in str(e):
                 print(f"\n    ❌ {func.__name__}: Browser connection lost. Skipping retries.")
                 raise
 
+            if isinstance(e, WafBlockedError):
+                print(
+                    f"\n    ❌ {func.__name__}: HEB WAF block page — not healable. "
+                    "Aborting."
+                )
+                raise
+
             if attempt == max_retries:
                 print(
                     f"\n    ❌ self_healing: {func.__name__} failed after "
-                    f"{max_retries} heal attempts. Raising original error."
+                    f"{max_retries} heal attempts. Raising last error."
                 )
-                raise
+                raise e
 
             print(f"\n    🔧 self_healing: {func.__name__} raised {type(e).__name__}: {e}")
             print(f"    🤖 Asking Claude to rewrite (attempt {attempt + 1}/{max_retries})...")
@@ -189,12 +328,16 @@ async def self_healing_call(
             def _call_claude():
                 return client.messages.create(
                     model=MODEL,
-                    max_tokens=4096,
+                    # These flow functions run 150-250 lines. At 4096 the reply
+                    # was being truncated mid-string, so every rewrite failed
+                    # with "unterminated string literal" and the heal attempt
+                    # was wasted.
+                    max_tokens=16384,
                     messages=[{"role": "user", "content": message_content}],
                 )
 
             response = await asyncio.to_thread(_call_claude)
-            new_code = _extract_function_code(response.content[0].text)
+            new_code = _extract_function_code(_response_text(response))
 
             namespace = {**func.__globals__}
             try:
@@ -214,7 +357,10 @@ async def self_healing_call(
 
             current_func = candidate
             source = new_code
-            _save_updated_function(
+            saved_path = _save_updated_function(
                 func.__name__, new_code, source_file, attempt + 1, f"{type(e).__name__}: {e}"
             )
-            print(f"    ⟳ Retrying with rewritten {func.__name__}...")
+            print(
+                f"    ⟳ Retrying with rewritten {func.__name__} "
+                f"(hard timeout {call_timeout:.0f}s)..."
+            )

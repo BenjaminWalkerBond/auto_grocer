@@ -1119,7 +1119,17 @@ def set_store(store_id: str) -> dict:
     """
     if not _ensure_authed():
         return _NOT_AUTHED
-    result = asyncio.run(select_store(str(store_id)))
+    # select_store() is already a synchronous wrapper that calls asyncio.run
+    # internally, so wrapping it again passes a dict to asyncio.run and raises
+    # "a coroutine was expected, got {...}".
+    result = select_store(str(store_id))
+    if isinstance(result, dict) and result.get("error"):
+        return {
+            "error": True,
+            "code": result.get("code", "STORE_CHANGE_FAILED"),
+            "message": result.get("message", "Failed to change store"),
+            "store_id": str(store_id),
+        }
     return {"store_id": str(store_id), "result": result}
 
 
