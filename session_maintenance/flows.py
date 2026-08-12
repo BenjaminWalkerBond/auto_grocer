@@ -30,6 +30,7 @@ from session_maintenance.primitives import (
     select_one,
     xpath_all,
 )
+from session_maintenance.waf_block import assert_not_blocked
 from utility.read_email import fetch_verification_code
 
 HEB_HOME = "https://www.heb.com/"
@@ -131,6 +132,11 @@ async def login(tab):
     print("  Step 1: Navigating to HEB home page...")
     await tab.get(HEB_HOME)
     await random_time()
+
+    # Precheck: if HEB is serving the "ad blocker / security setting on your
+    # device" overlay we are WAF rate-limited. Bail out now — every further
+    # request deepens the block and no selector will ever appear.
+    await assert_not_blocked(tab, context="login (homepage load)")
 
     # STEP 2: click cart icon to trigger login
     print("  Step 2: Clicking cart icon to trigger login...")
