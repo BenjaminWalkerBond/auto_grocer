@@ -4,6 +4,7 @@ Supports both unauthenticated (typeahead) and authenticated (full product search
 modes. Authenticated mode uses browser session cookies for faster API access.
 """
 
+import hashlib
 import json
 import re
 from typing import Any, cast
@@ -111,9 +112,82 @@ def _load_persisted_query_overrides() -> None:
 _load_persisted_query_overrides()
 
 
+# Full GraphQL query documents keyed by operation name, captured from live
+# browser traffic. HEB runs Automatic Persisted Queries: an operation whose hash
+# has fallen out of their cache answers PersistedQueryNotFound until someone
+# re-registers it by sending the document. Because the server accepts any
+# document whose sha256 matches the supplied hash, holding the document lets us
+# recover on the fly instead of needing a freshly scraped hash.
+PERSISTED_DOCUMENTS: dict[str, str] = {}
+
+
+def _load_persisted_document_overrides() -> None:
+    """Load captured query documents written by the hash-capture flow."""
+    import json
+    import os
+    from pathlib import Path
+
+    candidate = os.environ.get("GRAPHQL_DOCUMENTS_PATH")
+    path = Path(candidate).expanduser() if candidate else (
+        Path("~/.texas-grocery-mcp/persisted_documents.json").expanduser()
+    )
+
+    if not path.exists():
+        return
+
+    try:
+        with open(path, encoding="utf-8") as f:
+            documents = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return
+
+    if isinstance(documents, dict):
+        for name, text in documents.items():
+            if isinstance(name, str) and isinstance(text, str) and text.strip():
+                PERSISTED_DOCUMENTS[name] = text
+
+
+_load_persisted_document_overrides()
+
+
+def _has_persisted_query_miss(errors: Any) -> bool:
+    """True when GraphQL reported the persisted-query hash as unknown."""
+    try:
+        return any("PersistedQueryNotFound" in str(error) for error in errors)
+    except TypeError:
+        return False
+
+
+def _document_registration_payload(
+    operation_name: str, variables: dict[str, Any]
+) -> dict[str, Any] | None:
+    """Build a self-registering APQ payload, or None if we have no document.
+
+    Sends the document together with *our own* sha256 of it, which re-registers
+    the query server-side and makes the call independent of HEB's rotating
+    hashes.
+    """
+    document = PERSISTED_DOCUMENTS.get(operation_name)
+    if not document:
+        return None
+
+    return {
+        "operationName": operation_name,
+        "variables": variables,
+        "query": document,
+        "extensions": {
+            "persistedQuery": {
+                "version": 1,
+                "sha256Hash": hashlib.sha256(document.encode("utf-8")).hexdigest(),
+            }
+        },
+    }
+
+
 def reload_persisted_query_overrides() -> None:
     """Public helper to re-apply hash overrides after they are updated."""
     _load_persisted_query_overrides()
+    _load_persisted_document_overrides()
 
 # Well-known HEB stores (fallback for store search)
 KNOWN_STORES = {
@@ -345,13 +419,26 @@ class HEBGraphQLClient:
 
                 # Check for persisted query errors
                 if "errors" in data:
-                    for error in data["errors"]:
-                        if "PersistedQueryNotFound" in str(error):
+                    if _has_persisted_query_miss(data["errors"]):
+                        retry = _document_registration_payload(operation_name, variables)
+                        if retry is None:
                             raise PersistedQueryNotFoundError(
                                 f"Persisted query hash for '{operation_name}' is no longer valid"
                             )
+                        logger.info(
+                            "Re-registering persisted query from captured document",
+                            operation=operation_name,
+                        )
+                        response = await client.post(self.base_url, json=retry)
+                        response.raise_for_status()
+                        data = response.json()
 
-                    raise GraphQLError(data["errors"])
+                    if "errors" in data:
+                        if _has_persisted_query_miss(data["errors"]):
+                            raise PersistedQueryNotFoundError(
+                                f"Persisted query hash for '{operation_name}' is no longer valid"
+                            )
+                        raise GraphQLError(data["errors"])
 
                 self.circuit_breaker.record_success()
 
@@ -1881,12 +1968,33 @@ class HEBGraphQLClient:
             data: Any = response.json()
 
             if "errors" in data:
-                for error in data["errors"]:
-                    if "PersistedQueryNotFound" in str(error):
+                if _has_persisted_query_miss(data["errors"]):
+                    retry = _document_registration_payload(operation_name, variables)
+                    if retry is None:
                         raise PersistedQueryNotFoundError(
                             f"Persisted query hash for '{operation_name}' is no longer valid"
                         )
-                raise GraphQLError(data["errors"])
+                    logger.info(
+                        "Re-registering persisted query from captured document",
+                        operation=operation_name,
+                    )
+                    response = await client.post(
+                        self.base_url,
+                        json=retry,
+                        headers={
+                            "Content-Type": "application/json",
+                            "Accept": "application/json",
+                        },
+                    )
+                    response.raise_for_status()
+                    data = response.json()
+
+                if "errors" in data:
+                    if _has_persisted_query_miss(data["errors"]):
+                        raise PersistedQueryNotFoundError(
+                            f"Persisted query hash for '{operation_name}' is no longer valid"
+                        )
+                    raise GraphQLError(data["errors"])
 
             self.circuit_breaker.record_success()
 

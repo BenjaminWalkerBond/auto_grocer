@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import sys
 
 import nodriver
 
@@ -39,8 +40,13 @@ from session_maintenance.browser import start_browser, stop_browser
 from session_maintenance.hash_capture import GraphQLHashCapturer
 from session_maintenance.logger import AsyncDriverLogger
 from session_maintenance.self_healing import self_healing_call
+from session_maintenance.waf_block import WafBlockedError, assert_not_blocked
 from utility.graphql_cart import graphql_cart_sync
 from utility.graphql_hash_capture import TARGET_OPERATIONS
+
+# Login is the one step that can legitimately outrun the 60s per-attempt budget:
+# email verification waits on an IMAP round-trip.
+LOGIN_TIMEOUT = 300
 
 # Hardcoded fallback ingredient list (matches main.py's sample recipe).
 HARDCODED_INGREDIENTS = [
@@ -124,7 +130,17 @@ def _load_ingredients() -> IngredientList:
 
 
 async def _prompt(msg: str) -> str:
-    """Non-blocking input() for the async loop."""
+    """Non-blocking input() for the async loop.
+
+    Automated runs (``docker compose run -T``, CI) have no usable stdin, where
+    input() blocks forever - the hash capture finished its work and then sat on
+    "Press Enter to close" until the outer timeout killed it. Returning an
+    empty string there also fails safe for the checkout confirmation, which
+    requires an explicit 'CONFIRM'.
+    """
+    if not sys.stdin or not sys.stdin.isatty():
+        print(f"{msg}[non-interactive stdin: continuing without input]")
+        return ""
     return (await asyncio.to_thread(input, msg)).strip()
 
 
@@ -174,7 +190,7 @@ async def _checkout_with_optional_prompt(tab, logger, *, prompt: bool):
 
 async def login_export_mode(browser, tab, logger, store_id):
     print("\n🔐 LOGIN + EXPORT MODE (refresh auth.json)\n")
-    await self_healing_call(flows.login, tab, tab=tab, logger=logger)
+    await self_healing_call(flows.login, tab, tab=tab, logger=logger, timeout=LOGIN_TIMEOUT)
     await primitives.dismiss_modals(tab)
     print("\n🔐 Exporting browser session for the GraphQL/MCP client...")
     await export_session_to_authjson(browser, tab, store_id=store_id)
@@ -201,7 +217,7 @@ async def shop_mode(browser, tab, logger, ingredient_list, store_id, *,
             print("\n❌ Auto checkout cancelled.")
             return
 
-    await self_healing_call(flows.login, tab, tab=tab, logger=logger)
+    await self_healing_call(flows.login, tab, tab=tab, logger=logger, timeout=LOGIN_TIMEOUT)
     await primitives.dismiss_modals(tab)
 
     if via_graphql:
@@ -242,11 +258,19 @@ async def update_graphql_hashes_mode(browser, tab, logger, store_id, store_searc
 
     capturer = GraphQLHashCapturer(tab)
     await capturer.start()
+    # Grab the full query documents for the operations that break hardest when
+    # HEB's persisted-query cache drops them (store change, add-to-cart). With
+    # the document on disk the client can re-register them under a hash it
+    # computes itself, so a rotated hash stops being fatal.
+    await capturer.force_document_capture(["SelectPickupFulfillment", "cartItemV2"])
 
     async def _run_step(label, fn, *args):
         print(f"\n{label}")
         try:
             await self_healing_call(fn, *args, tab=tab, logger=logger)
+        except WafBlockedError:
+            # Fatal: HEB is rate-limiting this client. Do not continue the run.
+            raise
         except Exception as e:  # noqa: BLE001
             print(f"⚠️  {label} incomplete ({type(e).__name__}: {e}) - continuing")
             try:
@@ -260,7 +284,7 @@ async def update_graphql_hashes_mode(browser, tab, logger, store_id, store_searc
         print(f"    📡 Captured {len(capturer.operations)} GraphQL op(s) so far.")
 
     # Login + homepage to trigger navigation queries.
-    await self_healing_call(flows.login, tab, tab=tab, logger=logger)
+    await self_healing_call(flows.login, tab, tab=tab, logger=logger, timeout=LOGIN_TIMEOUT)
     await primitives.dismiss_modals(tab)
     print("\n🏠 Loading homepage to trigger navigation queries...")
     await tab.get(flows.HEB_HOME)
@@ -288,6 +312,7 @@ async def update_graphql_hashes_mode(browser, tab, logger, store_id, store_searc
                     "milk", tab)
 
     print("\n🔎 Finalizing GraphQL capture...")
+    capturer.report_forcing()
     hashes = capturer.hashes
     if not hashes:
         print("\n❌ No GraphQL hashes captured.")
@@ -297,6 +322,12 @@ async def update_graphql_hashes_mode(browser, tab, logger, store_id, store_searc
     path, samples_path = capturer.save()
     print("\n" + "=" * 60)
     print(f"✅ Captured {len(hashes)} GraphQL operation hash(es)")
+    if capturer.documents:
+        print(f"📄 Captured {len(capturer.documents)} query document(s): "
+              f"{', '.join(sorted(capturer.documents))}")
+    else:
+        print("⚠️  No query documents captured - hash rotation will still break "
+              "store change / add-to-cart.")
     print("=" * 60)
     for name in sorted(hashes):
         marker = "🎯" if name in TARGET_OPERATIONS else "  "
@@ -357,7 +388,13 @@ async def main():
     tab = await browser.get(flows.HEB_HOME)
     print("✓ Browser started\n")
 
+    exit_code = 0
     try:
+        # Precheck before any mode does work: if HEB already serves the
+        # "ad blocker / security setting" overlay we are WAF rate-limited and
+        # must abandon the session rather than hammer the site further.
+        await assert_not_blocked(tab, context="startup homepage load", logger=logger)
+
         if mode == "login_export":
             await login_export_mode(browser, tab, logger, store_id)
         elif mode == "update_graphql_hashes":
@@ -369,18 +406,24 @@ async def main():
             print(f"❌ Unsupported MODE: '{mode}'")
             print("Supported: login_export, update_graphql_hashes, shop "
                   "(SHOP_SOURCE=graphql|browser, CHECKOUT=none|prompt|auto).")
+    except WafBlockedError as e:
+        # Already reported in detail by assert_not_blocked; just end the run.
+        print(f"\n🚫 Session aborted — HEB WAF block: {e}")
+        exit_code = 2
     except Exception as e:  # noqa: BLE001
         print(f"\n❌ Unexpected error: {e}")
         try:
             await logger.log_failure(tab, "run_main", e, {"mode": mode})
         except Exception:  # noqa: BLE001
             pass
+        exit_code = 1
     finally:
         print("\nClosing browser...")
         await stop_browser(browser)
         print("✓ Browser closed\n")
+    return exit_code
 
 
 if __name__ == "__main__":
     # nodriver ships its own loop helper; asyncio.run is unreliable with it.
-    nodriver.loop().run_until_complete(main())
+    sys.exit(nodriver.loop().run_until_complete(main()) or 0)

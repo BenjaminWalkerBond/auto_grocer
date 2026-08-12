@@ -36,23 +36,34 @@ class IngredientList:
         return self.ingredients.pop()
 
     # need to alter algorithim to search for compound words like "green beans"
+    def _lookup(self, key, allow_spice=True):
+        """Look up one word/phrase, suppressing 'spice' for fresh ingredients."""
+        tag = self.tags_dict.get(key)
+        if tag == "spice" and not allow_spice:
+            return None
+        return tag
+
     def get_tag(self,ingredientName):
         ingredientName = ingredientName.lower()
-        tag=self.tags_dict.get(ingredientName)
+        # "fresh <herb>" is produce, not a pantry spice (e.g. "fresh cilantro"
+        # is bought by the bunch), so never resolve a fresh item to "spice".
+        allow_spice = "fresh" not in ingredientName.split(" ")
+        tag=self._lookup(ingredientName, allow_spice)
         # check if self.tags.get(ingredientName) is not in the dictionary
         if tag is None:
             ingredientName = ingredientName.split(" ")
             # check each word in the ingredient name for a tag match
             for word in ingredientName:
-                check_word = self.tags_dict.get(word)
+                check_word = self._lookup(word, allow_spice)
                 if check_word is not None:
-                    tag = self.tags_dict.get(word)
+                    tag = check_word
                     break
             i = 0
             while i < len(ingredientName)-1:
                 compound_word = ingredientName[i] + " " + ingredientName[i+1]
-                if self.tags_dict.get(compound_word) is not None:
-                    tag = self.tags_dict.get(compound_word)
+                compound_tag = self._lookup(compound_word, allow_spice)
+                if compound_tag is not None:
+                    tag = compound_tag
                     break
                 i += 1
         else:
