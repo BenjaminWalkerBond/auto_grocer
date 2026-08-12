@@ -28,9 +28,13 @@ Run every command yourself — never ask the user to run them.
 1. Capture fresh hashes in-container (also re-exports `auth.json`). Watch the
    output for an email-verification prompt:
    ```bash
-   docker compose -f docker/docker-compose.yml run --rm -T \
+   docker compose --env-file .env -f docker/docker-compose.yml run --rm -T \
      -e MODE=update_graphql_hashes mcp python -m session_maintenance.run
    ```
+   **Do NOT pipe this through `tail`, `head`, or `grep`.** If the hashes are
+   stale, session maintenance itself is the thing under suspicion — you need the
+   full, unfiltered output to see where the capture actually broke. Truncating it
+   hides the real failure.
 2. Reload the hashes/session in the server: call `mcp_auto-grocier_refresh_session`.
 3. Verify: call `mcp_auto-grocier_search_products` (e.g. "milk") — expect results
    with real `product_id`s, not `OPERATION_NOT_CAPTURED` or suggestion-only rows.
