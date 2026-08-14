@@ -6,9 +6,10 @@ is no Selenium or undetected-chromedriver in the project anymore.
 
 - **Entrypoint:** `main.py` is a thin shim that delegates to
   `session_maintenance.run`. You can also run `python -m session_maintenance.run`.
-- **Modes** (set `MODE` in `.env`, or via the `MODE` env var):
-  `login_export`, `test`, `checkout_with_prompt`, `auto_checkout`, `graphql`,
-  `graphql_checkout_with_prompt`, `graphql_auto_checkout`, `update_graphql_hashes`.
+- **Modes** (set `MODE` in `.env`, or via the `MODE` env var): two core modes.
+  `graphql` shops via the HEB GraphQL API (`CHECKOUT=none|prompt|auto`).
+  `nodriver` drives the browser, selected by `OPERATION=shop|login_export|
+  capture_hashes` (for `OPERATION=shop`, `CHECKOUT=none|prompt|auto`).
 - **Flows** (login, clear_cart, reserve_time_slot, change_store_via_ui,
   add_ingredient, checkout) live in `session_maintenance/flows.py`.
 - **Self-healing** (Claude rewrites a broken flow from a screenshot + page HTML)

@@ -1,26 +1,30 @@
 """Async mode dispatcher for the auto_grocier browser automation (nodriver).
 
-Canonical modes (read from the MODE setting in .env, or the MODE env var which
+Two core modes (read from the MODE setting in .env, or the MODE env var which
 overrides):
 
-    login_export           - log in and export auth.json (refresh the MCP session).
-    update_graphql_hashes  - login, exercise flows, capture GraphQL persisted-query
-                             hashes via CDP, and re-export auth.json.
-    shop                   - end-to-end shopping. Tunables (env / .env):
-                               SHOP_SOURCE = graphql (default) | browser
-                               CHECKOUT    = none (default) | prompt | auto
+    graphql   - shop by adding ingredients through the HEB GraphQL API (fast).
+                Logs in via the browser once to refresh the session, then adds
+                over the API. Tunable: CHECKOUT = none (default) | prompt | auto.
 
-Deprecated aliases (still work; they map onto `shop` and print a warning):
-    test, checkout_with_prompt, auto_checkout,
-    graphql, graphql_checkout_with_prompt, graphql_auto_checkout
+    nodriver  - drive the HEB website directly with the browser. The specific
+                task is selected by OPERATION (default: shop):
+                  shop           - browser-add every ingredient.
+                                   CHECKOUT = none (default) | prompt | auto.
+                  login_export   - log in and export auth.json (refresh the MCP
+                                   session). Invoked by the MCP `login` tool.
+                  capture_hashes - login, exercise flows, capture GraphQL
+                                   persisted-query hashes via CDP, re-export auth.
 
-Note: no mode places a paid order; checkout only advances to HEB's checkout page.
-Placing a paid order is the MCP server's guarded ``place_order`` tool. The WAF
-baseline probe is separate: ``python -m session_maintenance.waf_probe``.
+Note: no mode/operation places a paid order; checkout only advances to HEB's
+checkout page. Placing a paid order is the MCP server's guarded ``place_order``
+tool. The WAF baseline probe is separate: ``python -m session_maintenance.waf_probe``.
 
 Run:
-    python -m session_maintenance.run                # uses MODE from .env
-    MODE=shop CHECKOUT=prompt python -m session_maintenance.run
+    python -m session_maintenance.run                       # uses MODE from .env
+    MODE=graphql CHECKOUT=prompt python -m session_maintenance.run
+    MODE=nodriver OPERATION=login_export python -m session_maintenance.run
+    MODE=nodriver OPERATION=capture_hashes python -m session_maintenance.run
 """
 from __future__ import annotations
 
@@ -62,18 +66,6 @@ HARDCODED_INGREDIENTS = [
 RECIPE_URLS = [
     "https://skinnyspatula.com/salmon-gnocchi/",
 ]
-
-
-# Deprecated MODE names -> (SHOP_SOURCE, CHECKOUT) for the unified `shop` mode.
-# Kept so existing .env / scripts don't break; they print a deprecation notice.
-_DEPRECATED_MODE_ALIASES = {
-    "test": ("browser", "none"),
-    "checkout_with_prompt": ("browser", "prompt"),
-    "auto_checkout": ("browser", "auto"),
-    "graphql": ("graphql", "none"),
-    "graphql_checkout_with_prompt": ("graphql", "prompt"),
-    "graphql_auto_checkout": ("graphql", "auto"),
-}
 
 
 def _build_hardcoded_list() -> IngredientList:
@@ -252,7 +244,7 @@ async def update_graphql_hashes_mode(browser, tab, logger, store_id, store_searc
             try:
                 await logger.log_failure(
                     tab, getattr(fn, "__name__", str(fn)), e,
-                    {"mode": "update_graphql_hashes", "step": label},
+                    {"mode": "nodriver", "operation": "capture_hashes", "step": label},
                 )
             except Exception:  # noqa: BLE001
                 pass
@@ -314,42 +306,48 @@ async def update_graphql_hashes_mode(browser, tab, logger, store_id, store_searc
 # Entry
 # ---------------------------------------------------------------------------
 async def main():
-    # An explicit MODE environment variable overrides the .env MODE setting so
-    # any mode can be exercised without editing .env (e.g. MODE=shop ...).
-    mode = (os.environ.get("MODE") or get_setting("MODE", "shop")).strip()
+    # Explicit env vars override the .env values so any mode/operation can be
+    # exercised without editing .env (e.g. MODE=nodriver OPERATION=login_export).
+    mode = (os.environ.get("MODE") or get_setting("MODE", "graphql")).strip().lower()
+    operation = (os.environ.get("OPERATION") or get_setting("OPERATION", "shop")).strip().lower()
+    checkout = (os.environ.get("CHECKOUT") or get_setting("CHECKOUT", "none")).strip().lower()
     store_id = (get_setting("STORE_ID", "737") or "737").strip()
     store_search_address = (get_setting("STORE_SEARCH_ADDRESS", "") or "").strip()
 
-    # Resolve deprecated aliases onto the canonical `shop` mode + its tunables.
-    shop_via_graphql = True
-    shop_checkout = "none"
-    if mode in _DEPRECATED_MODE_ALIASES:
-        src, chk = _DEPRECATED_MODE_ALIASES[mode]
-        print(f"⚠️  MODE '{mode}' is deprecated -> use "
-              f"MODE=shop SHOP_SOURCE={src} CHECKOUT={chk}")
-        shop_via_graphql = (src == "graphql")
-        shop_checkout = chk
-        mode = "shop"
-    elif mode == "shop":
-        src = (get_setting("SHOP_SOURCE", "graphql") or "graphql").strip().lower()
-        shop_via_graphql = (src != "browser")
-        shop_checkout = (get_setting("CHECKOUT", "none") or "none").strip().lower()
+    if mode not in ("graphql", "nodriver"):
+        print("\n" + "=" * 60)
+        print(f"❌ Unsupported MODE: '{mode}'")
+        print("Supported: graphql (CHECKOUT=none|prompt|auto), "
+              "nodriver (OPERATION=shop|login_export|capture_hashes).")
+        print("=" * 60 + "\n")
+        return
 
+    # graphql mode is always a shopping run; OPERATION only applies to nodriver.
+    if mode == "graphql":
+        operation = "shop"
+    elif operation not in ("shop", "login_export", "capture_hashes"):
+        print("\n" + "=" * 60)
+        print(f"❌ Unsupported OPERATION '{operation}' for MODE=nodriver")
+        print("Supported OPERATION: shop, login_export, capture_hashes.")
+        print("=" * 60 + "\n")
+        return
+
+    shopping = operation == "shop"
+    via_graphql = mode == "graphql"
+
+    label = mode.upper() if shopping else f"{mode.upper()} / {operation.upper()}"
     print("\n" + "=" * 60)
     print("🥗 AUTO GROCIER - HEB AUTOMATION (nodriver)")
     print("=" * 60)
-    print(f"Mode: {mode.upper()}")
+    print(f"Mode: {label}")
     print("=" * 60 + "\n")
 
-    # Only modes that actually shop need an ingredient list. login_export and
-    # update_graphql_hashes just drive the browser for auth/hash capture, so
-    # loading ingredients there is pointless — and with INGREDIENT_SOURCE=database
-    # it blocks on an interactive recipe prompt, which hangs the MCP server's
-    # non-interactive auto-login subprocess.
-    if mode in ("login_export", "update_graphql_hashes"):
-        ingredient_list = IngredientList()
-    else:
-        ingredient_list = _load_ingredients()
+    # Only shopping runs need an ingredient list. login_export and capture_hashes
+    # just drive the browser for auth/hash capture, so loading ingredients there
+    # is pointless — and with INGREDIENT_SOURCE=database it blocks on an
+    # interactive recipe prompt, which hangs the MCP server's non-interactive
+    # auto-login subprocess.
+    ingredient_list = _load_ingredients() if shopping else IngredientList()
     logger = AsyncDriverLogger(log_dir="debug_logs")
 
     print("🌐 Starting browser...")
@@ -358,21 +356,19 @@ async def main():
     print("✓ Browser started\n")
 
     try:
-        if mode == "login_export":
+        if operation == "login_export":
             await login_export_mode(browser, tab, logger, store_id)
-        elif mode == "update_graphql_hashes":
+        elif operation == "capture_hashes":
             await update_graphql_hashes_mode(browser, tab, logger, store_id, store_search_address)
-        elif mode == "shop":
+        else:  # shop
             await shop_mode(browser, tab, logger, ingredient_list, store_id,
-                            via_graphql=shop_via_graphql, checkout=shop_checkout)
-        else:
-            print(f"❌ Unsupported MODE: '{mode}'")
-            print("Supported: login_export, update_graphql_hashes, shop "
-                  "(SHOP_SOURCE=graphql|browser, CHECKOUT=none|prompt|auto).")
+                            via_graphql=via_graphql, checkout=checkout)
     except Exception as e:  # noqa: BLE001
         print(f"\n❌ Unexpected error: {e}")
         try:
-            await logger.log_failure(tab, "run_main", e, {"mode": mode})
+            await logger.log_failure(
+                tab, "run_main", e, {"mode": mode, "operation": operation}
+            )
         except Exception:  # noqa: BLE001
             pass
     finally:
