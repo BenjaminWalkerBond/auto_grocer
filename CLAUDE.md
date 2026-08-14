@@ -180,19 +180,27 @@ The code uses **Claude Sonnet 4** (`claude-sonnet-4-20250514`), which is:
 
 ## Testing
 
-**All manual/ad-hoc test scripts are located in the `manual_scripts/` directory (the pytest suite is in `tests/`).**
+**The automated test suite lives in `tests/`** — `tests/unit/` (fast, no external
+services; run by default) and `tests/integration/` (live HEB API or Postgres,
+skipped unless `--run-integration` is passed).
 
 To run tests:
 
 ```bash
-# Run any script from the manual_scripts directory via uv
-uv run python manual_scripts/test_recipe_grabber.py
-uv run python manual_scripts/test_connection.py
-uv run python manual_scripts/test_database.py
-uv run python main.py
+# Unit suite (fast, offline)
+uv run pytest tests/unit
+
+# Include integration tests (needs an authenticated session and/or a live DB)
+uv run pytest --run-integration
+
+# Full browser automation run (adds to cart, no checkout/charge)
+MODE=nodriver OPERATION=shop CHECKOUT=none uv run python main.py
 ```
 
-**Note:** All manual/ad-hoc test scripts should be placed in the `manual_scripts/` directory for consistency and organization.
+**Note:** ad-hoc demo scripts that used to live in `manual_scripts/` have been
+removed — the useful ones were promoted to `tests/` (e.g.
+`tests/unit/test_auth_export.py`, `tests/integration/test_recipe_matcher_live.py`).
+New tests belong in `tests/`, one-off maintenance utilities in `scripts/`.
 
 ## Testing Cycle for Main Program
 
@@ -244,7 +252,7 @@ Monitor the terminal for:
 
 ### 3. Check the Debug Logs
 
-**Note:** Debug logs are only created when running `python main.py`. They are NOT created when running other test scripts like `test_recipe_grabber.py` or `test_database.py`.
+**Note:** Debug logs are only created when running `python main.py`. They are NOT created when running the pytest suite (`uv run pytest`).
 
 Navigate to the `debug_logs/` directory:
 

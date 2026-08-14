@@ -142,8 +142,8 @@ python database/test_database.py
 
 ### Save Ingredient to Database
 ```python
-from database.db_connection import get_db_session
-from database.ingredient_repository import IngredientRepository
+from auto_grocier.database.db_connection import get_db_session
+from auto_grocier.database.ingredient_repository import IngredientRepository
 
 # Create session
 db = get_db_session()
@@ -175,7 +175,7 @@ healthy = ingredient_repo.get_by_tags(["fish", "vegetable"], match_all=False)
 
 ### Save Recipe with Ingredients
 ```python
-from database.recipe_repository import RecipeRepository
+from auto_grocier.database.recipe_repository import RecipeRepository
 
 recipe_repo = RecipeRepository(db)
 
@@ -216,9 +216,9 @@ Modify `populate_ingredient_list()` to save to database:
 
 ```python
 def populate_ingredient_list_and_save(url_list):
-    from database.db_connection import get_db_session
-    from database.ingredient_repository import IngredientRepository
-    from database.recipe_repository import RecipeRepository
+    from auto_grocier.database.db_connection import get_db_session
+    from auto_grocier.database.ingredient_repository import IngredientRepository
+    from auto_grocier.database.recipe_repository import RecipeRepository
     
     db = get_db_session()
     ingredient_repo = IngredientRepository(db)
@@ -254,9 +254,9 @@ Add database save/load methods:
 class IngredientList:
     def save_to_database(self, recipe_url=None):
         """Save all ingredients to database"""
-        from database.db_connection import get_db_session
-        from database.ingredient_repository import IngredientRepository
-        from database.recipe_repository import RecipeRepository
+        from auto_grocier.database.db_connection import get_db_session
+        from auto_grocier.database.ingredient_repository import IngredientRepository
+        from auto_grocier.database.recipe_repository import RecipeRepository
         
         db = get_db_session()
         ingredient_repo = IngredientRepository(db)
@@ -321,13 +321,13 @@ pip install sqlalchemy psycopg2-binary
 
 ### Connection Errors
 ```python
-from database.db_connection import test_connection
+from auto_grocier.database.db_connection import test_connection
 test_connection()
 ```
 
 ### View Configuration
 ```python
-from database.db_config import DatabaseConfig
+from auto_grocier.database.db_config import DatabaseConfig
 DatabaseConfig.print_config()
 ```
 
