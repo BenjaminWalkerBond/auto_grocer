@@ -16,7 +16,7 @@ print()
 # Step 1: Check configuration
 print("Step 1: Checking configuration...")
 try:
-    from database.db_config import DatabaseConfig
+    from auto_grocier.database.db_config import DatabaseConfig
     DatabaseConfig.print_config()
     print("✓ Configuration loaded")
 except Exception as e:
@@ -28,7 +28,7 @@ print()
 # Step 2: Test connection
 print("Step 2: Testing database connection...")
 try:
-    from database.db_connection import get_db_session, test_connection
+    from auto_grocier.database.db_connection import get_db_session, test_connection
 
     if test_connection():
         print("✓ Connection successful!")

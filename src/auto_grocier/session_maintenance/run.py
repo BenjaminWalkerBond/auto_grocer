@@ -33,18 +33,18 @@ import os
 
 import nodriver
 
-from classes.Ingredient import Ingredient
-from classes.IngredientList import IngredientList
-from claude import get_setting
-from recipe_grabber import clean_ingredient, populate_ingredient_list
-from session_maintenance import flows, primitives
-from session_maintenance.auth_export import export_session_to_authjson
-from session_maintenance.browser import start_browser, stop_browser
-from session_maintenance.hash_capture import GraphQLHashCapturer
-from session_maintenance.logger import AsyncDriverLogger
-from session_maintenance.self_healing import self_healing_call
-from utility.graphql_cart import graphql_cart_sync
-from utility.graphql_hash_capture import TARGET_OPERATIONS
+from auto_grocier.classes.Ingredient import Ingredient
+from auto_grocier.classes.IngredientList import IngredientList
+from auto_grocier.claude import get_setting
+from auto_grocier.recipe_grabber import clean_ingredient, populate_ingredient_list
+from auto_grocier.session_maintenance import flows, primitives
+from auto_grocier.session_maintenance.auth_export import export_session_to_authjson
+from auto_grocier.session_maintenance.browser import start_browser, stop_browser
+from auto_grocier.session_maintenance.hash_capture import GraphQLHashCapturer
+from auto_grocier.session_maintenance.logger import AsyncDriverLogger
+from auto_grocier.session_maintenance.self_healing import self_healing_call
+from auto_grocier.utility.graphql_cart import graphql_cart_sync
+from auto_grocier.utility.graphql_hash_capture import TARGET_OPERATIONS
 
 # Hardcoded fallback ingredient list (matches main.py's sample recipe).
 HARDCODED_INGREDIENTS = [
@@ -86,10 +86,10 @@ def _load_ingredients() -> IngredientList:
 
     if source == "database":
         print("🗄️  Loading recipes from the database...\n")
-        from database.db_connection import get_db_session
-        from database.ingredient_repository import IngredientRepository
-        from database.recipe_repository import RecipeRepository
-        from utility.recipe_matcher import build_ingredient_list, parse_and_match
+        from auto_grocier.database.db_connection import get_db_session
+        from auto_grocier.database.ingredient_repository import IngredientRepository
+        from auto_grocier.database.recipe_repository import RecipeRepository
+        from auto_grocier.utility.recipe_matcher import build_ingredient_list, parse_and_match
 
         user_request = input("What recipes do you want this week? ").strip()
         db = get_db_session()
@@ -377,6 +377,15 @@ async def main():
         print("✓ Browser closed\n")
 
 
-if __name__ == "__main__":
+def cli() -> None:
+    """Console-script entry point for the browser automation.
+
+    Wraps :func:`main` in nodriver's own event-loop helper (``asyncio.run`` is
+    unreliable with it). Exposed as the ``auto-grocier`` console script.
+    """
     # nodriver ships its own loop helper; asyncio.run is unreliable with it.
     nodriver.loop().run_until_complete(main())
+
+
+if __name__ == "__main__":
+    cli()

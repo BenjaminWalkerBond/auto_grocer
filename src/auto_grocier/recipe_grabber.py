@@ -5,11 +5,11 @@ import requests
 from bs4 import BeautifulSoup
 
 # import classes.Ingredient as Ingredient
-from classes.Ingredient import Ingredient
+from auto_grocier.classes.Ingredient import Ingredient
 
 # import classes.IngredientList as IngredientList
-from classes.IngredientList import IngredientList
-from claude import extract_ingredients, get_recipe_metadata_txt
+from auto_grocier.classes.IngredientList import IngredientList
+from auto_grocier.claude import extract_ingredients, get_recipe_metadata_txt
 
 
 def extract_recipe_metadata(url):

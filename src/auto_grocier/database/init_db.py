@@ -8,9 +8,9 @@ import sys
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from database.db_config import DatabaseConfig
-from database.db_connection import engine
-from database.models import Base
+from auto_grocier.database.db_config import DatabaseConfig
+from auto_grocier.database.db_connection import engine
+from auto_grocier.database.models import Base
 
 
 def init_database():

@@ -16,7 +16,7 @@ import re
 import textwrap
 import traceback
 
-from claude import MODEL, client
+from auto_grocier.claude import MODEL, client
 
 UPDATED_FUNCTIONS_DIR = os.path.join(os.path.dirname(__file__), "updated_functions")
 

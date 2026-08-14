@@ -10,7 +10,7 @@ import math
 
 import pytest
 
-from utility.graphql_cart import (
+from auto_grocier.utility.graphql_cart import (
     _build_search_term,
     _choose_best_product,
     _coerce_scalar,
@@ -176,7 +176,7 @@ def test_build_search_term_prefixes_organic_for_produce():
 # --- clean_ingredient (recipe_grabber) ------------------------------------
 
 def test_clean_ingredient_measured_amount():
-    from recipe_grabber import clean_ingredient
+    from auto_grocier.recipe_grabber import clean_ingredient
 
     name, amount, unit = clean_ingredient("16 oz spinach")
     assert "spinach" in name
@@ -185,7 +185,7 @@ def test_clean_ingredient_measured_amount():
 
 
 def test_clean_ingredient_bare_count_has_no_unit():
-    from recipe_grabber import clean_ingredient
+    from auto_grocier.recipe_grabber import clean_ingredient
 
     name, amount, unit = clean_ingredient("2 onions")
     assert "onions" in name
@@ -195,7 +195,7 @@ def test_clean_ingredient_bare_count_has_no_unit():
 
 
 def test_clean_ingredient_decimal_amount_preserved():
-    from recipe_grabber import clean_ingredient
+    from auto_grocier.recipe_grabber import clean_ingredient
 
     name, amount, unit = clean_ingredient("0.5 cup heavy cream")
     assert "heavy" in name and "cream" in name
@@ -205,7 +205,7 @@ def test_clean_ingredient_decimal_amount_preserved():
 
 
 def test_clean_ingredient_quarter_decimal_amount():
-    from recipe_grabber import clean_ingredient
+    from auto_grocier.recipe_grabber import clean_ingredient
 
     _name, amount, _unit = clean_ingredient("0.25 cup vegetable oil")
     # Regression: 0.25 used to parse as 25.
@@ -213,21 +213,21 @@ def test_clean_ingredient_quarter_decimal_amount():
 
 
 def test_clean_ingredient_ascii_fraction():
-    from recipe_grabber import clean_ingredient
+    from auto_grocier.recipe_grabber import clean_ingredient
 
     _name, amount, _unit = clean_ingredient("1/2 cup water")
     assert amount == ["0.5"]
 
 
 def test_clean_ingredient_mixed_number():
-    from recipe_grabber import clean_ingredient
+    from auto_grocier.recipe_grabber import clean_ingredient
 
     _name, amount, _unit = clean_ingredient("1 1/2 cups flour")
     assert amount == ["1.5"]
 
 
 def test_clean_ingredient_unicode_fraction():
-    from recipe_grabber import clean_ingredient
+    from auto_grocier.recipe_grabber import clean_ingredient
 
     _name, amount, _unit = clean_ingredient("½ cup milk")
     assert amount == ["0.5"]
@@ -235,7 +235,7 @@ def test_clean_ingredient_unicode_fraction():
 
 def test_decimal_amount_does_not_overorder():
     """End-to-end regression: a 0.5 cup need must not order 3 pints."""
-    from recipe_grabber import clean_ingredient
+    from auto_grocier.recipe_grabber import clean_ingredient
 
     _name, amount, unit = clean_ingredient("0.5 cup heavy cream")
     target_base, family = _to_base(
