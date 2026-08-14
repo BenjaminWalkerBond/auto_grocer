@@ -53,6 +53,11 @@ dependencies = [
     "yarl>=1.9.4",
 ]
 
+[project.scripts]
+# Installed console entry points (created by `uv sync` / pip install).
+auto-grocier-mcp = "auto_grocier.mcp_server:main"
+auto-grocier = "auto_grocier.session_maintenance.run:cli"
+
 [dependency-groups]
 dev = [
     "pytest>=8.0.0",
@@ -63,11 +68,16 @@ dev = [
 ]
 
 [tool.uv]
-# Run-from-source app: the repo root is on sys.path and nothing is pip-installed
-# as a wheel today. Marking the project non-package makes `uv sync` install only
-# the dependencies (not build/install this flat-layout project), which also keeps
-# the vendored auto_grocier_mcp/ importable and untouched.
-package = false
+# Installable src-layout package: `uv sync` builds and installs `auto_grocier`
+# (and the vendored `auto_grocier_mcp`) editable into the environment, so the
+# console scripts and `python -m auto_grocier.*` resolve without sys.path hacks.
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+# Ship the tag word-lists that IngredientList loads at runtime.
+"auto_grocier" = ["word_dictionaries/*.txt"]
 
 [tool.pytest.ini_options]
 minversion = "7.0"
@@ -89,10 +99,10 @@ target-version = "py312"
 # as text into session_maintenance/flows.py — they reference names that resolve
 # only in that target module, so they are excluded like other generated output.
 extend-exclude = [
-    "auto_grocier_mcp",
+    "src/auto_grocier_mcp",
     "debug_logs",
-    "word_dictionaries",
-    "session_maintenance/updated_functions",
+    "src/auto_grocier/word_dictionaries",
+    "src/auto_grocier/session_maintenance/updated_functions",
 ]
 
 [tool.ruff.lint]
@@ -104,8 +114,8 @@ ignore = ["E501"]
 # intentional debugging holds) and E722 (bare except) in the untested
 # session_maintenance/ + utility/ trees. Fixing them by hand pre-release is
 # unguarded (no test coverage). Tracked as tech debt.
-"session_maintenance/**" = ["F841", "E722"]
-"utility/**" = ["F841", "E722"]
+"src/auto_grocier/session_maintenance/**" = ["F841", "E722"]
+"src/auto_grocier/utility/**" = ["F841", "E722"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -114,9 +124,9 @@ ignore_missing_imports = true
 # vendored fork, generated output, data dirs, and the test suite are out of
 # scope for first-party type coverage.
 exclude = [
-    "auto_grocier_mcp",
+    "src/auto_grocier_mcp",
     "debug_logs",
-    "word_dictionaries",
+    "src/auto_grocier/word_dictionaries",
     "tests",
 ]
 

@@ -11,16 +11,16 @@ on:
     paths:
       - "docker/**"
       - "uv.lock"
-      - "mcp_server.py"
-      - "auto_grocier_mcp/**"
+      - "src/auto_grocier/mcp_server.py"
+      - "src/auto_grocier_mcp/**"
       - "pyproject.toml"
   pull_request:
     branches: [main]
     paths:
       - "docker/**"
       - "uv.lock"
-      - "mcp_server.py"
-      - "auto_grocier_mcp/**"
+      - "src/auto_grocier/mcp_server.py"
+      - "src/auto_grocier_mcp/**"
       - "pyproject.toml"
 
 jobs:

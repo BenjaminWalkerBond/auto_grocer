@@ -4,8 +4,8 @@ import sys
 # Add the parent directory to the Python path to import modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from classes.IngredientList import IngredientList
-from recipe_grabber import populate_ingredient_list
+from auto_grocier.classes.IngredientList import IngredientList
+from auto_grocier.recipe_grabber import populate_ingredient_list
 
 
 def process_urls_and_display(url_list):

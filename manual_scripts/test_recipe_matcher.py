@@ -17,10 +17,10 @@ import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from database.db_connection import get_db_session
-from database.ingredient_repository import IngredientRepository
-from database.recipe_repository import RecipeRepository
-from utility import recipe_matcher
+from auto_grocier.database.db_connection import get_db_session
+from auto_grocier.database.ingredient_repository import IngredientRepository
+from auto_grocier.database.recipe_repository import RecipeRepository
+from auto_grocier.utility import recipe_matcher
 
 # Sentinel URLs so we can clean up after ourselves
 TEST_RECIPES = [
@@ -86,7 +86,7 @@ def run():
         print("✓ search_recipes matches on description")
 
         # 2. parse_and_match (force ILIKE fallback by hiding Claude)
-        import claude
+        from auto_grocier import claude
         saved_client = claude.client
         claude.client = None  # force fallback
         try:
