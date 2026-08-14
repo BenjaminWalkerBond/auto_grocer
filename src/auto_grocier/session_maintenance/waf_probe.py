@@ -26,7 +26,7 @@ from typing import Any
 
 import nodriver
 
-from session_maintenance.browser import start_browser, stop_browser
+from auto_grocier.session_maintenance.browser import start_browser, stop_browser
 
 HEB_HOME = "https://www.heb.com/"
 

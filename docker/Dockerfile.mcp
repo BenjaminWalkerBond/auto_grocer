@@ -27,22 +27,27 @@ WORKDIR /app
 COPY --from=ghcr.io/astral-sh/uv:0.12.2 /uv /usr/local/bin/uv
 
 # Install deps into the image's SYSTEM Python (not a project .venv) so the
-# unchanged CMD `python mcp_server.py`, compose/skill invocations of
-# `python -m session_maintenance.run`, and .vscode/mcp.json all keep working with
-# bare `python`. UV_LINK_MODE=copy avoids cross-layer hardlink warnings.
+# CMD `python -m auto_grocier.mcp_server`, compose/skill invocations of
+# `python -m auto_grocier.session_maintenance.run`, and .vscode/mcp.json all keep
+# working with bare `python`. UV_LINK_MODE=copy avoids cross-layer hardlink
+# warnings.
 ENV UV_PROJECT_ENVIRONMENT=/usr/local \
     UV_LINK_MODE=copy \
     UV_COMPILE_BYTECODE=1
 
 # --- Python deps (cached layer) ---
-# Copy only the lock inputs first so this layer is reused unless deps change.
-# `[tool.uv] package = false` makes sync install ONLY dependencies (no project
-# build), so --no-install-project is not required.
+# Copy only the lock inputs first, then sync deps WITHOUT the project itself so
+# this layer is reused unless deps change. --no-install-project skips building
+# the src-layout package (whose source isn't copied yet).
 COPY pyproject.toml uv.lock .python-version ./
-RUN uv sync --frozen --no-dev
+RUN uv sync --frozen --no-dev --no-install-project
 
 # --- Application code ---
 COPY . .
+
+# Now install the project itself (editable) so `auto_grocier` / `auto_grocier_mcp`
+# import from /app/src and the console scripts are on PATH.
+RUN uv sync --frozen --no-dev
 
 # Ensure the entrypoint is executable (the +x bit is not preserved from Windows).
 RUN chmod +x /app/docker/entrypoint.sh
@@ -62,4 +67,4 @@ RUN mkdir -p /root/.texas-grocery-mcp
 # dumb-init reaps zombie Chromium processes; the entrypoint starts Xvfb then the
 # requested command (default: the MCP stdio server).
 ENTRYPOINT ["/usr/bin/dumb-init", "--", "/app/docker/entrypoint.sh"]
-CMD ["python", "mcp_server.py"]
+CMD ["python", "-m", "auto_grocier.mcp_server"]

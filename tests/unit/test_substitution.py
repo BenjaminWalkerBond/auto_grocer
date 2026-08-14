@@ -167,7 +167,7 @@ class TestFindSubstitute:
             new_callable=AsyncMock,
             return_value=mock_available_products,
         ), patch(
-            "claude.evaluate_substitutes",
+            "auto_grocier.claude.evaluate_substitutes",
             return_value=mock_claude_response,
         ) as mock_eval:
             result = await find_substitute(ingredient_name="unsalted butter")
@@ -195,7 +195,7 @@ class TestFindSubstitute:
             new_callable=AsyncMock,
             return_value=mock_available_products,
         ), patch(
-            "claude.evaluate_substitutes",
+            "auto_grocier.claude.evaluate_substitutes",
             return_value={
                 "recommended": None,
                 "alternatives": [],
@@ -229,7 +229,7 @@ class TestFindSubstitute:
             new_callable=AsyncMock,
             return_value=mock_available_products,
         ), patch(
-            "claude.evaluate_substitutes",
+            "auto_grocier.claude.evaluate_substitutes",
             return_value=mock_claude_response,
         ) as mock_eval:
             await find_substitute(
@@ -254,7 +254,7 @@ class TestFindSubstitute:
             new_callable=AsyncMock,
             return_value=mock_available_products,
         ), patch(
-            "claude.evaluate_substitutes",
+            "auto_grocier.claude.evaluate_substitutes",
             side_effect=Exception("API unavailable"),
         ):
             result = await find_substitute(ingredient_name="butter")
@@ -289,8 +289,8 @@ class TestEvaluateSubstitutes:
 
     def test_returns_fallback_when_no_client(self):
         """evaluate_substitutes should return fallback when Claude client is None."""
-        with patch("claude.client", None):
-            from claude import evaluate_substitutes
+        with patch("auto_grocier.claude.client", None):
+            from auto_grocier.claude import evaluate_substitutes
 
             candidates = [
                 {
@@ -315,7 +315,7 @@ class TestEvaluateSubstitutes:
 
     def test_returns_no_substitute_when_no_available_candidates(self):
         """evaluate_substitutes should return no_good_substitute when no candidates."""
-        from claude import evaluate_substitutes
+        from auto_grocier.claude import evaluate_substitutes
 
         result = evaluate_substitutes(
             original_ingredient={"name": "butter", "amount": "1", "unit": "cup", "tags": []},
@@ -329,14 +329,14 @@ class TestEvaluateSubstitutes:
 
     def test_filters_unavailable_from_candidates(self):
         """evaluate_substitutes should filter out unavailable candidates."""
-        from claude import evaluate_substitutes
+        from auto_grocier.claude import evaluate_substitutes
 
         candidates = [
             {"product_id": "1", "name": "Product A", "available": False},
             {"product_id": "2", "name": "Product B", "available": True},
         ]
 
-        with patch("claude.client") as mock_client:
+        with patch("auto_grocier.claude.client") as mock_client:
             mock_client.messages.create.return_value = MagicMock(
                 content=[MagicMock(text='{"recommended": {"product_id": "2", "sku": "", "name": "Product B", "reason": "Good"}, "alternatives": [], "no_good_substitute": false, "warning": null}')]
             )
@@ -353,13 +353,13 @@ class TestEvaluateSubstitutes:
 
     def test_parses_claude_json_response(self):
         """evaluate_substitutes should correctly parse Claude's JSON response."""
-        from claude import evaluate_substitutes
+        from auto_grocier.claude import evaluate_substitutes
 
         candidates = [
             {"product_id": "125", "sku": "125456", "name": "European Butter", "available": True}
         ]
 
-        with patch("claude.client") as mock_client:
+        with patch("auto_grocier.claude.client") as mock_client:
             mock_client.messages.create.return_value = MagicMock(
                 content=[
                     MagicMock(
@@ -394,13 +394,13 @@ class TestEvaluateSubstitutes:
 
     def test_handles_json_in_code_fences(self):
         """evaluate_substitutes should handle JSON wrapped in code fences."""
-        from claude import evaluate_substitutes
+        from auto_grocier.claude import evaluate_substitutes
 
         candidates = [
             {"product_id": "125", "sku": "125456", "name": "Butter", "available": True}
         ]
 
-        with patch("claude.client") as mock_client:
+        with patch("auto_grocier.claude.client") as mock_client:
             # Claude sometimes wraps JSON in code fences
             mock_client.messages.create.return_value = MagicMock(
                 content=[
@@ -502,7 +502,7 @@ class TestCroissantButterSubstitution:
             new_callable=AsyncMock,
             return_value=mock_products,
         ), patch(
-            "claude.evaluate_substitutes",
+            "auto_grocier.claude.evaluate_substitutes",
             return_value=mock_no_good_response,
         ):
             result = await find_substitute(

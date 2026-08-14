@@ -19,7 +19,7 @@ import tempfile
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from session_maintenance.auth_export import export_session_to_authjson
+from auto_grocier.session_maintenance.auth_export import export_session_to_authjson
 
 
 class _FakeCDPCookie:

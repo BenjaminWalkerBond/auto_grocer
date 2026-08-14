@@ -13,7 +13,7 @@ import json
 import os
 from pathlib import Path
 
-from utility.graphql_auth import (
+from auto_grocier.utility.graphql_auth import (
     DEFAULT_AUTH_PATH,
     _find_reese84,
     _map_same_site,
