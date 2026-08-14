@@ -16,7 +16,7 @@ You can also run the package directly:
 """
 import nodriver
 
-from session_maintenance.run import main as _run_main
+from auto_grocier.session_maintenance.run import main as _run_main
 
 if __name__ == "__main__":
     # nodriver ships its own event loop helper; asyncio.run is unreliable with it.

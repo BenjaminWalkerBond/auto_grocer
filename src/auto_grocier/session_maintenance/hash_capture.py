@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from nodriver import cdp
 
-from utility.graphql_hash_capture import (
+from auto_grocier.utility.graphql_hash_capture import (
     _parse_operation_samples,
     save_hashes,
     save_operation_samples,

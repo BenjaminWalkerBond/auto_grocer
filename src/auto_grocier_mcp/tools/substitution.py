@@ -271,7 +271,7 @@ async def find_substitute(
 
     # Import and call Claude evaluation
     try:
-        from claude import evaluate_substitutes
+        from auto_grocier.claude import evaluate_substitutes
 
         result = evaluate_substitutes(
             original_ingredient=original_ingredient,

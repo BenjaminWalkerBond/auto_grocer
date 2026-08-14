@@ -13,8 +13,8 @@ import asyncio
 import json
 from urllib.parse import quote_plus
 
-from claude import get_setting
-from session_maintenance.primitives import (
+from auto_grocier.claude import get_setting
+from auto_grocier.session_maintenance.primitives import (
     attr,
     check_exists_by_xpath,
     click_element,
@@ -30,8 +30,8 @@ from session_maintenance.primitives import (
     select_one,
     xpath_all,
 )
-from session_maintenance.waf_block import assert_not_blocked
-from utility.read_email import fetch_verification_code
+from auto_grocier.session_maintenance.waf_block import assert_not_blocked
+from auto_grocier.utility.read_email import fetch_verification_code
 
 HEB_HOME = "https://www.heb.com/"
 HEB_CART = "https://www.heb.com/cart/"

@@ -25,13 +25,15 @@ import re
 import sys
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-UPDATED_FUNCTIONS_DIR = os.path.join(REPO_ROOT, "session_maintenance", "updated_functions")
+# The app now lives under src/auto_grocier/ (installable package layout).
+_PKG_ROOT = os.path.join(REPO_ROOT, "src", "auto_grocier")
+UPDATED_FUNCTIONS_DIR = os.path.join(_PKG_ROOT, "session_maintenance", "updated_functions")
 
 # Where to look for a function when the recorded source path can't be used
-# (e.g. it was captured inside Docker as /app/session_maintenance/flows.py).
+# (e.g. it was captured inside Docker as /app/src/auto_grocier/session_maintenance/flows.py).
 _SEARCH_GLOBS = (
-    os.path.join(REPO_ROOT, "session_maintenance", "*.py"),
-    os.path.join(REPO_ROOT, "utility", "*.py"),
+    os.path.join(_PKG_ROOT, "session_maintenance", "*.py"),
+    os.path.join(_PKG_ROOT, "utility", "*.py"),
 )
 
 
@@ -148,9 +150,9 @@ def _candidate_source_paths(recorded_path):
     for seg in ("session_maintenance/", "utility/"):
         idx = norm.find(seg)
         if idx != -1:
-            yield os.path.join(REPO_ROOT, *norm[idx:].split("/"))
+            yield os.path.join(_PKG_ROOT, *norm[idx:].split("/"))
     # Last resort: same basename under session_maintenance/.
-    yield os.path.join(REPO_ROOT, "session_maintenance", os.path.basename(norm))
+    yield os.path.join(_PKG_ROOT, "session_maintenance", os.path.basename(norm))
 
 
 def resolve_source_file(recorded_path, func_name):

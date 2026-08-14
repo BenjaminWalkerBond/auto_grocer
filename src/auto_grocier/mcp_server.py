@@ -60,19 +60,23 @@ from collections.abc import Callable
 
 from fastmcp import FastMCP
 
-from classes.Ingredient import Ingredient
-from classes.IngredientList import IngredientList
-from claude import get_setting
-from recipe_grabber import clean_ingredient
-from utility.graphql_cart import graphql_cart_sync
-from utility.graphql_checkout import (
+from auto_grocier.classes.Ingredient import Ingredient
+from auto_grocier.classes.IngredientList import IngredientList
+from auto_grocier.claude import get_setting
+from auto_grocier.recipe_grabber import clean_ingredient
+from auto_grocier.utility.graphql_cart import graphql_cart_sync
+from auto_grocier.utility.graphql_checkout import (
     checkout_sync,
     list_timeslots_sync,
     reserve_timeslot_sync,
 )
-from utility.graphql_store import select_store
+from auto_grocier.utility.graphql_store import select_store
 
-_PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+# This module lives at <repo>/src/auto_grocier/mcp_server.py, so the repo root
+# (which holds .env, venv/, and the docker/ tree) is three levels up.
+_PROJECT_ROOT = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+)
 
 # Set to True to permit the place_order tool to actually submit a paid order.
 # Left False by default so checkout can never charge accidentally.
@@ -212,7 +216,7 @@ def _auto_authenticate(force: bool = False) -> dict:
         env.setdefault("DISPLAY", ":0")  # X server (WSLg on host, Xvfb in Docker)
         env["MODE"] = "nodriver"
         env["OPERATION"] = "login_export"
-        cmd = [python_exe, "-u", "-m", "session_maintenance.run"]
+        cmd = [python_exe, "-u", "-m", "auto_grocier.session_maintenance.run"]
 
         print(
             "[auto-grocier] No valid session - running nodriver login "
@@ -315,7 +319,7 @@ def _remove_from_cart_sync(matchers: list[str]) -> dict:
     sku id, or a substring of the product name. Matching items are removed by
     setting their quantity to 0.
     """
-    from utility.graphql_cart import _extract_sku
+    from auto_grocier.utility.graphql_cart import _extract_sku
 
     needles = [m.strip().lower() for m in matchers if m and m.strip()]
 
@@ -721,10 +725,10 @@ def add_recipe_ingredients(request: str, clear_first: bool = False) -> dict:
     if not _ensure_authed():
         return _NOT_AUTHED
 
-    from database.db_connection import get_db_session
-    from database.ingredient_repository import IngredientRepository
-    from database.recipe_repository import RecipeRepository
-    from utility.recipe_matcher import build_ingredient_list, parse_and_match
+    from auto_grocier.database.db_connection import get_db_session
+    from auto_grocier.database.ingredient_repository import IngredientRepository
+    from auto_grocier.database.recipe_repository import RecipeRepository
+    from auto_grocier.utility.recipe_matcher import build_ingredient_list, parse_and_match
 
     db = get_db_session()
     try:
@@ -758,9 +762,9 @@ def find_recipes(request: str) -> dict:
     Args:
         request: Natural-language description of the meals/recipes you want.
     """
-    from database.db_connection import get_db_session
-    from database.recipe_repository import RecipeRepository
-    from utility.recipe_matcher import parse_and_match
+    from auto_grocier.database.db_connection import get_db_session
+    from auto_grocier.database.recipe_repository import RecipeRepository
+    from auto_grocier.utility.recipe_matcher import parse_and_match
 
     db = get_db_session()
     try:
@@ -800,9 +804,9 @@ def query_recipes(
         include_ingredients: Include each recipe's ingredient list in the result.
         limit: Max recipes to return when listing (default 50).
     """
-    from database.db_connection import get_db_session
-    from database.ingredient_repository import IngredientRepository
-    from database.recipe_repository import RecipeRepository
+    from auto_grocier.database.db_connection import get_db_session
+    from auto_grocier.database.ingredient_repository import IngredientRepository
+    from auto_grocier.database.recipe_repository import RecipeRepository
 
     try:
         db = get_db_session()
@@ -874,8 +878,8 @@ def list_all_recipes(page: int = 1) -> dict:
     Args:
         page: 1-indexed page number (10 recipes per page). Defaults to 1.
     """
-    from database.db_connection import get_db_session
-    from database.recipe_repository import RecipeRepository
+    from auto_grocier.database.db_connection import get_db_session
+    from auto_grocier.database.recipe_repository import RecipeRepository
 
     PAGE_SIZE = 10
 
@@ -973,9 +977,9 @@ def seed_recipes(
             Derived from the video for YouTube URLs when blank.
         cook_time: Optional cook time in minutes (0 or omit if unknown).
     """
-    from database.db_connection import get_db_session
-    from database.ingredient_repository import IngredientRepository
-    from database.recipe_repository import RecipeRepository
+    from auto_grocier.database.db_connection import get_db_session
+    from auto_grocier.database.ingredient_repository import IngredientRepository
+    from auto_grocier.database.recipe_repository import RecipeRepository
 
     if not url or not str(url).strip():
         return {"error": True, "code": "INVALID_INPUT", "message": "A recipe 'url' is required."}
@@ -988,7 +992,7 @@ def seed_recipes(
     youtube_source = False
     is_youtube_url: Callable[[str], bool] | None
     try:
-        from utility.youtube import is_youtube_url, youtube_recipe_from_url
+        from auto_grocier.utility.youtube import is_youtube_url, youtube_recipe_from_url
     except Exception:  # noqa: BLE001 - module optional at import time
         is_youtube_url = None
 

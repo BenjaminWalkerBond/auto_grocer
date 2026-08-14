@@ -8,10 +8,10 @@ import sys
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from database.db_connection import get_db_session
-from database.ingredient_repository import IngredientRepository
-from database.recipe_repository import RecipeRepository
-from recipe_grabber import populate_ingredient_list
+from auto_grocier.database.db_connection import get_db_session
+from auto_grocier.database.ingredient_repository import IngredientRepository
+from auto_grocier.database.recipe_repository import RecipeRepository
+from auto_grocier.recipe_grabber import populate_ingredient_list
 
 
 def extract_and_save_ingredients(url_list):
