@@ -58,8 +58,9 @@ jobs:
       - name: Type check (mypy)
         # First-party source only; auto_grocier_mcp and friends are excluded via
         # [tool.mypy] in pyproject.toml.
-        # Enforced gate: mypy runs on the full first-party scope (including
-        # session_maintenance) and MUST report zero errors. A mypy failure fails
-        # the job. Achieved via genuine SQLAlchemy 2.0 typing + real annotations,
-        # not blanket suppression.
-        run: uv run mypy classes database session_maintenance utility mcp_server.py recipe_grabber.py claude.py main.py
+        # Enforced gate: mypy runs on the full first-party scope (the
+        # src/auto_grocier package, including session_maintenance) plus the
+        # root main.py entrypoint, and MUST report zero errors. A mypy failure
+        # fails the job. Achieved via genuine SQLAlchemy 2.0 typing + real
+        # annotations, not blanket suppression.
+        run: uv run mypy src/auto_grocier main.py
