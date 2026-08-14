@@ -12,19 +12,12 @@ same database the MCP server reads.
 Usage:
     python scripts/seed_from_sources.py
 """
-import os
-import sys
-
 import requests
 from bs4 import BeautifulSoup
 
-_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if _ROOT not in sys.path:
-    sys.path.insert(0, _ROOT)
-
-from auto_grocier import mcp_server as M  # noqa: E402
-from auto_grocier.recipe_grabber import extract_recipe_metadata  # noqa: E402
-from auto_grocier.utility.youtube import is_youtube_url, parse_ingredients_from_text  # noqa: E402
+from auto_grocier import mcp_server as M
+from auto_grocier.recipe_grabber import extract_recipe_metadata
+from auto_grocier.utility.youtube import is_youtube_url, parse_ingredients_from_text
 
 _seed = getattr(M.seed_recipes, "fn", M.seed_recipes)
 

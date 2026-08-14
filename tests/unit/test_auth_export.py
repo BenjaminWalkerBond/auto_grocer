@@ -1,23 +1,12 @@
-"""
-Tests for the GraphQL mode integration.
+"""Unit tests for the nodriver -> auth.json session export.
 
-- Verifies the nodriver -> Playwright auth.json export produces the structure the
-  auto_grocier_mcp client expects (offline, uses fake CDP cookie/tab objects).
-- Provides an opt-in live smoke test for product search (requires a valid
-  auth.json and network access; set RUN_LIVE=1 to enable).
-
-Run:
-    python manual_scripts/test_graphql_mode.py
-    RUN_LIVE=1 python manual_scripts/test_graphql_mode.py
+Verifies ``export_session_to_authjson`` produces the structure the
+auto_grocier_mcp GraphQL client expects. Runs fully offline using fake
+CDP cookie/tab/browser stand-ins (no network, no real browser).
 """
-import asyncio
 import json
 import os
-import sys
 import tempfile
-
-# Add parent directory to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from auto_grocier.session_maintenance.auth_export import export_session_to_authjson
 
@@ -60,9 +49,10 @@ class _FakeTab:
         return self._local_storage
 
 
-def test_auth_export_structure():
+async def test_auth_export_structure(monkeypatch):
     """auth.json should contain mapped cookies + reese84 localStorage."""
-    print("Testing auth.json export structure...")
+    # Don't leak HEB_DEFAULT_STORE into the real environment beyond this test.
+    monkeypatch.delenv("HEB_DEFAULT_STORE", raising=False)
 
     reese84_value = json.dumps({"token": "abc", "renewTime": 9999999999000})
     browser = _FakeBrowser(
@@ -76,8 +66,8 @@ def test_auth_export_structure():
 
     with tempfile.TemporaryDirectory() as tmp:
         auth_path = os.path.join(tmp, "auth.json")
-        result_path = asyncio.run(
-            export_session_to_authjson(browser, tab, auth_path=auth_path, store_id="737")
+        result_path = await export_session_to_authjson(
+            browser, tab, auth_path=auth_path, store_id="737"
         )
 
         assert os.path.exists(result_path), "auth.json was not created"
@@ -99,37 +89,3 @@ def test_auth_export_structure():
 
     # Env vars should be set for the MCP settings.
     assert os.environ.get("HEB_DEFAULT_STORE") == "737"
-    print("  ✓ auth.json structure OK")
-
-
-def test_live_search():
-    """Opt-in live test: search products using a real auth.json."""
-    if os.environ.get("RUN_LIVE") != "1":
-        print("Skipping live search test (set RUN_LIVE=1 to enable).")
-        return
-
-    from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
-
-    store_id = os.environ.get("STORE_ID", "737")
-
-    async def _run():
-        client = HEBGraphQLClient()
-        try:
-            result = await client.search_products(query="milk", store_id=store_id, limit=5)
-            print(f"  Found {len(result.products)} products for 'milk'")
-            for p in result.products[:5]:
-                print(f"    - {p.name} (id={p.product_id}, sku={p.sku}, ${p.price})")
-        finally:
-            await client.close()
-
-    asyncio.run(_run())
-    print("  ✓ Live search completed")
-
-
-if __name__ == "__main__":
-    print("=" * 60)
-    print("GraphQL Mode Tests")
-    print("=" * 60)
-    test_auth_export_structure()
-    test_live_search()
-    print("\nAll tests passed.")

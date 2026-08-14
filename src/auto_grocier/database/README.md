@@ -127,9 +127,9 @@ This will create sample data and test all CRUD operations.
 ### Basic Operations
 
 ```python
-from database.db_connection import get_db_session
-from database.ingredient_repository import IngredientRepository
-from database.recipe_repository import RecipeRepository
+from auto_grocier.database.db_connection import get_db_session
+from auto_grocier.database.ingredient_repository import IngredientRepository
+from auto_grocier.database.recipe_repository import RecipeRepository
 
 # Get a database session
 db = get_db_session()
@@ -164,9 +164,9 @@ db.close()
 ### Integration with Existing Code
 
 ```python
-from classes.Ingredient import Ingredient as IngredientClass
-from database.db_connection import get_db_session
-from database.ingredient_repository import IngredientRepository
+from auto_grocier.classes.Ingredient import Ingredient as IngredientClass
+from auto_grocier.database.db_connection import get_db_session
+from auto_grocier.database.ingredient_repository import IngredientRepository
 
 # Your existing ingredient
 ing = IngredientClass(name="salmon", amount=1.5, unit="lb")
@@ -236,8 +236,8 @@ db.close()
 ### Connection Issues
 
 ```python
-from database.db_connection import test_connection
-from database.db_config import DatabaseConfig
+from auto_grocier.database.db_connection import test_connection
+from auto_grocier.database.db_config import DatabaseConfig
 
 # Print configuration
 DatabaseConfig.print_config()

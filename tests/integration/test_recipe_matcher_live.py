@@ -1,28 +1,23 @@
-"""
-Test the natural-language recipe matcher and ingredient-list builder.
+"""Integration tests for the natural-language recipe matcher.
 
-This test seeds a couple of recipes directly into the database (no scraping),
-then verifies that:
+Seeds a couple of recipes directly into the database (no scraping), then
+verifies that:
   1. RecipeRepository.search_recipes matches on title AND description.
-  2. recipe_matcher.parse_and_match maps a natural-language request to the right
-     recipes (using the ILIKE fallback so the test runs offline without Claude).
+  2. recipe_matcher.parse_and_match maps a natural-language request to the
+     right recipes (using the ILIKE fallback so the test runs offline
+     without Claude).
   3. recipe_matcher.build_ingredient_list builds an IngredientList from the
      matched recipes' ingredients.
 
-Run:
-    python manual_scripts/test_recipe_matcher.py
+Requires a live Postgres database (the compose ``postgres`` service or a
+local instance configured via .env). Skipped unless ``--run-integration``
+is passed; also skipped automatically if the database is unreachable.
+
+Run with: pytest tests/integration/ --run-integration
 """
-import os
-import sys
+import pytest
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from auto_grocier.database.db_connection import get_db_session
-from auto_grocier.database.ingredient_repository import IngredientRepository
-from auto_grocier.database.recipe_repository import RecipeRepository
-from auto_grocier.utility import recipe_matcher
-
-# Sentinel URLs so we can clean up after ourselves
+# Sentinel URLs so the test can clean up after itself.
 TEST_RECIPES = [
     {
         "url": "https://example.com/test/penne-alla-vodka",
@@ -69,26 +64,48 @@ def _seed(recipe_repo, ingredient_repo):
             )
 
 
-def run():
-    db = get_db_session()
-    recipe_repo = RecipeRepository(db)
-    ingredient_repo = IngredientRepository(db)
-
-    passed = True
+@pytest.fixture
+def db_session():
+    """Yield a database session, skipping if the database is unreachable."""
     try:
-        _cleanup(recipe_repo)
-        _seed(recipe_repo, ingredient_repo)
+        from sqlalchemy import text
 
-        # 1. search_recipes matches on description
+        from auto_grocier.database.db_connection import get_db_session
+
+        db = get_db_session()
+        # Force a real connection so unreachable DBs skip rather than error later.
+        db.execute(text("SELECT 1"))
+    except Exception as exc:  # noqa: BLE001
+        pytest.skip(f"database unavailable: {exc}")
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+@pytest.mark.integration
+def test_recipe_matcher_end_to_end(db_session):
+    """Seed recipes, match a natural-language request, build an ingredient list."""
+    from auto_grocier.database.ingredient_repository import IngredientRepository
+    from auto_grocier.database.recipe_repository import RecipeRepository
+    from auto_grocier.utility import recipe_matcher
+
+    recipe_repo = RecipeRepository(db_session)
+    ingredient_repo = IngredientRepository(db_session)
+
+    _cleanup(recipe_repo)
+    _seed(recipe_repo, ingredient_repo)
+    try:
+        # 1. search_recipes matches on description.
         results = recipe_repo.search_recipes("spinach")
         assert any(r.url == TEST_RECIPES[1]["url"] for r in results), \
             "search_recipes should match Palak Paneer via its description"
-        print("✓ search_recipes matches on description")
 
-        # 2. parse_and_match (force ILIKE fallback by hiding Claude)
+        # 2. parse_and_match (force the ILIKE fallback by hiding Claude).
         from auto_grocier import claude
+
         saved_client = claude.client
-        claude.client = None  # force fallback
+        claude.client = None  # force offline fallback
         try:
             matched, unmatched = recipe_matcher.parse_and_match(
                 "I want penne alla vodka and palak paneer this week", recipe_repo
@@ -99,26 +116,11 @@ def run():
         matched_urls = {r.url for r in matched}
         assert TEST_RECIPES[0]["url"] in matched_urls, "Should match Penne alla Vodka"
         assert TEST_RECIPES[1]["url"] in matched_urls, "Should match Palak Paneer"
-        print(f"✓ parse_and_match matched {len(matched)} recipes (unmatched: {unmatched})")
 
-        # 3. build_ingredient_list
-        IL = recipe_matcher.build_ingredient_list(matched, ingredient_repo)
-        names = {i.get_name() for i in IL.get_ingredients()}
+        # 3. build_ingredient_list.
+        ingredient_list = recipe_matcher.build_ingredient_list(matched, ingredient_repo)
+        names = {i.get_name() for i in ingredient_list.get_ingredients()}
         assert "penne" in names, "Ingredient list should include penne"
         assert "spinach" in names, "Ingredient list should include spinach"
-        print(f"✓ build_ingredient_list built {len(IL.get_ingredients())} ingredients: {sorted(names)}")
-
-        print("\nALL TESTS PASSED")
-    except AssertionError as e:
-        passed = False
-        print(f"\n✗ TEST FAILED: {e}")
     finally:
         _cleanup(recipe_repo)
-        db.close()
-
-    return passed
-
-
-if __name__ == "__main__":
-    ok = run()
-    sys.exit(0 if ok else 1)
