@@ -42,28 +42,27 @@ with `uv run`):
 # MODE is read from .env; the MODE env var overrides it.
 uv run python -m session_maintenance.run
 
-# --- Canonical modes ---
+# --- Two core modes ---
+
+# graphql (default): shop via the HEB GraphQL API (fast).
+#   CHECKOUT = none (default) | prompt | auto   (never places a paid order)
+MODE=graphql uv run python -m session_maintenance.run
+MODE=graphql CHECKOUT=prompt uv run python -m session_maintenance.run
+
+# nodriver: drive the HEB website with the browser. Selected by OPERATION:
+#   OPERATION = shop (default) | login_export | capture_hashes
+#   For OPERATION=shop, CHECKOUT = none (default) | prompt | auto.
+MODE=nodriver OPERATION=shop CHECKOUT=none uv run python -m session_maintenance.run
 
 # Refresh the MCP session (login + export auth.json):
-MODE=login_export uv run python -m session_maintenance.run
+MODE=nodriver OPERATION=login_export uv run python -m session_maintenance.run
 
 # Capture fresh GraphQL hashes (also exports auth.json):
-MODE=update_graphql_hashes uv run python -m session_maintenance.run
-
-# End-to-end shopping. Tunables:
-#   SHOP_SOURCE = graphql (default) | browser
-#   CHECKOUT    = none (default) | prompt | auto   (never places a paid order)
-MODE=shop uv run python -m session_maintenance.run
-MODE=shop CHECKOUT=prompt uv run python -m session_maintenance.run
-MODE=shop SHOP_SOURCE=browser CHECKOUT=none uv run python -m session_maintenance.run
+MODE=nodriver OPERATION=capture_hashes uv run python -m session_maintenance.run
 
 # WAF baseline probe (fingerprint + single heb.com hit; diagnostic only):
 uv run python -m session_maintenance.waf_probe
 ```
-
-Deprecated `MODE` names still work (they map onto `shop` and print a warning):
-`test`, `checkout_with_prompt`, `auto_checkout`, `graphql`,
-`graphql_checkout_with_prompt`, `graphql_auto_checkout`.
 
 `uv run python main.py` is a thin shim that calls `session_maintenance.run` with the same
 modes.

@@ -8,8 +8,8 @@ front-end deploy, which invalidates the hard-coded values bundled in
 feeds request bodies into the pure parsers here; the savers write the results to
 the JSON override files the GraphQL client loads at runtime.
 
-Usage is driven by the ``update_graphql_hashes`` program mode
-(``MODE=update_graphql_hashes python -m session_maintenance.run``).
+Usage is driven by the ``capture_hashes`` operation
+(``MODE=nodriver OPERATION=capture_hashes python -m session_maintenance.run``).
 """
 
 import json

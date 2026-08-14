@@ -1,5 +1,5 @@
 ---
-description: "Automated QA specialist for auto_grocier. Use to verify the Developer's work by planning tests, then running pytest, ruff, integration tests, and a MODE=test run. Reports failures back for the Developer to fix. Invoked as a subagent by the Orchestrator."
+description: "Automated QA specialist for auto_grocier. Use to verify the Developer's work by planning tests, then running pytest, ruff, integration tests, and a browser test run (MODE=nodriver OPERATION=shop CHECKOUT=none). Reports failures back for the Developer to fix. Invoked as a subagent by the Orchestrator."
 name: "Tester"
 model:
   - "Claude Sonnet 4.6"
@@ -26,7 +26,7 @@ before running anything**.
    - `uv run pytest -ra`
    - `uv run ruff check .`
    - `uv run pytest --run-integration` (integration marker)
-   - `uv run python main.py` with `MODE=test` (test-mode run — adds to cart, no checkout/charge)
+   - `uv run python main.py` with `MODE=nodriver OPERATION=shop CHECKOUT=none` (test-mode run — adds to cart, no checkout/charge)
 4. Record results in the status file under `## Test results`.
 
 ## Verdicts
