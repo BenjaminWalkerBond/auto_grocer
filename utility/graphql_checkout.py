@@ -7,8 +7,9 @@ names, persisted-query sha256 hashes, and request-variable shapes for those
 flows are not known ahead of time - they have to be captured from a live
 browser session.
 
-The ``update_graphql_hashes`` program mode (see ``main.py``) drives a real
-browser through the timeslot and checkout flows and records every GraphQL
+The ``capture_hashes`` operation (``MODE=nodriver OPERATION=capture_hashes``;
+see ``session_maintenance/run.py``) drives a real browser through the timeslot
+and checkout flows and records every GraphQL
 operation it sees - name, hash, and variables - into
 ``~/.texas-grocery-mcp/captured_operations.json`` (see
 ``utility/graphql_hash_capture.py``).
@@ -70,9 +71,9 @@ def _not_captured(flow):
         "flow": flow,
         "message": (
             f"No captured GraphQL operation matches '{flow}'. Run the "
-            "undetected-chromedriver maintenance workflow "
-            "(MODE=update_graphql_hashes python main.py) to capture the "
-            "timeslot/checkout operations from a live session, then retry."
+            "nodriver maintenance workflow "
+            "(MODE=nodriver OPERATION=capture_hashes python -m session_maintenance.run) "
+            "to capture the timeslot/checkout operations from a live session, then retry."
         ),
     }
 

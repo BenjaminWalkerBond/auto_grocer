@@ -30,7 +30,7 @@ Run every command yourself — never ask the user to run them.
    output for an email-verification prompt:
    ```bash
    docker compose --env-file .env -f docker/docker-compose.yml run --rm -T \
-     -e MODE=login_export mcp python -m session_maintenance.run
+     -e MODE=nodriver -e OPERATION=login_export mcp python -m session_maintenance.run
    ```
    **Do NOT pipe this through `tail`, `head`, or `grep`.** When the session is
    broken, session maintenance is the thing under suspicion — read its full,
@@ -39,8 +39,8 @@ Run every command yourself — never ask the user to run them.
 4. Verify with `mcp_auto-grocier_auth_status` → expect `{"authenticated": true}`.
 
 ## Notes
-- The login runs the `session_maintenance.run` module (MODE=login_export). The old
-  `grocery_browser.run` module no longer exists.
+- The login runs the `session_maintenance.run` module (MODE=nodriver
+  OPERATION=login_export). The old `grocery_browser.run` module no longer exists.
 - Session file lands in the `auto_grocier_session` volume
   (`/root/.texas-grocery-mcp/auth.json`) — no `docker run ... cp` sync step needed.
 - Do NOT hammer heb.com; repeated automated hits trigger WAF 401s and email verification.

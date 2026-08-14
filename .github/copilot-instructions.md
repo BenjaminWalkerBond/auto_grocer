@@ -39,7 +39,7 @@ fails on `DATABASE_PASSWORD`:
 
 ```bash
 docker compose --env-file .env -f docker/docker-compose.yml run --rm -T \
-  -e MODE=update_graphql_hashes mcp python -m session_maintenance.run
+  -e MODE=nodriver -e OPERATION=capture_hashes mcp python -m session_maintenance.run
 ```
 
 Filtering with `tail` is fine for unrelated commands (builds, test suites).

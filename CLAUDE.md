@@ -105,7 +105,7 @@ The `.env` file uses a labeled KEY=VALUE format. Copy `.env.example` to `.env` a
 EMAIL=your-email@example.com
 PASSWORD=your-password
 CLAUDE_API_KEY=your-claude-api-key-here
-MODE=test
+MODE=graphql
 ```
 
 The `.env` file supports:
@@ -115,17 +115,28 @@ The `.env` file supports:
 
 ### Program Mode (in .env)
 
-The `MODE` key in `.env` controls how the program runs:
+The `MODE` key in `.env` controls how the program runs. There are two core modes:
 
 | Mode | Description |
 |------|-------------|
-| `test` | Adds ingredients to cart but does NOT checkout. Browser stays open for inspection. |
-| `checkout_with_prompt` | Adds ingredients, reserves time slot, then prompts you before final checkout. |
-| `auto_checkout` | Fully automated — adds ingredients, reserves slot, and completes checkout. **Will charge your payment method!** |
+| `graphql` (default) | Shop via the HEB GraphQL API (fast). `CHECKOUT=none` adds only; `prompt`/`auto` advance to checkout. |
+| `nodriver` | Drive the HEB website with the browser. Selected by `OPERATION` (below). |
+
+For `MODE=nodriver`, `OPERATION` selects the task:
+
+| OPERATION | Description |
+|-----------|-------------|
+| `shop` (default) | Adds ingredients via the browser UI. `CHECKOUT=none` (no checkout), `prompt` (confirm first), or `auto` (**can advance to checkout**). |
+| `login_export` | Log in and export `auth.json` (refresh the MCP session). |
+| `capture_hashes` | Log in, exercise flows, capture GraphQL persisted-query hashes. |
+
+`CHECKOUT` never places a paid order; it only advances to HEB's checkout page.
 
 Example:
 ```
-MODE=checkout_with_prompt
+MODE=nodriver
+OPERATION=shop
+CHECKOUT=prompt
 ```
 
 ### Option 2: Environment Variable
@@ -189,7 +200,7 @@ uv run python main.py
 
 ### Test Mode Overview
 
-Test mode (`MODE=test` in `.env`) runs the full automation pipeline **without completing checkout**. It is the safest way to verify the program works end-to-end. The flow is:
+A browser test run (`MODE=nodriver OPERATION=shop CHECKOUT=none` in `.env`) runs the full automation pipeline **without completing checkout**. It is the safest way to verify the program works end-to-end. The flow is:
 
 1. **Login** — Authenticates with HEB using credentials from `.env`, handling email verification and passkey prompts automatically.
 2. **Clear cart** — Navigates to the cart and removes any existing items.
@@ -206,8 +217,10 @@ When testing the main program with web scraping functionality, follow this syste
 ### 1. Run the Program in Test Mode
 
 ```bash
-# Ensure MODE is set to 'test' in .env:
-# MODE=test
+# Ensure a browser test run is configured in .env:
+# MODE=nodriver
+# OPERATION=shop
+# CHECKOUT=none
 
 # Run main program via uv
 uv run python main.py
