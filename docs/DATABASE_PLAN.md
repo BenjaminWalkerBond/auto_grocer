@@ -270,7 +270,7 @@ class Tag(Base):
 ### Repository Pattern
 ```python
 # database/ingredient_repository.py
-from database.models import Ingredient, Tag
+from auto_grocier.database.models import Ingredient, Tag
 from sqlalchemy.orm import Session
 
 class IngredientRepository:
