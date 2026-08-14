@@ -121,7 +121,7 @@ count, then ask Claude to call `auth_status`.
 authenticated tool call (e.g. `search_products` or `get_cart`) — this can take
 **up to a minute** while it drives Chromium under Xvfb and completes HEB's normal
 sign-in. To pre-seed the session instead of waiting, run
-`MODE=update_graphql_hashes python -m session_maintenance.run` (see
+`MODE=nodriver OPERATION=capture_hashes python -m session_maintenance.run` (see
 [Development](#development)) and then call `refresh_session`.
 
 ## MCP Server Operations
@@ -129,13 +129,14 @@ sign-in. To pre-seed the session instead of waiting, run
 The project ships an [MCP](https://modelcontextprotocol.io/) server (`mcp_server.py`)
 that exposes HEB grocery automation as tools over **pure GraphQL** (no browser at
 runtime). It reuses an exported HEB session — run the maintenance workflow
-(`MODE=update_graphql_hashes python -m session_maintenance.run`) to log in and capture
-the GraphQL hashes, then call `refresh_session`.
+(`MODE=nodriver OPERATION=capture_hashes python -m session_maintenance.run`) to log in
+and capture the GraphQL hashes, then call `refresh_session`.
 
 **Automatic login:** if no valid session is available when an authenticated tool
 is called, the server automatically runs a one-off nodriver browser login
-(`MODE=login_export python -m session_maintenance.run`) to refresh the session, then
-continues. This can take up to a minute on the first call. Disable it with
+(`MODE=nodriver OPERATION=login_export python -m session_maintenance.run`) to refresh
+the session, then continues. This can take up to a minute on the first call. You can
+also trigger it on demand with the `login` MCP tool. Disable auto-login with
 `AUTO_GROCIER_AUTO_LOGIN=0` (tune the cap with `AUTO_GROCIER_AUTO_LOGIN_TIMEOUT`),
 in which case tools return `NOT_AUTHENTICATED` and you refresh the session
 manually.
@@ -235,12 +236,14 @@ DATABASE_PASSWORD=your_secure_password
 ```
 
 **Choose a mode** (set `MODE` in `.env`):
-- `MODE=login_export` - log in and export the session (refresh MCP auth)
-- `MODE=test` - login, reserve a slot, add ingredients (no checkout)
-- `MODE=checkout_with_prompt` - prompts before advancing to checkout
-- `MODE=auto_checkout` - advances to checkout automatically
-- `MODE=graphql` / `graphql_checkout_with_prompt` / `graphql_auto_checkout` - add via the GraphQL API
-- `MODE=update_graphql_hashes` - refresh HEB's GraphQL persisted-query hashes
+- `MODE=graphql` - shop via the HEB GraphQL API (fast). Default.
+  `CHECKOUT=none` (default, no checkout) | `prompt` | `auto`.
+- `MODE=nodriver` - drive the HEB website with the browser. Selected by
+  `OPERATION`:
+  - `OPERATION=shop` (default) - login, reserve a slot, add ingredients.
+    `CHECKOUT=none` (default) | `prompt` | `auto`.
+  - `OPERATION=login_export` - log in and export the session (refresh MCP auth).
+  - `OPERATION=capture_hashes` - refresh HEB's GraphQL persisted-query hashes.
 
 **Ingredient source** (set `INGREDIENT_SOURCE` in `.env`): `hardcoded`
 (default), `urls`, or `database`.

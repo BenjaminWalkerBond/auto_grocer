@@ -5,14 +5,14 @@ The browser automation now runs on the async **nodriver** stack in the
 removed). This module is a thin compatibility shim so ``python main.py`` keeps
 working; it simply delegates to ``session_maintenance.run``.
 
-The MODE is read from .env (or the MODE env var, which overrides). Modes:
-    login_export, test, checkout_with_prompt, auto_checkout,
-    graphql, graphql_checkout_with_prompt, graphql_auto_checkout,
-    update_graphql_hashes
+The MODE is read from .env (or the MODE env var, which overrides). Two core modes:
+    graphql   - shop via the HEB GraphQL API. CHECKOUT=none|prompt|auto.
+    nodriver  - drive the browser. OPERATION=shop|login_export|capture_hashes;
+                for OPERATION=shop, CHECKOUT=none|prompt|auto.
 
 You can also run the package directly:
     python -m session_maintenance.run
-    MODE=test python -m session_maintenance.run
+    MODE=nodriver OPERATION=shop python -m session_maintenance.run
 """
 import nodriver
 

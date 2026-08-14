@@ -35,7 +35,7 @@ hashes (including the timeslot/checkout operations), is the job of a SEPARATE
 maintenance workflow driven by nodriver (async CDP browser, runs under Xvfb in
 Docker):
 
-    MODE=update_graphql_hashes python -m session_maintenance.run
+    MODE=nodriver OPERATION=capture_hashes python -m session_maintenance.run
 
 That workflow logs in, exercises the site, and writes:
   * ~/.texas-grocery-mcp/auth.json                (session for this server)
@@ -45,7 +45,8 @@ That workflow logs in, exercises the site, and writes:
 If a tool reports NOT_AUTHENTICATED or OPERATION_NOT_CAPTURED, re-run that
 maintenance workflow, then call refresh_session here. When AUTO_GROCIER_AUTO_LOGIN
 is enabled (default), authenticated tools refresh an expired session
-automatically by running the login_export flow.
+automatically by running the nodriver login_export operation; the ``login`` tool
+triggers the same flow on demand.
 
 Run standalone:
     python mcp_server.py
@@ -99,9 +100,9 @@ _NOT_AUTHED = {
     "code": "NOT_AUTHENTICATED",
     "message": (
         "No valid HEB session and automatic login is disabled or failed. "
-        "Enable auto-login (AUTO_GROCIER_AUTO_LOGIN=1) or refresh the session "
-        "manually (MODE=login_export python -m session_maintenance.run), then call "
-        "refresh_session."
+        "Enable auto-login (AUTO_GROCIER_AUTO_LOGIN=1), call the login tool, or "
+        "refresh the session manually (MODE=nodriver OPERATION=login_export "
+        "python -m session_maintenance.run), then call refresh_session."
     ),
 }
 
@@ -186,19 +187,21 @@ def _reload_session_caches() -> None:
         pass
 
 
-def _auto_authenticate() -> dict:
+def _auto_authenticate(force: bool = False) -> dict:
     """Run the browser login-and-export workflow to refresh the HEB session.
 
     Logs in with the configured credentials (handling email verification) via the
-    async nodriver flow (``session_maintenance.run`` with MODE=login_export) and
-    re-exports ~/.texas-grocery-mcp/auth.json. The browser is driven over CDP and
-    runs under Xvfb inside the Docker image. Blocks until it finishes (up to
-    _AUTO_LOGIN_TIMEOUT seconds). Serialized so only one login runs at a time.
-    Returns a dict describing the outcome.
+    async nodriver flow (``session_maintenance.run`` with MODE=nodriver
+    OPERATION=login_export) and re-exports ~/.texas-grocery-mcp/auth.json. The
+    browser is driven over CDP and runs under Xvfb inside the Docker image. Blocks
+    until it finishes (up to _AUTO_LOGIN_TIMEOUT seconds). Serialized so only one
+    login runs at a time. When ``force`` is False and a valid session already
+    exists, returns early without opening a browser. Returns a dict describing the
+    outcome.
     """
     with _AUTO_LOGIN_LOCK:
         # Another thread may have authenticated while we waited for the lock.
-        if _is_authed():
+        if not force and _is_authed():
             return {"ok": True, "skipped": "already authenticated"}
 
         # Prefer the project venv interpreter so dependencies resolve.
@@ -207,7 +210,8 @@ def _auto_authenticate() -> dict:
 
         env = dict(os.environ)
         env.setdefault("DISPLAY", ":0")  # X server (WSLg on host, Xvfb in Docker)
-        env["MODE"] = "login_export"
+        env["MODE"] = "nodriver"
+        env["OPERATION"] = "login_export"
         cmd = [python_exe, "-u", "-m", "session_maintenance.run"]
 
         print(
@@ -556,6 +560,26 @@ def refresh_session() -> dict:
     """Reload the exported session and the latest persisted-query hashes after running the maintenance workflow. Call this if tools start reporting NOT_AUTHENTICATED or OPERATION_NOT_CAPTURED."""
     _reload_session_caches()
     return {"authenticated": _is_authed(), "store_id": _store_id()}
+
+
+@mcp.tool()
+def login(force: bool = False) -> dict:
+    """Log in to HEB and export a fresh session (auth.json), then reload it.
+
+    Runs the nodriver login-and-export browser flow (handling email verification)
+    and refreshes ~/.texas-grocery-mcp/auth.json. This is the programmatic
+    equivalent of the refresh-heb-login skill; no order is ever placed.
+
+    Args:
+        force: When True, re-run the browser login even if the current session is
+            still valid. When False (default), skip if already authenticated.
+    """
+    result = _auto_authenticate(force=force)
+    return {
+        "authenticated": _is_authed(),
+        "store_id": _store_id(),
+        "login": result,
+    }
 
 
 @mcp.tool()
