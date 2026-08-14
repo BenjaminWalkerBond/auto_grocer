@@ -29,9 +29,12 @@ Run every command yourself — never ask the user to run them.
 2. Log in in-container (writes `auth.json` into the session volume). Watch the
    output for an email-verification prompt:
    ```bash
-   docker compose -f docker/docker-compose.yml run --rm -T \
+   docker compose --env-file .env -f docker/docker-compose.yml run --rm -T \
      -e MODE=login_export mcp python -m session_maintenance.run
    ```
+   **Do NOT pipe this through `tail`, `head`, or `grep`.** When the session is
+   broken, session maintenance is the thing under suspicion — read its full,
+   unfiltered output so the real failure point is visible.
 3. Reload the session in the server: call `mcp_auto-grocier_refresh_session`.
 4. Verify with `mcp_auto-grocier_auth_status` → expect `{"authenticated": true}`.
 
