@@ -1,4 +1,5 @@
 import re
+import sys
 from urllib.parse import urlparse
 
 import requests
@@ -62,7 +63,7 @@ def extract_recipe_metadata(url):
             if not description:
                 description = meta_from_ai.get("description", "")
     except Exception as e:
-        print(f"Warning: extract_recipe_metadata failed for {url}: {e}")
+        print(f"Warning: extract_recipe_metadata failed for {url}: {e}", file=sys.stderr)
 
     return {
         "title": title,
@@ -169,14 +170,14 @@ def populate_ingredient_list(url_list):
     IL = IngredientList()
 
     for url in url_list:
-        print("url: ", url)
+        print("url: ", url, file=sys.stderr)
 
     for url in url_list:
 
         # Send a GET request to the webpage
         response = requests.get(url)
         # print the response
-        print(response)
+        print(response, file=sys.stderr)
         # Create a BeautifulSoup object to parse the HTML content
         soup = BeautifulSoup(response.content, "html.parser")
 
@@ -187,21 +188,21 @@ def populate_ingredient_list(url_list):
         text = text.lower()
 
         ingredient_list_array = extract_ingredients(text)
-        print("ingredient_list_array: ", ingredient_list_array)
+        print("ingredient_list_array: ", ingredient_list_array, file=sys.stderr)
         for ingredient in ingredient_list_array:
-            print("Ingredient: ", ingredient)
-            print(f"Cleaning the ingredient: {ingredient}\n")
+            print("Ingredient: ", ingredient, file=sys.stderr)
+            print(f"Cleaning the ingredient: {ingredient}\n", file=sys.stderr)
             cleaned_ingredient_tuple = clean_ingredient(ingredient)
-            print(cleaned_ingredient_tuple)
+            print(cleaned_ingredient_tuple, file=sys.stderr)
 
             # Unpack the tuple into name, amount, and unit variables
             name, amount, unit = cleaned_ingredient_tuple
 
             # add to ingredient list
             IL.add_ingredient(Ingredient(name, amount, unit))
-            print("ADDING INGREDIENT", name)
-            print("AMOUNT", amount)
-            print("UNIT", unit)
+            print("ADDING INGREDIENT", name, file=sys.stderr)
+            print("AMOUNT", amount, file=sys.stderr)
+            print("UNIT", unit, file=sys.stderr)
     return IL
 
 

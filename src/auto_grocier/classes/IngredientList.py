@@ -1,4 +1,5 @@
 import os
+import sys
 
 
 class IngredientList:
@@ -16,14 +17,14 @@ class IngredientList:
             # print(path)
             if path.is_file() and path.name.endswith(".txt"):
                 tag = os.path.splitext(path.name)[0]
-                print("Creating tags from dictionary from: " + path.name)
+                print("Creating tags from dictionary from: " + path.name, file=sys.stderr)
                 with open(path.path) as f:
                     for line in f:
                         # print("line is: "+line.strip()+"\n")
                         self.tags_dict[line.strip()] = tag
 
         #  initialize each dictionary with their respective word files
-        print("Initialized all tag dictionaries \n")
+        print("Initialized all tag dictionaries \n", file=sys.stderr)
 
         self.tags_dict["eggs"] = "eggs"
         self.tags_dict["milk"] = "milk"

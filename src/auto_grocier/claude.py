@@ -81,7 +81,7 @@ def extract_ingredients(txt):
     max_chars = 100000
     if char_count > max_chars:
         txt = txt[:max_chars]
-        print(f"Warning: Text truncated from {char_count} to {max_chars} characters")
+        print(f"Warning: Text truncated from {char_count} to {max_chars} characters", file=sys.stderr)
 
     message = client.messages.create(
         model=MODEL,
@@ -159,7 +159,7 @@ def get_recipe_metadata_txt(txt):
             "description": (data.get("description") or "").strip(),
         }
     except Exception as e:
-        print(f"Warning: get_recipe_metadata_txt failed: {e}")
+        print(f"Warning: get_recipe_metadata_txt failed: {e}", file=sys.stderr)
         return {"title": "", "description": ""}
 
 
@@ -212,7 +212,7 @@ def match_recipes_txt(user_text, recipes):
         unmatched = [str(u) for u in data.get("unmatched", [])]
         return {"matched_ids": matched_ids, "unmatched": unmatched}
     except Exception as e:
-        print(f"Warning: match_recipes_txt failed: {e}")
+        print(f"Warning: match_recipes_txt failed: {e}", file=sys.stderr)
         return {"matched_ids": [], "unmatched": []}
 
 def evaluate_substitutes(
@@ -373,7 +373,7 @@ Respond with ONLY a JSON object (no markdown, no extra text) with these exact ke
         }
 
     except Exception as e:
-        print(f"Warning: evaluate_substitutes failed: {e}")
+        print(f"Warning: evaluate_substitutes failed: {e}", file=sys.stderr)
         # Fallback: return first available candidate
         fallback = available_candidates[0]
         return {

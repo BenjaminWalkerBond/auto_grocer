@@ -72,6 +72,20 @@ from auto_grocier.utility.graphql_checkout import (
 )
 from auto_grocier.utility.graphql_store import select_store
 
+# Route all structlog/stdlib logging to stderr so the stdio JSON-RPC channel on
+# stdout stays clean. The vendored auto_grocier_mcp client logs via structlog;
+# without this, structlog uses its UNCONFIGURED default (a PrintLogger writing to
+# stdout), which corrupts the MCP protocol and shows up in the client as
+# "Failed to parse message" warnings. configure_logging() sends everything to
+# stderr at INFO (suppressing the client's debug lines). Never let logging setup
+# break server startup.
+try:
+    from auto_grocier_mcp.observability.logging import configure_logging as _configure_logging
+
+    _configure_logging()
+except Exception:  # noqa: BLE001
+    pass
+
 # This module lives at <repo>/src/auto_grocier/mcp_server.py, so the repo root
 # (which holds .env, venv/, and the docker/ tree) is three levels up.
 _PROJECT_ROOT = os.path.dirname(
