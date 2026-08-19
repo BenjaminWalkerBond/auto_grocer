@@ -15,6 +15,8 @@ session instead.
 """
 from __future__ import annotations
 
+import re
+
 # Substrings unique to the block overlay. Any single hit is conclusive: none of
 # these strings appear on the real storefront. The overlay is built by inline JS,
 # so the apostrophe arrives escaped ("can\'t") — match on the tail of the
@@ -33,11 +35,28 @@ class WafBlockedError(Exception):
     """
 
 
+# Inline <script>/<style>/<template>/<noscript> blocks are stripped before
+# matching. HEB ships an inline <script> on EVERY page that *builds* the block
+# overlay via document.createElement, so the marker strings live in the raw HTML
+# even on a normal storefront. Matching that produced false positives that
+# aborted perfectly good logins. When the overlay actually fires, its text is
+# injected as live DOM nodes (outside the script) and still matches.
+_STRIP_TAGS_RE = re.compile(
+    r"<(script|style|template|noscript)\b[^>]*>.*?</\1>",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _visible_markup(html):
+    """Return ``html`` with inline script/style/template/noscript content removed."""
+    return _STRIP_TAGS_RE.sub("", html)
+
+
 def detect_block(html):
     """Return the matched marker if ``html`` is the block page, else None."""
     if not html:
         return None
-    low = html.lower()
+    low = _visible_markup(html).lower()
     for marker in _BLOCK_MARKERS:
         if marker in low:
             return marker

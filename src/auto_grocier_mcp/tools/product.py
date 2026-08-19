@@ -156,19 +156,12 @@ async def product_search(
         result["security_challenge_detected"] = True
         result["note"] = (
             "Security challenge (WAF/captcha) blocked API requests. "
-            "Use session_refresh tool or Playwright MCP to refresh your session."
+            "Use the session_refresh tool to refresh your session."
         )
 
     # Add fallback reason if present
     if search_result.fallback_reason:
         result["fallback_reason"] = search_result.fallback_reason
-
-    # Add Playwright fallback instructions when available
-    if search_result.playwright_fallback_available and search_result.playwright_instructions:
-        result["playwright_fallback"] = {
-            "available": True,
-            "instructions": search_result.playwright_instructions,
-        }
 
     # Add search attempts for debugging (summarized)
     if search_result.attempts:

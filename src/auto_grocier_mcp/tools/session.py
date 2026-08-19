@@ -1,18 +1,13 @@
 """Session management tools for MCP."""
 
+import asyncio
+import os
+import sys
 from pathlib import Path
 from typing import Any
 
 import structlog
 
-from auto_grocier_mcp.auth.browser_refresh import (
-    BrowserRefreshError,
-    LoginRequiredError,
-    PlaywrightNotInstalledError,
-    auto_login_with_credentials,
-    is_playwright_available,
-    refresh_session_with_browser,
-)
 from auto_grocier_mcp.auth.credentials import CredentialError, CredentialStore
 from auto_grocier_mcp.auth.session import (
     check_session_freshness,
@@ -71,6 +66,38 @@ async def session_status() -> dict[str, Any]:
     }
 
 
+async def _run_nodriver_login(env: dict[str, str], *, timeout_ms: int = 300000) -> tuple[int, str]:
+    """Run the nodriver ``login_export`` flow as an isolated subprocess.
+
+    Drives the maintained nodriver login flow (the same one the
+    refresh-heb-login skill uses): it logs in headfully under the container's
+    Xvfb display, handles email verification, and writes a fresh ``auth.json``.
+    No Playwright is involved.
+
+    Kept as a module-level function so tests can patch it without spawning a
+    real browser.
+
+    Returns:
+        (returncode, combined_stdout+stderr)
+    """
+    proc = await asyncio.create_subprocess_exec(
+        sys.executable,
+        "-m",
+        "auto_grocier.session_maintenance.run",
+        env=env,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+    )
+    try:
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout_ms / 1000)
+    except (TimeoutError, asyncio.TimeoutError):
+        proc.kill()
+        await proc.wait()
+        return 1, "nodriver login timed out"
+    output = stdout.decode("utf-8", errors="replace") if stdout else ""
+    return proc.returncode or 0, output
+
+
 async def session_refresh(
     headless: bool = True,
     timeout: int = 30000,
@@ -79,21 +106,20 @@ async def session_refresh(
 ) -> dict[str, Any]:
     """Refresh HEB session cookies and tokens.
 
-    Uses embedded browser when available (fast: ~10-15 seconds).
-    If credentials are saved and login is required, attempts automatic login.
-    Falls back to returning Playwright MCP commands if browser
-    dependencies aren't installed.
+    Runs the maintained nodriver login flow in an isolated subprocess: it logs
+    in headfully under the container's Xvfb display, handles email
+    verification, and exports a fresh auth.json for the GraphQL client. If
+    credentials are saved they are used for automatic login. No Playwright is
+    involved.
 
     Args:
-        headless: Run browser without visible window (default True).
-                  Set to False if you need to complete a manual login
-                  (e.g., when your session has fully expired).
-        timeout: Maximum time to wait for page load in milliseconds.
-                 Default 30000 (30 seconds).
-        login_timeout: Maximum time to wait for manual login in milliseconds.
-                       Default 300000 (5 minutes). Only used when headless=False.
-        use_saved_credentials: If True and credentials are stored, attempt
-                               automatic login when session is expired.
+        headless: Accepted for backwards compatibility. The nodriver login flow
+                  always runs headfully under Xvfb, so this is ignored.
+        timeout: Accepted for backwards compatibility; unused.
+        login_timeout: Maximum time to wait for the login subprocess in
+                       milliseconds. Default 300000 (5 minutes).
+        use_saved_credentials: If True and credentials are stored, pass them to
+                               the login subprocess for automatic login.
                                Default True.
 
     Returns:
@@ -126,189 +152,83 @@ async def session_refresh(
     cred_store = CredentialStore(auth_dir)
     has_credentials = cred_store.has_credentials() if use_saved_credentials else False
 
-    # Try embedded Playwright first (fast path)
-    if is_playwright_available():
-        try:
-            result = await refresh_session_with_browser(
-                auth_path=auth_path,
-                headless=headless,
-                timeout=timeout,
-                login_timeout=login_timeout,
-            )
-            return result
+    # Refresh via the nodriver login flow (isolated subprocess). This runs the
+    # same maintenance flow as the refresh-heb-login skill: it logs in headfully
+    # under the container's Xvfb display, handles email verification, and exports
+    # a fresh auth.json for the GraphQL client. No Playwright is involved.
+    env: dict[str, str] = dict(os.environ)
+    env["MODE"] = "nodriver"
+    env["OPERATION"] = "login_export"
+    # Avoid the interactive recipe prompt in the login_export path.
+    env.setdefault("INGREDIENT_SOURCE", "hardcoded")
 
-        except PlaywrightNotInstalledError:
-            # Fall through to command-based approach
-            pass
+    if has_credentials:
+        credentials = cred_store.get()
+        if credentials:
+            email, password = credentials
+            env["EMAIL"] = email
+            env["PASSWORD"] = password
 
-        except LoginRequiredError as e:
-            # Session expired - try auto-login if we have credentials
-            if has_credentials:
-                logger.info("Session expired, attempting auto-login with saved credentials")
-                credentials = cred_store.get()
-                if credentials:
-                    email, password = credentials
-                    # Use visible browser for auto-login (needed for CAPTCHA handoff)
-                    result = await auto_login_with_credentials(
-                        auth_path=auth_path,
-                        email=email,
-                        password=password,
-                        headless=False,  # Always visible for human handoff
-                        timeout=timeout,
-                        login_timeout=login_timeout,
-                    )
-                    return result
+    logger.info("Refreshing session via nodriver login subprocess")
+    returncode, output = await _run_nodriver_login(env, timeout_ms=login_timeout)
 
-            # No credentials or auto-login not attempted
-            suggestion = (
-                "Your session has fully expired. Try:\n"
-                "  session_refresh(headless=False)\n"
-                "to login in a visible browser window."
-            )
-            if not has_credentials:
-                suggestion += (
-                    "\n\nTip: Save your credentials with session_save_credentials() "
-                    "for automatic login next time."
-                )
+    if returncode == 0 and is_authenticated():
+        return {
+            "success": True,
+            "status": "success",
+            "message": "Session refreshed via nodriver login.",
+            "auth_path": str(auth_path),
+            "session": get_session_info(),
+        }
 
-            return {
-                "success": False,
-                "status": "failed",
-                "error": str(e),
-                "error_type": "login_required",
-                "credentials_available": has_credentials,
-                "suggestion": suggestion,
-            }
-
-        except BrowserRefreshError as e:
-            return {
-                "success": False,
-                "status": "failed",
-                "error": str(e),
-                "error_type": "browser_error",
-                "suggestion": "Check your internet connection and try again.",
-            }
-
-    # Fallback: return Playwright MCP commands for external execution
-    expanded_auth_path = str(auth_path)
     freshness = check_session_freshness()
-
-    # Build the JavaScript code to extract and save session
-    extract_code = f"""
-// Extract session data and save to auth.json
-const fs = require('fs');
-const path = require('path');
-
-// Get cookies
-const cookies = await page.context().cookies();
-
-// Get localStorage
-const localStorage = await page.evaluate(() => {{
-    const items = [];
-    for (let i = 0; i < window.localStorage.length; i++) {{
-        const name = window.localStorage.key(i);
-        const value = window.localStorage.getItem(name);
-        items.push({{ name, value }});
-    }}
-    return items;
-}});
-
-// Build auth state matching Playwright's storageState format
-const authState = {{
-    cookies: cookies,
-    origins: [{{
-        origin: "https://www.heb.com",
-        localStorage: localStorage
-    }}]
-}};
-
-// Ensure directory exists
-const authPath = '{expanded_auth_path}';
-const dir = path.dirname(authPath);
-if (!fs.existsSync(dir)) {{
-    fs.mkdirSync(dir, {{ recursive: true }});
-}}
-
-// Save auth state
-fs.writeFileSync(authPath, JSON.stringify(authState, null, 2));
-
-return {{
-    success: true,
-    message: 'Session saved to ' + authPath,
-    cookies_count: cookies.length,
-    localStorage_count: localStorage.length
-}};
-"""
+    suggestion = (
+        "Automated nodriver login did not produce a valid session. Verify your "
+        "HEB credentials in the environment/.env and try again. If HEB is "
+        "requiring email verification, ensure IMAP settings are configured."
+    )
+    if not has_credentials:
+        suggestion += (
+            "\n\nTip: save credentials with session_save_credentials() so the "
+            "login can run automatically."
+        )
 
     return {
-        "message": (
-            "Playwright not installed. Execute these Playwright MCP commands to refresh "
-            "session:"
-        ),
-        "install_for_fast_refresh": (
-            "pip install auto-grocier-mcp[browser] && playwright install chromium"
-        ),
+        "success": False,
+        "status": "failed",
+        "error_type": "login_failed" if returncode == 0 else "browser_error",
+        "returncode": returncode,
         "current_status": {
             "authenticated": freshness.get("authenticated", False),
             "needs_refresh": freshness.get("needs_refresh", True),
             "reason": freshness.get("reason"),
         },
-        "commands": [
-            {
-                "tool": "browser_navigate",
-                "parameters": {"url": "https://www.heb.com"},
-                "description": "Navigate to HEB homepage to trigger reese84 token generation",
-            },
-            {
-                "tool": "browser_wait_for",
-                "parameters": {"time": 5},
-                "description": "Wait for page load and reese84 token initialization",
-            },
-            {
-                "tool": "browser_run_code",
-                "parameters": {"code": extract_code},
-                "description": "Extract cookies and localStorage, save to auth.json",
-            },
-        ],
-        "after_refresh": "Call session_status to verify the refresh succeeded.",
-        "auth_path": expanded_auth_path,
-        "troubleshooting": {
-            "no_playwright": "Install Playwright MCP: https://github.com/microsoft/playwright-mcp",
-            "still_failing": (
-                "Try browser_navigate with a longer wait, or check if HEB requires login"
-            ),
-            "login_required": (
-                "If HEB prompts for login, use browser_fill_form to enter credentials or "
-                "complete login manually"
-            ),
-        },
+        "auth_path": str(auth_path),
+        "credentials_available": has_credentials,
+        "suggestion": suggestion,
+        "output_tail": output[-2000:] if output else "",
     }
 
 
 def session_save_instructions() -> dict[str, Any]:
-    """Get instructions for saving browser session cookies.
+    """Get instructions for refreshing and saving the browser session.
 
-    Call this to get step-by-step instructions for authenticating
-    via Playwright MCP and saving the session for fast API access.
-
-    For automatic session extraction, use session_refresh instead.
+    For automatic session extraction, use session_refresh instead — it runs the
+    nodriver login flow and writes auth.json for you.
     """
     settings = get_settings()
 
     return {
         "instructions": [
-            "1. Navigate to HEB login page:",
-            "   browser_navigate('https://www.heb.com/my-account/login')",
+            "1. Preferred: call session_refresh to log in via the nodriver flow",
+            "   and export a fresh session automatically.",
             "",
-            "2. Complete the login process in the browser",
-            "   (Enter credentials and click Sign In)",
+            "2. If session_refresh cannot log in automatically, run the",
+            "   refresh-heb-login maintenance skill, which drives the same",
+            "   nodriver login inside the Docker container and writes auth.json",
+            "   straight into the session volume.",
             "",
-            "3. After successful login, save the browser state:",
-            "   browser_run_code with this code:",
-            f"   await page.context().storageState({{ path: '{settings.auth_state_path}' }})",
-            "",
-            "4. Verify session was saved:",
-            "   Call session_status to confirm authentication",
+            "3. After a refresh, call session_status to confirm authentication.",
         ],
         "auth_path": str(settings.auth_state_path),
         "current_status": {

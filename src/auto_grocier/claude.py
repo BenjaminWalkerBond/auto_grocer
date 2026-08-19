@@ -45,12 +45,14 @@ def get_setting(key, default=""):
 claude_api_key = get_setting("CLAUDE_API_KEY") or get_setting("ANTHROPIC_API_KEY")
 
 if not claude_api_key:
-    print("ERROR: No Claude API key found.")
-    print("Add CLAUDE_API_KEY=your-key-here to your .env file")
-    print("or set the ANTHROPIC_API_KEY environment variable.")
-    print("See docs/CLAUDE_SETUP.md for instructions.")
+    print("ERROR: No Claude API key found.", file=sys.stderr)
+    print("Add CLAUDE_API_KEY=your-key-here to your .env file", file=sys.stderr)
+    print("or set the ANTHROPIC_API_KEY environment variable.", file=sys.stderr)
+    print("See docs/CLAUDE_SETUP.md for instructions.", file=sys.stderr)
 else:
-    print(f"✓ Claude API key loaded successfully: {claude_api_key[:20]}...")
+    # Never print the key itself — just confirm it loaded. Route to stderr so it
+    # doesn't corrupt the MCP JSON-RPC stream on stdout.
+    print("✓ Claude API key loaded", file=sys.stderr)
 
 # Initialize the Anthropic client
 client = anthropic.Anthropic(api_key=claude_api_key) if claude_api_key else None

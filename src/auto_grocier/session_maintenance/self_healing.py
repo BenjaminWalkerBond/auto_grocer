@@ -71,6 +71,20 @@ def _extract_function_code(response_text):
     return cleaned.strip()
 
 
+def _response_text(response):
+    """Return the first text block's text from a Claude response.
+
+    With extended thinking enabled, ``response.content[0]`` may be a
+    ThinkingBlock (which has no ``.text``); skip to the first block that
+    actually carries text so the rewrite path doesn't crash.
+    """
+    for block in response.content:
+        text = getattr(block, "text", None)
+        if text is not None:
+            return text
+    return ""
+
+
 def _build_heal_prompt(func_name, source, error, tb_str, html_context=None):
     prompt = (
         f"The following async Python function raised an error at runtime.\n\n"
@@ -194,7 +208,7 @@ async def self_healing_call(
                 )
 
             response = await asyncio.to_thread(_call_claude)
-            new_code = _extract_function_code(response.content[0].text)
+            new_code = _extract_function_code(_response_text(response))
 
             namespace = {**func.__globals__}
             try:

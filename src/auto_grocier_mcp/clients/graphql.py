@@ -784,31 +784,78 @@ class HEBGraphQLClient:
         return unique_variations
 
     def _detect_security_challenge(self, html: str) -> bool:
-        """Detect if response is a WAF/captcha security challenge page.
+        """Detect if a response is a WAF/captcha security challenge page.
 
-        HEB uses Incapsula (Imperva) WAF which may return challenge pages
-        instead of actual content when bot detection is triggered.
+        HEB uses Incapsula (Imperva) WAF, which may return an interstitial
+        challenge page instead of real content when bot detection is triggered.
+
+        Naive substring matching produces false positives: HEB injects an inline
+        Incapsula telemetry ``<script src="/_Incapsula_Resource?...">`` and the
+        strings "incapsula"/"reese84" into EVERY normal page. So we only treat a
+        response as a challenge when it (a) lacks the hallmarks of a real HEB page,
+        and (b) either carries an unambiguous block phrase or is a minimal-content
+        interstitial that references a challenge resource.
 
         Args:
             html: Response HTML content
 
         Returns:
-            True if response appears to be a security challenge
+            True if the response appears to be a security challenge
         """
-        challenge_indicators = [
-            "incapsula",
-            "reese84",
-            "_Incapsula_Resource",
-            "challenge-platform",
-            "cf-browser-verification",
-            "captcha",
-            "blocked",
-            "access denied",
+        html_lower = html.lower()
+
+        # (a) If the page has several hallmarks of a real HEB page, it is NOT a
+        # challenge interstitial even if some indicator strings are present.
+        normal_page_indicators = (
+            "heb.com",
+            "add to cart",
+            "my cart",
+            "my account",
+            "curbside",
+            "delivery",
+            "weekly ad",
+            "shop now",
+            "products",
+            "<nav",
+            "<header",
+            "data-testid",
+            "__next_data__",
+        )
+        normal_indicator_count = sum(1 for ind in normal_page_indicators if ind in html_lower)
+        if normal_indicator_count >= 3:
+            return False
+
+        # (b) Unambiguous block phrases that appear ONLY on challenge/interstitial
+        # pages (never on a normal storefront page).
+        strong_challenge_indicators = (
+            "incapsula incident id",
+            "request unsuccessful",
             "please verify you are a human",
             "enable javascript and cookies",
-        ]
-        html_lower = html.lower()
-        return any(indicator in html_lower for indicator in challenge_indicators)
+            "sorry, you have been blocked",
+            "access denied",
+            "checking your browser",
+            "please wait while we verify",
+            "pardon our interruption",
+            "just a moment",
+            "ray id:",
+            "why have i been blocked",
+            "this website is using a security service",
+        )
+        if any(indicator in html_lower for indicator in strong_challenge_indicators):
+            return True
+
+        # (c) Weak markers only count on minimal-content pages: a real HEB page is
+        # tens/hundreds of KB, an interstitial is tiny and sparse.
+        is_minimal_content = len(html) < 5000
+        weak_challenge_indicators = (
+            "_incapsula_resource",
+            "challenge-platform",
+            "cf-browser-verification",
+        )
+        return is_minimal_content and any(
+            indicator in html_lower for indicator in weak_challenge_indicators
+        )
 
     def _determine_fallback_reason(
         self,
@@ -830,8 +877,9 @@ class HEBGraphQLClient:
             return "No authentication cookies available"
         if security_challenge:
             return (
-                "Security challenge (WAF/captcha) blocked API requests. "
-                "Use session_refresh (Playwright) to refresh the session."
+                "Security challenge (WAF/captcha) blocked API requests, and the "
+                "in-process browser fallback returned no results. Use the "
+                "session_refresh tool to refresh the session."
             )
         if all(a.result == "empty" for a in attempts if a.method in ("ssr", "typeahead_as_ssr")):
             return "All SSR queries returned empty results - product may not exist"
@@ -839,88 +887,45 @@ class HEBGraphQLClient:
             return "All SSR queries failed with errors"
         return "SSR search unsuccessful"
 
-    def _get_session_refresh_instructions(self) -> list[str]:
-        """Get Playwright instructions for refreshing the session.
+    async def _search_products_nodriver(
+        self,
+        query: str,
+        store_id: str,
+        limit: int = 20,
+    ) -> list[Product]:
+        """Search products via the in-process nodriver browser fallback.
 
-        When session tokens are stale, use Playwright to refresh
-        the bot detection tokens before retrying API calls.
-
-        Returns:
-            Step-by-step instructions for session refresh
+        Used when the httpx SSR search is blocked by the WAF challenge. Drives a
+        real browser (which solves the reese84 JS challenge in-container) to
+        fetch the search-results page, then reuses the SSR ``__NEXT_DATA__``
+        parser to extract products. Returns an empty list on any failure so the
+        caller can degrade to typeahead suggestions.
         """
-        settings = get_settings()
-        return [
-            "Session refresh required. Run these Playwright commands:",
-            "",
-            "1. browser_navigate('https://www.heb.com')",
-            "",
-            "2. browser_wait_for({ time: 3 })  # Wait for bot detection to initialize",
-            "",
-            "3. browser_type('[data-qe-id=\"headerSearchInput\"]', 'test')",
-            "",
-            "4. browser_press_key('Enter')",
-            "",
-            "5. browser_wait_for({ selector: '[data-qe-id=\"productCard\"]', timeout: 10000 })",
-            "",
-            (
-                "6. browser_run_code with: await page.context().storageState({ path: '"
-                f"{settings.auth_state_path}"
-                "' })"
-            ),
-            "",
-            "Then retry your search.",
-        ]
+        from auto_grocier_mcp.clients.nodriver_search import get_nodriver_search_client
 
-    def _get_playwright_search_instructions(self, query: str, store_id: str) -> list[str]:
-        """Get instructions for using Playwright MCP to perform the search.
+        client = get_nodriver_search_client()
+        html = await client.search_html(query, store_id)
+        if not html:
+            return []
 
-        When security challenges block httpx requests, Playwright can
-        bypass them because it runs in a real browser.
+        match = re.search(
+            r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>',
+            html,
+            re.DOTALL,
+        )
+        if not match:
+            logger.warning("No __NEXT_DATA__ in nodriver search HTML", query=query)
+            return []
 
-        Args:
-            query: Original search query
-            store_id: Store ID for context
+        try:
+            next_data = json.loads(match.group(1))
+        except json.JSONDecodeError as exc:
+            logger.warning(
+                "Failed to parse nodriver search JSON", query=query, error=str(exc)
+            )
+            return []
 
-        Returns:
-            Step-by-step instructions for Playwright-based search
-        """
-        encoded_query = query.replace(" ", "+")
-        return [
-            "Use Playwright MCP to search (bypasses bot detection):",
-            "",
-            f"1. browser_navigate('https://www.heb.com/search?q={encoded_query}')",
-            "",
-            "2. Wait for results to load:",
-            "   browser_wait_for({ selector: '[data-qe-id=\"productCard\"]', timeout: 10000 })",
-            "",
-            "3. Take a snapshot to see the results:",
-            "   browser_snapshot()",
-            "",
-            "4. Extract product data (optional - run in browser):",
-            "   browser_run_code with:",
-            "   ```javascript",
-            "   const products = [...document.querySelectorAll('[data-qe-id=\"productCard\"]')]",
-            "     .slice(0, 20)",
-            "     .map(card => ({",
-            (
-                "       name: card.querySelector('[data-qe-id=\"productTitle\"]')"
-                "?.textContent?.trim(),"
-            ),
-            (
-                "       price: card.querySelector('[data-qe-id=\"productPrice\"]')"
-                "?.textContent?.trim(),"
-            ),
-            "       sku: card.dataset.productId || card.querySelector('[data-sku]')?.dataset?.sku,",
-            "     }));",
-            "   return JSON.stringify(products, null, 2);",
-            "   ```",
-            "",
-            "5. After browsing, save refreshed session cookies:",
-            (
-                "   browser_run_code with: await page.context().storageState({ path: "
-                "'~/.texas-grocery-mcp/auth.json' })"
-            ),
-        ]
+        return self._parse_ssr_products(next_data, limit)
 
     async def search_products(
         self,
@@ -1096,10 +1101,47 @@ class HEBGraphQLClient:
             security_challenge=security_challenge_detected,
         )
 
-        # Get Playwright instructions if security challenge was detected
-        playwright_instructions = None
+        # Browser fallback: when the WAF blocked the httpx SSR search, drive an
+        # in-process nodriver browser (which solves the JS challenge) to fetch
+        # the search-results page. Cart operations still use /graphql.
         if security_challenge_detected:
-            playwright_instructions = self._get_playwright_search_instructions(query, store_id)
+            try:
+                browser_products = await self._search_products_nodriver(
+                    query, store_id, limit
+                )
+            except Exception as e:
+                logger.warning(
+                    "nodriver search fallback failed", query=query, error=str(e)
+                )
+                browser_products = []
+
+            if browser_products:
+                attempts.append(ProductSearchAttempt(
+                    query=query,
+                    method="nodriver_browser",
+                    result="success",
+                ))
+                logger.info(
+                    "nodriver browser search successful",
+                    query=query,
+                    result_count=len(browser_products),
+                )
+                return ProductSearchResult(
+                    products=browser_products,
+                    count=len(browser_products),
+                    query=query,
+                    store_id=store_id,
+                    data_source="ssr",
+                    authenticated=auth_client is not None,
+                    security_challenge_detected=True,
+                    attempts=attempts,
+                    search_url=search_url,
+                )
+            attempts.append(ProductSearchAttempt(
+                query=query,
+                method="nodriver_browser",
+                result="empty",
+            ))
 
         try:
             suggestions = await self.get_typeahead(query)
@@ -1116,8 +1158,6 @@ class HEBGraphQLClient:
                 security_challenge_detected=security_challenge_detected,
                 attempts=attempts,
                 search_url=search_url,
-                playwright_fallback_available=security_challenge_detected,
-                playwright_instructions=playwright_instructions,
             )
 
         # Return suggestions as placeholder products
@@ -1154,8 +1194,6 @@ class HEBGraphQLClient:
             security_challenge_detected=security_challenge_detected,
             attempts=attempts,
             search_url=search_url,
-            playwright_fallback_available=security_challenge_detected,
-            playwright_instructions=playwright_instructions,
         )
 
     # ========================================================================

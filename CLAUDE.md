@@ -65,6 +65,83 @@ uv run python mcp_server.py
 
 VS Code auto-launches via `.vscode/mcp.json`.
 
+### Adding to Claude as a Custom Connector
+
+Claude exposes MCP servers through **Settings → Connectors → Add custom connector**.
+There are two ways to connect `auto-grocier`, depending on transport:
+
+#### Option A — Local stdio (works today, recommended)
+
+Claude Desktop launches the server itself over stdio. Because Claude runs from its
+own working directory, the compose `-f` path **must be the absolute path to
+`docker/docker-compose.yml` in your clone**.
+
+First, from the **repo root**, print the exact path to paste into the config:
+
+```bash
+# macOS / Linux / WSL
+echo "$(pwd)/docker/docker-compose.yml"
+```
+
+```powershell
+# Windows PowerShell
+"$($PWD.Path -replace '\\','/')/docker/docker-compose.yml"
+```
+
+Then edit `claude_desktop_config.json` (**Settings → Developer → Edit Config**) —
+the key is **`mcpServers`** — and paste that path in place of `<ABSOLUTE_PATH>`:
+
+```json
+{
+  "mcpServers": {
+    "auto-grocier": {
+      "command": "docker",
+      "args": [
+        "compose",
+        "-f", "<ABSOLUTE_PATH>/docker/docker-compose.yml",
+        "run", "--rm", "-T", "mcp"
+      ]
+    }
+  }
+}
+```
+
+> On Windows, use forward slashes in the JSON (e.g.
+> `C:/Users/you/auto_grocier/docker/docker-compose.yml`) — the PowerShell command
+> above already emits them.
+
+Config file location:
+
+| OS | Path |
+|----|------|
+| Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
+| macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+
+Restart Claude, confirm `auto-grocier` shows a connected tool count, then ask it to
+call `auth_status`.
+
+#### Option B — Remote URL connector (requires HTTP transport)
+
+The **Add custom connector** dialog that takes a **URL** needs the server running over
+the optional streamable-HTTP transport (see
+[docs/adr/0002-self-hosted-remote-mcp.md](docs/adr/0002-self-hosted-remote-mcp.md)).
+This transport is **not enabled by default** — stdio is. Once enabled:
+
+1. Start the server in HTTP mode (bound to loopback):
+   ```bash
+   AUTO_GROCIER_TRANSPORT=http uv run python mcp_server.py
+   ```
+2. Default endpoint URL: **`http://127.0.0.1:8000/mcp`**
+   (override host/port via `AUTO_GROCIER_HTTP_HOST` / `AUTO_GROCIER_HTTP_PORT`).
+3. In Claude: **Settings → Connectors → Add custom connector** → paste the URL and the
+   bearer token (`AUTO_GROCIER_HTTP_TOKEN`, required in HTTP mode).
+4. For access outside localhost, front the loopback port with an HTTPS tunnel
+   (Cloudflare Tunnel / Tailscale Funnel) and use the `https://<name>/mcp` URL — never
+   a raw port-forward.
+
+> ⚠️ Do not point a connector at a tokenless HTTP server, and keep `place_order`
+> disabled on any remotely reachable instance.
+
 ---
 
 ## 🔧 Development & Maintenance

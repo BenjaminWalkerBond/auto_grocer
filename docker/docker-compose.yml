@@ -83,6 +83,11 @@ services:
       # those rewrites would vanish when the container exits. Mounting the host
       # directory makes them land in the working tree for review + commit.
       - ../src/auto_grocier/session_maintenance/updated_functions:/app/src/auto_grocier/session_maintenance/updated_functions
+      # Debug snapshots (screenshots / HTML / error JSON) from the nodriver
+      # login + self-healing flows land in /app/debug_logs. Without this bind
+      # mount they vanish when the --rm container exits, leaving no visibility
+      # into WAF blocks or login failures. Mounting the host dir persists them.
+      - ../debug_logs:/app/debug_logs
       # Persisted HEB session (auth.json + persisted_queries.json). Survives
       # restarts so the container doesn't re-login every time.
       - auto_grocier_session:/root/.texas-grocery-mcp

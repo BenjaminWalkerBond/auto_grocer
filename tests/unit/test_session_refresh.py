@@ -361,98 +361,102 @@ async def test_session_status_refresh_recommended(mock_auth_path, expiring_soon_
 # =============================================================================
 
 
-@pytest.fixture
-def mock_no_playwright(monkeypatch):
-    """Mock Playwright as unavailable to test fallback behavior."""
-    monkeypatch.setattr(
-        "auto_grocier_mcp.tools.session.is_playwright_available",
-        lambda: False,
-    )
-
-
 @pytest.mark.asyncio
-async def test_session_refresh_returns_commands_when_no_playwright(
-    mock_auth_path,
-    mock_no_playwright,
-):
-    """session_refresh should return structured Playwright commands when browser not available."""
-    from auto_grocier_mcp.tools.session import session_refresh
+async def test_session_refresh_success_via_nodriver(mock_auth_path, monkeypatch):
+    """session_refresh should report success when the nodriver login succeeds."""
+    from auto_grocier_mcp.tools import session as session_tools
 
-    result = await session_refresh()
+    async def fake_login(env, *, timeout_ms=300000):
+        assert env["MODE"] == "nodriver"
+        assert env["OPERATION"] == "login_export"
+        return 0, "login ok"
 
-    assert "commands" in result
-    assert len(result["commands"]) == 3
+    monkeypatch.setattr(session_tools, "_run_nodriver_login", fake_login)
+    monkeypatch.setattr(session_tools, "is_authenticated", lambda: True)
+    monkeypatch.setattr(session_tools, "get_session_info", lambda: {"authenticated": True})
 
-    # Check command structure
-    commands = result["commands"]
-    assert commands[0]["tool"] == "browser_navigate"
-    assert commands[0]["parameters"]["url"] == "https://www.heb.com"
+    result = await session_tools.session_refresh()
 
-    assert commands[1]["tool"] == "browser_wait_for"
-    assert commands[1]["parameters"]["time"] == 5
-
-    assert commands[2]["tool"] == "browser_run_code"
-    assert "code" in commands[2]["parameters"]
-
-    # Each command should have parameters and description
-    for cmd in commands:
-        assert "parameters" in cmd
-        assert "description" in cmd
-
-
-@pytest.mark.asyncio
-async def test_session_refresh_includes_auth_path(mock_auth_path, mock_no_playwright):
-    """session_refresh should include the auth file path."""
-    from auto_grocier_mcp.tools.session import session_refresh
-
-    result = await session_refresh()
-
+    assert result["success"] is True
+    assert result["status"] == "success"
     assert "auth_path" in result
     # Path should be expanded (no ~)
     assert "~" not in result["auth_path"]
 
 
 @pytest.mark.asyncio
-async def test_session_refresh_includes_current_status(
-    mock_auth_path,
-    mock_no_playwright,
-    valid_session_cookies,
-):
-    """session_refresh should include current session status."""
-    from auto_grocier_mcp.tools.session import session_refresh
+async def test_session_refresh_failure_when_login_returns_error(mock_auth_path, monkeypatch):
+    """session_refresh should report failure when the login subprocess exits non-zero."""
+    from auto_grocier_mcp.tools import session as session_tools
 
-    mock_auth_path.write_text(json.dumps(valid_session_cookies))
+    async def fake_login(env, *, timeout_ms=300000):
+        return 1, "boom"
 
-    result = await session_refresh()
+    monkeypatch.setattr(session_tools, "_run_nodriver_login", fake_login)
+    monkeypatch.setattr(session_tools, "is_authenticated", lambda: False)
 
+    result = await session_tools.session_refresh()
+
+    assert result["success"] is False
+    assert result["status"] == "failed"
+    assert result["error_type"] == "browser_error"
     assert "current_status" in result
     assert "authenticated" in result["current_status"]
     assert "needs_refresh" in result["current_status"]
+    assert "suggestion" in result
 
 
 @pytest.mark.asyncio
-async def test_session_refresh_includes_troubleshooting(mock_auth_path, mock_no_playwright):
-    """session_refresh should include troubleshooting tips."""
-    from auto_grocier_mcp.tools.session import session_refresh
+async def test_session_refresh_failure_when_login_ok_but_not_authenticated(
+    mock_auth_path, monkeypatch
+):
+    """A clean exit that still lacks a valid session should be a login failure."""
+    from auto_grocier_mcp.tools import session as session_tools
 
-    result = await session_refresh()
+    async def fake_login(env, *, timeout_ms=300000):
+        return 0, "no session produced"
 
-    assert "troubleshooting" in result
-    assert "no_playwright" in result["troubleshooting"]
-    assert "still_failing" in result["troubleshooting"]
-    assert "login_required" in result["troubleshooting"]
+    monkeypatch.setattr(session_tools, "_run_nodriver_login", fake_login)
+    monkeypatch.setattr(session_tools, "is_authenticated", lambda: False)
+
+    result = await session_tools.session_refresh()
+
+    assert result["success"] is False
+    assert result["status"] == "failed"
+    assert result["error_type"] == "login_failed"
 
 
 @pytest.mark.asyncio
-async def test_session_refresh_code_saves_to_correct_path(mock_auth_path, mock_no_playwright):
-    """session_refresh code should save to the correct auth path."""
-    from auto_grocier_mcp.tools.session import session_refresh
+async def test_session_refresh_passes_saved_credentials(mock_auth_path, monkeypatch):
+    """Saved credentials should be forwarded to the login subprocess env."""
+    from auto_grocier_mcp.tools import session as session_tools
 
-    result = await session_refresh()
+    captured: dict[str, str] = {}
 
-    # The JavaScript code in the third command should reference the auth path
-    code = result["commands"][2]["parameters"]["code"]
-    assert str(mock_auth_path) in code or result["auth_path"] in code
+    async def fake_login(env, *, timeout_ms=300000):
+        captured.update(env)
+        return 0, "ok"
+
+    class FakeCredStore:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def has_credentials(self):
+            return True
+
+        def get(self):
+            return ("user@example.com", "secret")
+
+    monkeypatch.setattr(session_tools, "_run_nodriver_login", fake_login)
+    monkeypatch.setattr(session_tools, "is_authenticated", lambda: True)
+    monkeypatch.setattr(session_tools, "get_session_info", lambda: {})
+    monkeypatch.setattr(session_tools, "CredentialStore", FakeCredStore)
+
+    result = await session_tools.session_refresh()
+
+    assert result["success"] is True
+    assert captured["EMAIL"] == "user@example.com"
+    assert captured["PASSWORD"] == "secret"
 
 
 # =============================================================================
@@ -744,16 +748,22 @@ def test_is_authenticated_consistency_with_get_session_status_valid(
 
 
 class TestSecurityChallengeDetection:
-    """Tests for _detect_security_challenge_html function.
+    """Tests for the WAF/security-challenge detector.
 
     These tests ensure we don't get false positives on normal HEB pages.
     The bug was that "reese84" and "incapsula" were triggering WAF detection
-    on normal pages because they appear in the page's JavaScript.
+    on normal pages because they appear in the page's JavaScript. The detector
+    now lives on the GraphQL client as ``_detect_security_challenge``.
     """
+
+    @staticmethod
+    def _detect_security_challenge_html(html: str) -> bool:
+        from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
+
+        return HEBGraphQLClient()._detect_security_challenge(html)
 
     def test_normal_heb_homepage_not_detected_as_waf(self):
         """Normal HEB homepage should NOT be detected as WAF challenge."""
-        from auto_grocier_mcp.auth.browser_refresh import _detect_security_challenge_html
 
         # Simulated normal HEB homepage HTML (simplified)
         normal_page_html = """
@@ -784,11 +794,10 @@ class TestSecurityChallengeDetection:
         </html>
         """
 
-        assert _detect_security_challenge_html(normal_page_html) is False
+        assert self._detect_security_challenge_html(normal_page_html) is False
 
     def test_page_with_reese84_script_not_detected(self):
         """Page containing reese84 script should NOT be detected as WAF."""
-        from auto_grocier_mcp.auth.browser_refresh import _detect_security_challenge_html
 
         html_with_reese84 = """
         <!DOCTYPE html>
@@ -812,11 +821,10 @@ class TestSecurityChallengeDetection:
         </html>
         """
 
-        assert _detect_security_challenge_html(html_with_reese84) is False
+        assert self._detect_security_challenge_html(html_with_reese84) is False
 
     def test_page_with_incapsula_headers_not_detected(self):
         """Page with incapsula in headers should NOT be detected as WAF if it has content."""
-        from auto_grocier_mcp.auth.browser_refresh import _detect_security_challenge_html
 
         html_with_incapsula = """
         <!DOCTYPE html>
@@ -837,11 +845,10 @@ class TestSecurityChallengeDetection:
         </html>
         """
 
-        assert _detect_security_challenge_html(html_with_incapsula) is False
+        assert self._detect_security_challenge_html(html_with_incapsula) is False
 
     def test_real_waf_challenge_page_detected(self):
         """Actual WAF challenge interstitial should be detected."""
-        from auto_grocier_mcp.auth.browser_refresh import _detect_security_challenge_html
 
         waf_challenge_html = """
         <!DOCTYPE html>
@@ -854,11 +861,10 @@ class TestSecurityChallengeDetection:
         </html>
         """
 
-        assert _detect_security_challenge_html(waf_challenge_html) is True
+        assert self._detect_security_challenge_html(waf_challenge_html) is True
 
     def test_cloudflare_challenge_detected(self):
         """Cloudflare-style challenge should be detected."""
-        from auto_grocier_mcp.auth.browser_refresh import _detect_security_challenge_html
 
         cloudflare_html = """
         <!DOCTYPE html>
@@ -873,11 +879,10 @@ class TestSecurityChallengeDetection:
         </html>
         """
 
-        assert _detect_security_challenge_html(cloudflare_html) is True
+        assert self._detect_security_challenge_html(cloudflare_html) is True
 
     def test_blocked_page_detected(self):
         """'Sorry, you have been blocked' page should be detected."""
-        from auto_grocier_mcp.auth.browser_refresh import _detect_security_challenge_html
 
         blocked_html = """
         <!DOCTYPE html>
@@ -891,11 +896,10 @@ class TestSecurityChallengeDetection:
         </html>
         """
 
-        assert _detect_security_challenge_html(blocked_html) is True
+        assert self._detect_security_challenge_html(blocked_html) is True
 
     def test_minimal_incapsula_challenge_detected(self):
         """Minimal page with _incapsula_resource should be detected as challenge."""
-        from auto_grocier_mcp.auth.browser_refresh import _detect_security_challenge_html
 
         # A small challenge page (< 5000 chars) with incapsula resource
         minimal_challenge = """
@@ -910,11 +914,10 @@ class TestSecurityChallengeDetection:
         </html>
         """
 
-        assert _detect_security_challenge_html(minimal_challenge) is True
+        assert self._detect_security_challenge_html(minimal_challenge) is True
 
     def test_large_page_with_incapsula_not_detected(self):
         """Large page (> 5000 chars) with incapsula should NOT be detected."""
-        from auto_grocier_mcp.auth.browser_refresh import _detect_security_challenge_html
 
         # Create a large HTML page that includes _incapsula_resource but is clearly a real page
         large_page = """
@@ -937,4 +940,4 @@ class TestSecurityChallengeDetection:
         """
 
         assert len(large_page) > 5000  # Verify it's actually large
-        assert _detect_security_challenge_html(large_page) is False
+        assert self._detect_security_challenge_html(large_page) is False

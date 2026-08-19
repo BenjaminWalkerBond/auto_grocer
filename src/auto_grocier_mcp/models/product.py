@@ -213,7 +213,7 @@ class ProductSearchAttempt(BaseModel):
     """Record of a product search attempt for diagnostics."""
 
     query: str = Field(description="Query string used")
-    method: Literal["ssr", "typeahead_as_ssr", "typeahead"] = Field(
+    method: Literal["ssr", "typeahead_as_ssr", "typeahead", "nodriver_browser"] = Field(
         description="Search method attempted"
     )
     result: Literal["success", "empty", "security_challenge", "error"] = Field(
@@ -236,7 +236,7 @@ class ProductSearchResult(BaseModel):
     store_id: str = Field(description="Store ID used for search")
 
     # Data source tracking
-    data_source: Literal["ssr", "playwright", "typeahead_suggestions"] = Field(
+    data_source: Literal["ssr", "typeahead_suggestions"] = Field(
         description="Source of the product data"
     )
     authenticated: bool = Field(
@@ -257,12 +257,6 @@ class ProductSearchResult(BaseModel):
     # Actionable guidance
     search_url: str | None = Field(
         default=None, description="Direct URL to search results on heb.com"
-    )
-    playwright_fallback_available: bool = Field(
-        default=False, description="Whether Playwright can be used as fallback"
-    )
-    playwright_instructions: list[str] | None = Field(
-        default=None, description="Instructions for using Playwright MCP fallback"
     )
 
     # Session status fields (for proactive refresh guidance)

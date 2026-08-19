@@ -689,58 +689,16 @@ async def auto_refresh_session_if_needed() -> dict[str, Any] | None:
 
     _last_auto_refresh_attempt = current_time
 
-    # Attempt headless refresh
+    # In-process browser auto-refresh has been removed along with the Playwright
+    # dependency. Session refresh is handled explicitly by the session_refresh
+    # tool / the refresh-heb-login maintenance flow (nodriver, isolated process).
+    # Here we only log; we never block a read-only operation on a stale session.
     logger.info(
-        "Auto-refreshing session",
+        "Session is stale; run the session_refresh tool to renew it",
         needs_refresh=status["needs_refresh"],
         time_remaining_hours=status["time_remaining_hours"],
     )
-
-    try:
-        # Import here to avoid circular imports
-        from auto_grocier_mcp.auth.browser_refresh import (
-            BrowserRefreshError,
-            LoginRequiredError,
-            is_playwright_available,
-            refresh_session_with_browser,
-        )
-
-        if not is_playwright_available():
-            logger.warning("Auto-refresh unavailable: Playwright not installed")
-            return None
-
-        result = await refresh_session_with_browser(
-            auth_path=auth_path,
-            headless=True,
-            timeout=30000,
-        )
-
-        logger.info(
-            "Session auto-refreshed successfully",
-            elapsed_seconds=result.get("elapsed_seconds"),
-        )
-        return None
-
-    except LoginRequiredError:
-        logger.warning("Auto-refresh failed: manual login required")
-        return {
-            "error": True,
-            "code": "LOGIN_REQUIRED",
-            "message": (
-                "Your HEB session has expired and requires manual login. "
-                "Run session_refresh(headless=False) to log in."
-            ),
-            "auto_refresh_attempted": True,
-        }
-
-    except BrowserRefreshError as e:
-        logger.warning("Auto-refresh failed", error=str(e))
-        # Don't block the operation - let it try with potentially stale session
-        return None
-
-    except Exception as e:
-        logger.warning("Auto-refresh failed with unexpected error", error=str(e))
-        return None
+    return None
 
 
 P = ParamSpec("P")

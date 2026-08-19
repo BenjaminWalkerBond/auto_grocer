@@ -1,4 +1,4 @@
-"""Tests for ProductSearchResult diagnostics and Playwright fallback."""
+"""Tests for ProductSearchResult diagnostics and the nodriver browser fallback."""
 
 import pytest
 import respx
@@ -192,9 +192,35 @@ def test_detect_security_challenge_case_insensitive():
 
     client = HEBGraphQLClient()
 
-    assert client._detect_security_challenge("INCAPSULA")
-    assert client._detect_security_challenge("Incapsula")
-    assert client._detect_security_challenge("incapsula")
+    assert client._detect_security_challenge("REQUEST UNSUCCESSFUL. Incapsula incident ID: 1-2")
+    assert client._detect_security_challenge("Request Unsuccessful")
+    assert client._detect_security_challenge("PARDON OUR INTERRUPTION")
+
+
+def test_detect_security_challenge_ignores_normal_page_with_incapsula_script():
+    """A real HEB page carries an inline Incapsula telemetry script and the bare
+    word 'incapsula'; these must NOT be treated as a challenge (regression)."""
+    from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
+
+    client = HEBGraphQLClient()
+
+    # Bare tokens that Incapsula injects site-wide are not, by themselves, a block.
+    assert not client._detect_security_challenge("INCAPSULA")
+    assert not client._detect_security_challenge("incapsula")
+
+    # A large, real-looking storefront page that happens to reference the
+    # Incapsula resource script must be treated as a normal page.
+    normal_page = (
+        "<html><head><header>"
+        "<script src='/_Incapsula_Resource?SWJIYLWA=abc'></script>"
+        "</header><body>"
+        "<nav>My Account | My Cart</nav>"
+        "<main data-testid='search-grid'>"
+        + ("<div class='product'>Add to cart — HEB.com curbside delivery</div>" * 200)
+        + "<script id='__NEXT_DATA__' type='application/json'>{}</script>"
+        "</main></body></html>"
+    )
+    assert not client._detect_security_challenge(normal_page)
 
 
 def test_determine_fallback_reason_not_authenticated():
@@ -230,7 +256,7 @@ def test_determine_fallback_reason_security_challenge():
     )
 
     assert "security" in reason.lower()
-    assert "playwright" in reason.lower()
+    assert "browser" in reason.lower()
 
 
 def test_determine_fallback_reason_empty_results():
@@ -254,41 +280,16 @@ def test_determine_fallback_reason_empty_results():
     assert "empty" in reason.lower()
 
 
-def test_get_playwright_search_instructions_format():
-    """_get_playwright_search_instructions should return proper format."""
-    from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
-
-    client = HEBGraphQLClient()
-
-    instructions = client._get_playwright_search_instructions("eggs", "737")
-
-    assert isinstance(instructions, list)
-    assert len(instructions) > 0
-    assert any("browser_navigate" in i for i in instructions)
-    assert any("eggs" in i for i in instructions)
-    assert any("storageState" in i for i in instructions)
-
-
-def test_get_playwright_search_instructions_encodes_query():
-    """_get_playwright_search_instructions should URL encode query."""
-    from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
-
-    client = HEBGraphQLClient()
-
-    instructions = client._get_playwright_search_instructions("chicken breast", "737")
-
-    assert any("chicken+breast" in i for i in instructions)
-
-
 @pytest.mark.asyncio
 @respx.mock
-async def test_product_search_playwright_fallback_when_challenged(
+async def test_product_search_nodriver_fallback_success_when_challenged(
     mock_typeahead_response, mock_security_challenge_html, monkeypatch
 ):
-    """product_search should provide Playwright fallback when security challenged."""
+    """When SSR is challenged, a successful nodriver browser search returns products."""
+    from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
+    from auto_grocier_mcp.models import Product
     from auto_grocier_mcp.tools.product import product_search
 
-    # Mock as authenticated
     monkeypatch.setattr(
         "auto_grocier_mcp.clients.graphql.is_authenticated",
         lambda: True,
@@ -298,8 +299,7 @@ async def test_product_search_playwright_fallback_when_challenged(
         lambda: {"sat": "test-token"},
     )
 
-    # First call: SSR returns security challenge
-    # Second call (typeahead): returns suggestions
+    # SSR returns a security challenge; the browser fallback returns real products.
     respx.get("https://www.heb.com/search").mock(
         return_value=Response(200, text=mock_security_challenge_html)
     )
@@ -307,12 +307,72 @@ async def test_product_search_playwright_fallback_when_challenged(
         return_value=Response(200, json=mock_typeahead_response)
     )
 
+    async def fake_nodriver(self, query, store_id, limit=20):
+        return [
+            Product(
+                sku="123456",
+                name="Large Eggs 12ct",
+                price=3.99,
+                available=True,
+                brand=None,
+                size=None,
+                price_per_unit=None,
+                image_url=None,
+                aisle=None,
+                on_sale=False,
+                original_price=None,
+            )
+        ]
+
+    monkeypatch.setattr(
+        HEBGraphQLClient, "_search_products_nodriver", fake_nodriver
+    )
+
     result = await product_search(query="eggs", store_id="737")
 
     assert result["security_challenge_detected"] is True
-    assert "playwright_fallback" in result
-    assert result["playwright_fallback"]["available"] is True
-    assert len(result["playwright_fallback"]["instructions"]) > 0
+    assert result["data_source"] == "ssr"
+    assert result["count"] >= 1
+    assert "playwright_fallback" not in result
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_product_search_typeahead_when_challenged_and_browser_empty(
+    mock_typeahead_response, mock_security_challenge_html, monkeypatch
+):
+    """When SSR is challenged and the browser finds nothing, fall back to typeahead."""
+    from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
+    from auto_grocier_mcp.tools.product import product_search
+
+    monkeypatch.setattr(
+        "auto_grocier_mcp.clients.graphql.is_authenticated",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        "auto_grocier_mcp.clients.graphql.get_httpx_cookies",
+        lambda: {"sat": "test-token"},
+    )
+
+    respx.get("https://www.heb.com/search").mock(
+        return_value=Response(200, text=mock_security_challenge_html)
+    )
+    respx.post("https://www.heb.com/graphql").mock(
+        return_value=Response(200, json=mock_typeahead_response)
+    )
+
+    async def empty_nodriver(self, query, store_id, limit=20):
+        return []
+
+    monkeypatch.setattr(
+        HEBGraphQLClient, "_search_products_nodriver", empty_nodriver
+    )
+
+    result = await product_search(query="eggs", store_id="737")
+
+    assert result["security_challenge_detected"] is True
+    assert result["data_source"] == "typeahead_suggestions"
+    assert "playwright_fallback" not in result
 
 
 @pytest.mark.asyncio

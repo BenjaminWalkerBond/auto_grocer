@@ -44,6 +44,12 @@ the HEB session, see [Development](#development).
 The MCP server id is **`auto-grocier`** and launches over stdio via Docker Compose:
 `docker compose -f docker/docker-compose.yml run --rm -T mcp`.
 
+- **Default transport:** `stdio` (no URL — the client spawns the Docker command above).
+- **Default HTTP URL:** `http://127.0.0.1:8000/mcp` — used only when the optional
+  streamable-HTTP transport is enabled (see
+  [docs/adr/0002-self-hosted-remote-mcp.md](docs/adr/0002-self-hosted-remote-mcp.md));
+  not active by default.
+
 Pick your client below.
 
 <details>
