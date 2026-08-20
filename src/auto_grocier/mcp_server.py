@@ -35,7 +35,7 @@ hashes (including the timeslot/checkout operations), is the job of a SEPARATE
 maintenance workflow driven by nodriver (async CDP browser, runs under Xvfb in
 Docker):
 
-    MODE=nodriver OPERATION=capture_hashes python -m session_maintenance.run
+    MODE=nodriver OPERATION=capture_hashes python -m auto_grocier.session_maintenance.run
 
 That workflow logs in, exercises the site, and writes:
   * ~/.texas-grocery-mcp/auth.json                (session for this server)
@@ -43,7 +43,9 @@ That workflow logs in, exercises the site, and writes:
   * ~/.texas-grocery-mcp/captured_operations.json (timeslot/checkout payloads)
 
 If a tool reports NOT_AUTHENTICATED or OPERATION_NOT_CAPTURED, re-run that
-maintenance workflow, then call refresh_session here. When AUTO_GROCIER_AUTO_LOGIN
+maintenance workflow, then call refresh_session here. The ``capture_hashes`` tool
+runs this same OPERATION=capture_hashes flow on demand (the only path that clears
+``hashes_ok: false``). When AUTO_GROCIER_AUTO_LOGIN
 is enabled (default), authenticated tools refresh an expired session
 automatically by running the nodriver login_export operation; the ``login`` tool
 triggers the same flow on demand.
@@ -110,6 +112,11 @@ _AUTO_LOGIN = os.environ.get("AUTO_GROCIER_AUTO_LOGIN", "1").lower() in (
 # up. The flow logs in, may handle email verification, and exports auth.json.
 _AUTO_LOGIN_TIMEOUT = int(os.environ.get("AUTO_GROCIER_AUTO_LOGIN_TIMEOUT", "300"))
 
+# How long (seconds) to allow the hash-capture flow to run. It logs in AND
+# exercises the site (search/cart/timeslot/checkout) to sniff the rotating
+# persisted-query hashes, so it takes longer than a plain login_export.
+_CAPTURE_HASHES_TIMEOUT = int(os.environ.get("AUTO_GROCIER_CAPTURE_TIMEOUT", "600"))
+
 # Serialize auto-login so concurrent tool calls don't launch multiple browsers.
 _AUTO_LOGIN_LOCK = threading.Lock()
 
@@ -120,7 +127,7 @@ _NOT_AUTHED = {
         "No valid HEB session and automatic login is disabled or failed. "
         "Enable auto-login (AUTO_GROCIER_AUTO_LOGIN=1), call the login tool, or "
         "refresh the session manually (MODE=nodriver OPERATION=login_export "
-        "python -m session_maintenance.run), then call refresh_session."
+        "python -m auto_grocier.session_maintenance.run), then call refresh_session."
     ),
 }
 
@@ -268,7 +275,74 @@ def _auto_authenticate(force: bool = False) -> dict:
         }
 
 
-def _ensure_authed() -> bool:
+def _capture_hashes() -> dict:
+    """Run the nodriver capture_hashes workflow to refresh persisted-query hashes.
+
+    Logs in and exercises the HEB site (search/cart/timeslot/checkout) via the
+    async nodriver flow (``auto_grocier.session_maintenance.run`` with
+    MODE=nodriver OPERATION=capture_hashes), sniffing HEB's rotating
+    persisted-query hashes over CDP under Xvfb inside the Docker image. It
+    rewrites all three session files:
+      * ~/.texas-grocery-mcp/auth.json                (session cookies)
+      * ~/.texas-grocery-mcp/persisted_queries.json   (operation hashes)
+      * ~/.texas-grocery-mcp/captured_operations.json (timeslot/checkout payloads)
+
+    This is the only path that can clear ``hashes_ok: false`` — a plain
+    login_export refreshes cookies but NOT the hashes. Blocks until it finishes
+    (up to _CAPTURE_HASHES_TIMEOUT seconds) and reuses _AUTO_LOGIN_LOCK so it
+    never runs concurrently with a login. Returns a dict describing the outcome.
+    """
+    with _AUTO_LOGIN_LOCK:
+        # Prefer the project venv interpreter so dependencies resolve.
+        venv_python = os.path.join(_PROJECT_ROOT, "venv", "bin", "python")
+        python_exe = venv_python if os.path.exists(venv_python) else sys.executable
+
+        env = dict(os.environ)
+        env.setdefault("DISPLAY", ":0")  # X server (WSLg on host, Xvfb in Docker)
+        env["MODE"] = "nodriver"
+        env["OPERATION"] = "capture_hashes"
+        cmd = [python_exe, "-u", "-m", "auto_grocier.session_maintenance.run"]
+
+        print(
+            "[auto-grocier] Running nodriver capture_hashes to refresh the "
+            "persisted-query hashes (this can take a few minutes)...",
+            file=sys.stderr,
+        )
+        try:
+            proc = subprocess.run(
+                cmd,
+                cwd=_PROJECT_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=_CAPTURE_HASHES_TIMEOUT,
+            )
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "detail": f"capture_hashes timed out after {_CAPTURE_HASHES_TIMEOUT}s"}
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "detail": f"failed to run capture_hashes: {e}"}
+
+        # Re-read the freshly exported session + hashes.
+        _reload_session_caches()
+        authed = _is_authed()
+        hashes_ok = _hashes_ok() if authed else False
+        ok = authed and hashes_ok
+        if not ok:
+            print(
+                "[auto-grocier] capture_hashes finished but session/hashes still "
+                f"invalid (returncode={proc.returncode}, authenticated={authed}, "
+                f"hashes_ok={hashes_ok}).",
+                file=sys.stderr,
+            )
+        return {
+            "ok": ok,
+            "authenticated": authed,
+            "hashes_ok": hashes_ok,
+            "returncode": proc.returncode,
+            "stdout_tail": (proc.stdout or "")[-600:],
+            "stderr_tail": (proc.stderr or "")[-600:],
+        }
+
     """Ensure a valid HEB session exists, auto-running login if needed.
 
     Returns True if authenticated (possibly after a successful auto-login).
@@ -597,6 +671,30 @@ def login(force: bool = False) -> dict:
         "authenticated": _is_authed(),
         "store_id": _store_id(),
         "login": result,
+    }
+
+
+@mcp.tool()
+def capture_hashes() -> dict:
+    """Refresh HEB's rotating GraphQL persisted-query hashes (fixes hashes_ok: false).
+
+    Runs the nodriver capture_hashes browser flow: it logs in and exercises the
+    HEB site to re-sniff the current persisted-query hashes, rewriting auth.json,
+    persisted_queries.json, and captured_operations.json, then reloads them here.
+
+    Use this when auth_status reports hashes_ok: false, or when search/add/
+    checkout tools fail with OPERATION_NOT_CAPTURED or persisted-query/hash
+    errors while the session is otherwise authenticated. This is the ONLY tool
+    that regenerates hashes — login/refresh_session only refresh session cookies.
+    Drives a real browser under Xvfb in Docker and can take a few minutes; no
+    order is ever placed.
+    """
+    result = _capture_hashes()
+    return {
+        "authenticated": _is_authed(),
+        "store_id": _store_id(),
+        "hashes_ok": _hashes_ok() if _is_authed() else False,
+        "capture": result,
     }
 
 

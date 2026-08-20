@@ -127,7 +127,7 @@ user's machine. Run these commands yourself.
 The HEB session cookie has expired. Run the **refresh-heb-login** skill, i.e.:
 ```bash
 docker compose -f docker/docker-compose.yml run --rm -T \
-  -e MODE=nodriver -e OPERATION=login_export mcp python -m session_maintenance.run
+  -e MODE=nodriver -e OPERATION=login_export mcp python -m auto_grocier.session_maintenance.run
 ```
 Then call `refresh_session` and re-check `auth_status`.
 
@@ -135,7 +135,7 @@ Then call `refresh_session` and re-check `auth_status`.
 HEB changed their GraphQL hashes. Run the **refresh-graphql-hashes** skill, i.e.:
 ```bash
 docker compose -f docker/docker-compose.yml run --rm -T \
-  -e MODE=nodriver -e OPERATION=capture_hashes mcp python -m session_maintenance.run
+  -e MODE=nodriver -e OPERATION=capture_hashes mcp python -m auto_grocier.session_maintenance.run
 ```
 Then call `refresh_session` and verify with `search_products`.
 

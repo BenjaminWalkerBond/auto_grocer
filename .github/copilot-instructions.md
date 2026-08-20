@@ -24,14 +24,14 @@ and recover automatically:
 3. Re-run `mcp_auto-grocier_auth_status` and proceed once it returns
    `authenticated:true`.
 
-Both skills run `session_maintenance.run` inside the Docker container (which writes
+Both skills run `auto_grocier.session_maintenance.run` inside the Docker container (which writes
 straight into the `auto_grocier_session` volume) and then call
 `mcp_auto-grocier_refresh_session`. Never hammer heb.com — repeated hits trigger
 WAF 401s and email verification.
 
 ### Never truncate session-maintenance output
 
-When a session/hash refresh is needed, **run `session_maintenance.run` with its full
+When a session/hash refresh is needed, **run `auto_grocier.session_maintenance.run` with its full
 output — never pipe it to `tail`, `head`, or `grep`.** A stale session or stale
 hashes means session maintenance itself is suspect, so truncating the log hides the
 actual failure. Also pass `--env-file .env` to `docker compose`, or interpolation
@@ -39,7 +39,7 @@ fails on `DATABASE_PASSWORD`:
 
 ```bash
 docker compose --env-file .env -f docker/docker-compose.yml run --rm -T \
-  -e MODE=nodriver -e OPERATION=capture_hashes mcp python -m session_maintenance.run
+  -e MODE=nodriver -e OPERATION=capture_hashes mcp python -m auto_grocier.session_maintenance.run
 ```
 
 Filtering with `tail` is fine for unrelated commands (builds, test suites).
