@@ -343,6 +343,8 @@ def _capture_hashes() -> dict:
             "stderr_tail": (proc.stderr or "")[-600:],
         }
 
+
+def _ensure_authed() -> bool:
     """Ensure a valid HEB session exists, auto-running login if needed.
 
     Returns True if authenticated (possibly after a successful auto-login).
