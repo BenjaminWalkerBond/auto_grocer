@@ -4,8 +4,12 @@ Supports both unauthenticated (typeahead) and authenticated (full product search
 modes. Authenticated mode uses browser session cookies for faster API access.
 """
 
+import asyncio
 import json
+import os
 import re
+import time
+from collections.abc import Callable
 from typing import Any, cast
 
 import httpx
@@ -114,6 +118,94 @@ _load_persisted_query_overrides()
 def reload_persisted_query_overrides() -> None:
     """Public helper to re-apply hash overrides after they are updated."""
     _load_persisted_query_overrides()
+
+
+# ---------------------------------------------------------------------------
+# Automatic stale-hash recovery
+# ---------------------------------------------------------------------------
+# HEB rotates its persisted-query hashes on every front-end deploy. When a
+# rotation happens, every persisted query starts failing with
+# ``PersistedQueryNotFound`` until fresh hashes are captured. Rather than surface
+# the failure to the user and wait for a manual ``capture_hashes`` run, the
+# client can invoke a registered callback that re-captures the hashes, reload the
+# updated overrides, and transparently retry the failed operation once.
+#
+# The high-level MCP layer (``auto_grocer.mcp_server``) registers the browser
+# ``capture_hashes`` flow as this callback at import time. The callback is a
+# *blocking* subprocess, so it is dispatched to a worker thread and serialized so
+# concurrent operations don't launch multiple captures. A cooldown prevents
+# repeated re-captures when several operations hit the stale hash at once.
+_hash_refresh_callback: Callable[[], bool] | None = None
+_hash_refresh_lock: asyncio.Lock | None = None
+_last_hash_refresh_monotonic: float = 0.0
+_HASH_REFRESH_COOLDOWN_SECONDS: float = float(
+    os.environ.get("AUTO_GROCER_HASH_REFRESH_COOLDOWN", "600")
+)
+
+
+def register_hash_refresh_callback(callback: Callable[[], bool] | None) -> None:
+    """Register a callback used to re-capture rotated persisted-query hashes.
+
+    The callback runs synchronously (it drives a browser via subprocess) and
+    returns ``True`` when fresh hashes were captured. Pass ``None`` to disable
+    automatic recovery. Intended to be called once from the MCP server layer.
+    """
+    global _hash_refresh_callback
+    _hash_refresh_callback = callback
+
+
+async def _attempt_hash_refresh(operation_name: str) -> bool:
+    """Re-capture persisted-query hashes after a stale-hash failure.
+
+    Returns ``True`` if the caller should retry the operation (either a fresh
+    capture succeeded, or a capture completed very recently and its hashes were
+    reloaded). Serialized and rate-limited so a burst of failing operations only
+    triggers a single browser capture.
+    """
+    global _last_hash_refresh_monotonic, _hash_refresh_lock
+
+    callback = _hash_refresh_callback
+    if callback is None:
+        return False
+
+    if _hash_refresh_lock is None:
+        _hash_refresh_lock = asyncio.Lock()
+
+    async with _hash_refresh_lock:
+        now = time.monotonic()
+        # Another operation may have just refreshed the hashes while we waited
+        # for the lock; reuse that result instead of re-capturing.
+        if _last_hash_refresh_monotonic and (
+            now - _last_hash_refresh_monotonic
+        ) < _HASH_REFRESH_COOLDOWN_SECONDS:
+            logger.info(
+                "Reusing recent hash refresh within cooldown; retrying operation",
+                operation=operation_name,
+            )
+            reload_persisted_query_overrides()
+            return True
+
+        logger.warning(
+            "Stale GraphQL persisted-query hash detected; auto-refreshing hashes",
+            operation=operation_name,
+        )
+        try:
+            ok = await asyncio.to_thread(callback)
+        except Exception as exc:  # noqa: BLE001 - refresh is best-effort
+            logger.error(
+                "Automatic hash refresh raised", operation=operation_name, error=str(exc)
+            )
+            return False
+
+        _last_hash_refresh_monotonic = time.monotonic()
+        reload_persisted_query_overrides()
+        if not ok:
+            logger.error(
+                "Automatic hash refresh did not resolve hashes",
+                operation=operation_name,
+            )
+        return bool(ok)
+
 
 # Well-known HEB stores (fallback for store search)
 KNOWN_STORES = {
@@ -326,49 +418,62 @@ class HEBGraphQLClient:
 
             client = await self._get_client()
 
-            payload = {
-                "operationName": operation_name,
-                "variables": variables,
-                "extensions": {
-                    "persistedQuery": {
-                        "version": 1,
-                        "sha256Hash": PERSISTED_QUERIES[operation_name],
-                    }
-                },
-            }
+            refreshed = False
+            while True:
+                payload = {
+                    "operationName": operation_name,
+                    "variables": variables,
+                    "extensions": {
+                        "persistedQuery": {
+                            "version": 1,
+                            "sha256Hash": PERSISTED_QUERIES[operation_name],
+                        }
+                    },
+                }
 
-            try:
-                response = await client.post(self.base_url, json=payload)
-                response.raise_for_status()
+                try:
+                    response = await client.post(self.base_url, json=payload)
+                    response.raise_for_status()
 
-                data: Any = response.json()
+                    data: Any = response.json()
 
-                # Check for persisted query errors
-                if "errors" in data:
-                    for error in data["errors"]:
-                        if "PersistedQueryNotFound" in str(error):
-                            raise PersistedQueryNotFoundError(
-                                f"Persisted query hash for '{operation_name}' is no longer valid"
-                            )
+                    # Check for persisted query errors
+                    if "errors" in data:
+                        for error in data["errors"]:
+                            if "PersistedQueryNotFound" in str(error):
+                                raise PersistedQueryNotFoundError(
+                                    f"Persisted query hash for '{operation_name}' is no longer valid"
+                                )
 
-                    raise GraphQLError(data["errors"])
+                        raise GraphQLError(data["errors"])
 
-                self.circuit_breaker.record_success()
+                    self.circuit_breaker.record_success()
 
-                if isinstance(data, dict):
-                    payload_data = data.get("data")
-                    if isinstance(payload_data, dict):
-                        return cast(dict[str, Any], payload_data)
-                return {}
+                    if isinstance(data, dict):
+                        payload_data = data.get("data")
+                        if isinstance(payload_data, dict):
+                            return cast(dict[str, Any], payload_data)
+                    return {}
 
-            except (httpx.HTTPError, GraphQLError) as e:
-                self.circuit_breaker.record_failure()
-                logger.error(
-                    "Persisted query failed",
-                    operation=operation_name,
-                    error=str(e),
-                )
-                raise
+                except PersistedQueryNotFoundError:
+                    # HEB rotated its hashes. Re-capture them once and retry.
+                    if refreshed or not await _attempt_hash_refresh(operation_name):
+                        raise
+                    refreshed = True
+                    logger.info(
+                        "Retrying persisted query after hash refresh",
+                        operation=operation_name,
+                    )
+                    continue
+
+                except (httpx.HTTPError, GraphQLError) as e:
+                    self.circuit_breaker.record_failure()
+                    logger.error(
+                        "Persisted query failed",
+                        operation=operation_name,
+                        error=str(e),
+                    )
+                    raise
 
     @with_retry(config=RetryConfig(max_attempts=3, base_delay=1.0))
     async def _fetch_nextjs_data(
@@ -1897,51 +2002,64 @@ class HEBGraphQLClient:
         if operation_name not in PERSISTED_QUERIES:
             raise ValueError(f"Unknown operation: {operation_name}")
 
-        payload = {
-            "operationName": operation_name,
-            "variables": variables,
-            "extensions": {
-                "persistedQuery": {
-                    "version": 1,
-                    "sha256Hash": PERSISTED_QUERIES[operation_name],
-                }
-            },
-        }
+        refreshed = False
+        while True:
+            payload = {
+                "operationName": operation_name,
+                "variables": variables,
+                "extensions": {
+                    "persistedQuery": {
+                        "version": 1,
+                        "sha256Hash": PERSISTED_QUERIES[operation_name],
+                    }
+                },
+            }
 
-        try:
-            response = await client.post(
-                self.base_url,
-                json=payload,
-                headers={"Content-Type": "application/json", "Accept": "application/json"},
-            )
-            response.raise_for_status()
+            try:
+                response = await client.post(
+                    self.base_url,
+                    json=payload,
+                    headers={"Content-Type": "application/json", "Accept": "application/json"},
+                )
+                response.raise_for_status()
 
-            data: Any = response.json()
+                data: Any = response.json()
 
-            if "errors" in data:
-                for error in data["errors"]:
-                    if "PersistedQueryNotFound" in str(error):
-                        raise PersistedQueryNotFoundError(
-                            f"Persisted query hash for '{operation_name}' is no longer valid"
-                        )
-                raise GraphQLError(data["errors"])
+                if "errors" in data:
+                    for error in data["errors"]:
+                        if "PersistedQueryNotFound" in str(error):
+                            raise PersistedQueryNotFoundError(
+                                f"Persisted query hash for '{operation_name}' is no longer valid"
+                            )
+                    raise GraphQLError(data["errors"])
 
-            self.circuit_breaker.record_success()
+                self.circuit_breaker.record_success()
 
-            if isinstance(data, dict):
-                payload_data = data.get("data")
-                if isinstance(payload_data, dict):
-                    return cast(dict[str, Any], payload_data)
-            return {}
+                if isinstance(data, dict):
+                    payload_data = data.get("data")
+                    if isinstance(payload_data, dict):
+                        return cast(dict[str, Any], payload_data)
+                return {}
 
-        except (httpx.HTTPError, GraphQLError) as e:
-            self.circuit_breaker.record_failure()
-            logger.error(
-                "Persisted query with client failed",
-                operation=operation_name,
-                error=str(e),
-            )
-            raise
+            except PersistedQueryNotFoundError:
+                # HEB rotated its hashes. Re-capture them once and retry.
+                if refreshed or not await _attempt_hash_refresh(operation_name):
+                    raise
+                refreshed = True
+                logger.info(
+                    "Retrying persisted query after hash refresh",
+                    operation=operation_name,
+                )
+                continue
+
+            except (httpx.HTTPError, GraphQLError) as e:
+                self.circuit_breaker.record_failure()
+                logger.error(
+                    "Persisted query with client failed",
+                    operation=operation_name,
+                    error=str(e),
+                )
+                raise
 
     def get_status(self) -> dict[str, Any]:
         """Get client status for health checks."""

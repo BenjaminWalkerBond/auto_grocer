@@ -19,6 +19,8 @@ by an ``asyncio`` lock, with a short-TTL cache keyed on ``(store_id, query)``.
 from __future__ import annotations
 
 import asyncio
+import json
+import re
 import time
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote_plus
@@ -34,6 +36,14 @@ _SEARCH_URL = "https://www.heb.com/search?q={query}"
 # The server-rendered results page always embeds this script tag; a challenge
 # interstitial never does. Polling for it is how we know the page resolved.
 _NEXT_DATA_MARKER = 'id="__NEXT_DATA__"'
+# Full ``__NEXT_DATA__`` script capture. We wait for the *closing* ``</script>``
+# (and valid JSON) before returning, because ``get_content()`` can observe the
+# page mid-render — the opening tag appears while the script body is still
+# streaming, which yields a truncated, unparseable JSON blob.
+_NEXT_DATA_RE = re.compile(
+    r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>',
+    re.DOTALL,
+)
 # How long to wait for the browser to clear the challenge and render results.
 _RENDER_TIMEOUT_SECONDS = 30.0
 _POLL_INTERVAL_SECONDS = 1.0
@@ -43,6 +53,58 @@ _DEFAULT_CACHE_TTL_SECONDS = 120.0
 
 class NodriverSearchError(Exception):
     """Raised when the nodriver browser search fails irrecoverably."""
+
+
+def _cookie_to_cdp_param(cookie: dict[str, Any], cdp_network: Any) -> Any | None:
+    """Convert a Playwright-format cookie dict into a CDP ``CookieParam``.
+
+    Returns ``None`` for cookies lacking a usable name/value. The ``expires``
+    field must be wrapped in ``TimeSinceEpoch`` (a ``float`` subclass exposing
+    ``to_json``); passing a bare ``float`` makes CDP serialization raise
+    ``'float' object has no attribute 'to_json'`` when the cookie is set.
+    """
+    name = cookie.get("name")
+    value = cookie.get("value")
+    if not name or value is None:
+        return None
+
+    kwargs: dict[str, Any] = {
+        "name": str(name),
+        "value": str(value),
+        "domain": cookie.get("domain") or ".heb.com",
+        "path": cookie.get("path") or "/",
+        "secure": bool(cookie.get("secure", True)),
+        "http_only": bool(cookie.get("httpOnly", False)),
+    }
+    try:
+        expires_f = float(cookie.get("expires", -1))
+    except (TypeError, ValueError):
+        expires_f = -1.0
+    if expires_f and expires_f > 0:
+        kwargs["expires"] = cdp_network.TimeSinceEpoch(expires_f)
+
+    return cdp_network.CookieParam(**kwargs)
+
+
+def _next_data_is_complete(html: str) -> bool:
+    """Return ``True`` once the page's ``__NEXT_DATA__`` JSON is fully rendered.
+
+    ``get_content()`` can observe the DOM while the ``__NEXT_DATA__`` script is
+    still streaming: the opening tag is present but the JSON body is truncated,
+    which later raises ``json.JSONDecodeError`` ("Unterminated string"). We only
+    treat the page as ready when the closing ``</script>`` is present *and* the
+    captured payload parses as JSON.
+    """
+    if not html or _NEXT_DATA_MARKER not in html:
+        return False
+    match = _NEXT_DATA_RE.search(html)
+    if not match:
+        return False
+    try:
+        json.loads(match.group(1))
+    except json.JSONDecodeError:
+        return False
+    return True
 
 
 class NodriverSearchClient:
@@ -97,28 +159,9 @@ class NodriverSearchClient:
 
         params: list[Any] = []
         for cookie in cookies:
-            name = cookie.get("name")
-            value = cookie.get("value")
-            if not name or value is None:
-                continue
-
-            kwargs: dict[str, Any] = {
-                "name": str(name),
-                "value": str(value),
-                "domain": cookie.get("domain") or ".heb.com",
-                "path": cookie.get("path") or "/",
-                "secure": bool(cookie.get("secure", True)),
-                "http_only": bool(cookie.get("httpOnly", False)),
-            }
-            expires = cookie.get("expires", -1)
-            try:
-                expires_f = float(expires)
-            except (TypeError, ValueError):
-                expires_f = -1.0
-            if expires_f and expires_f > 0:
-                kwargs["expires"] = expires_f
-
-            params.append(cdp_network.CookieParam(**kwargs))
+            param = _cookie_to_cdp_param(cookie, cdp_network)
+            if param is not None:
+                params.append(param)
 
         if params:
             await browser.cookies.set_all(params)
@@ -177,15 +220,18 @@ class NodriverSearchClient:
                 html = await tab.get_content() or ""
             except Exception:  # noqa: BLE001 - transient during navigation/challenge
                 html = ""
-            if _NEXT_DATA_MARKER in html:
+            if _next_data_is_complete(html):
                 logger.info("nodriver search rendered results", query=query)
                 return html
             await tab.sleep(_POLL_INTERVAL_SECONDS)
 
+        # Timed out: the challenge never cleared, or the __NEXT_DATA__ script
+        # never finished streaming (only its opening tag was ever observed).
         logger.warning(
             "nodriver search timed out waiting for results",
             query=query,
             response_length=len(html),
+            saw_next_data_marker=_NEXT_DATA_MARKER in html,
         )
         return html or None
 

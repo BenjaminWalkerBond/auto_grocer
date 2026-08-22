@@ -108,6 +108,15 @@ _AUTO_LOGIN = os.environ.get("AUTO_GROCER_AUTO_LOGIN", "1").lower() in (
     "1", "true", "yes",
 )
 
+# When True (default), a stale/rotated GraphQL persisted-query hash detected on
+# any operation will automatically trigger the browser capture_hashes workflow
+# and retry, instead of surfacing the failure. Set
+# AUTO_GROCER_AUTO_CAPTURE_HASHES=0 to disable and use the manual workflow (run
+# the capture_hashes tool/skill yourself).
+_AUTO_CAPTURE_HASHES = os.environ.get("AUTO_GROCER_AUTO_CAPTURE_HASHES", "1").lower() in (
+    "1", "true", "yes",
+)
+
 # How long (seconds) to allow the browser login-and-export to run before giving
 # up. The flow logs in, may handle email verification, and exports auth.json.
 _AUTO_LOGIN_TIMEOUT = int(os.environ.get("AUTO_GROCER_AUTO_LOGIN_TIMEOUT", "300"))
@@ -342,6 +351,34 @@ def _capture_hashes() -> dict:
             "stdout_tail": (proc.stdout or "")[-600:],
             "stderr_tail": (proc.stderr or "")[-600:],
         }
+
+
+def _auto_capture_hashes_callback() -> bool:
+    """Re-capture rotated GraphQL hashes for the client's auto-recovery hook.
+
+    Invoked by the GraphQL client (in a worker thread) when it detects a stale
+    persisted-query hash on any operation. Runs the browser capture_hashes flow
+    and returns True when fresh hashes were captured. Honors
+    AUTO_GROCER_AUTO_CAPTURE_HASHES.
+    """
+    if not _AUTO_CAPTURE_HASHES:
+        return False
+    try:
+        result = _capture_hashes()
+    except Exception:  # noqa: BLE001 - recovery is best-effort
+        return False
+    return bool(result.get("ok"))
+
+
+# Wire the client's stale-hash auto-recovery to the browser capture flow so any
+# operation that hits a rotated hash transparently re-captures and retries.
+if _AUTO_CAPTURE_HASHES:
+    try:
+        from auto_grocer_mcp.clients.graphql import register_hash_refresh_callback
+
+        register_hash_refresh_callback(_auto_capture_hashes_callback)
+    except Exception:  # noqa: BLE001 - never let hook wiring break startup
+        pass
 
 
 def _ensure_authed() -> bool:
