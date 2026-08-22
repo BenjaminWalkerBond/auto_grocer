@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import sys
 
 import nodriver
 
@@ -38,11 +39,15 @@ from auto_grocer.classes.IngredientList import IngredientList
 from auto_grocer.claude import get_setting
 from auto_grocer.recipe_grabber import clean_ingredient, populate_ingredient_list
 from auto_grocer.session_maintenance import flows, primitives
-from auto_grocer.session_maintenance.auth_export import export_session_to_authjson
+from auto_grocer.session_maintenance.auth_export import (
+    export_session_to_authjson,
+    load_session_into_browser,
+)
 from auto_grocer.session_maintenance.browser import start_browser, stop_browser
 from auto_grocer.session_maintenance.hash_capture import GraphQLHashCapturer
 from auto_grocer.session_maintenance.logger import AsyncDriverLogger
 from auto_grocer.session_maintenance.self_healing import self_healing_call
+from auto_grocer.session_maintenance.waf_block import assert_not_blocked
 from auto_grocer.utility.graphql_cart import graphql_cart_sync
 from auto_grocer.utility.graphql_hash_capture import TARGET_OPERATIONS
 
@@ -66,6 +71,23 @@ HARDCODED_INGREDIENTS = [
 RECIPE_URLS = [
     "https://skinnyspatula.com/salmon-gnocchi/",
 ]
+
+# Maps a stale GraphQL operation name to the minimal browser-flow group needed
+# to re-trigger it, so a single-operation stale-hash refresh (the common case)
+# doesn't have to walk every flow. Operations with no entry here (or when no
+# target is given at all) fall back to the full walk in
+# update_graphql_hashes_mode, which is also what the manual capture_hashes
+# tool/skill uses.
+_TARGETED_FLOW_GROUPS = {
+    "SelectPickupFulfillment": "store",
+    "StoreSearch": "store",
+    "cartEstimated": "cart",
+    "cartItemV2": "item",
+    "typeaheadContent": "item",
+    "ShopNavigation": "nav",
+    "alertEntryPoint": "nav",
+    "CouponClip": "checkout",
+}
 
 
 def _build_hardcoded_list() -> IngredientList:
@@ -116,8 +138,18 @@ def _load_ingredients() -> IngredientList:
 
 
 async def _prompt(msg: str) -> str:
-    """Non-blocking input() for the async loop."""
-    return (await asyncio.to_thread(input, msg)).strip()
+    """Non-blocking input() for the async loop.
+
+    Returns "" immediately when stdin is not an interactive terminal (e.g. the
+    MCP server's login/capture subprocess), so end-of-run "Press Enter" prompts
+    never raise EOFError and abort an otherwise-successful run.
+    """
+    if not sys.stdin or not sys.stdin.isatty():
+        return ""
+    try:
+        return (await asyncio.to_thread(input, msg)).strip()
+    except EOFError:
+        return ""
 
 
 # ---------------------------------------------------------------------------
@@ -229,8 +261,15 @@ async def shop_mode(browser, tab, logger, ingredient_list, store_id, *,
         await _prompt("\nPress Enter to close the browser and exit...")
 
 
-async def update_graphql_hashes_mode(browser, tab, logger, store_id, store_search_address):
+async def update_graphql_hashes_mode(browser, tab, logger, store_id, store_search_address,
+                                     target_operation=""):
     print("\n🔄 UPDATE GRAPHQL HASHES MODE (CDP capture)\n")
+    flow_group = _TARGETED_FLOW_GROUPS.get(target_operation) if target_operation else None
+    if target_operation:
+        if flow_group:
+            print(f"🎯 Targeted capture for stale operation: {target_operation}")
+        else:
+            print(f"⚠️  No targeted flow for '{target_operation}' - running full walk.")
 
     capturer = GraphQLHashCapturer(tab)
     await capturer.start()
@@ -251,33 +290,65 @@ async def update_graphql_hashes_mode(browser, tab, logger, store_id, store_searc
         await flows.random_time()
         print(f"    📡 Captured {len(capturer.operations)} GraphQL op(s) so far.")
 
-    # Login + homepage to trigger navigation queries.
-    await self_healing_call(flows.login, tab, tab=tab, logger=logger)
-    await primitives.dismiss_modals(tab)
-    print("\n🏠 Loading homepage to trigger navigation queries...")
+    # Hash capture assumes an already-authenticated session: auth is a SEPARATE
+    # concern handled by OPERATION=login_export. Seed cookies from auth.json and
+    # skip the browser login entirely, so a hash refresh never re-runs the slow,
+    # flaky login walk (which blew the MCP tool-call timeout). Log in once, then
+    # refresh hashes at will.
+    seeded = await load_session_into_browser(browser)
+    if not seeded:
+        print(
+            "\n❌ No authenticated session to seed from. Run "
+            "OPERATION=login_export first, then retry capture_hashes."
+        )
+        return
+    print("\n🏠 Loading homepage (using seeded session) to trigger navigation queries...")
     await tab.get(flows.HEB_HOME)
     await flows.random_time()
+    # Bail early if the seeded session is logged-out or the WAF is blocking us.
+    await assert_not_blocked(tab, context="capture_hashes (homepage load)")
 
-    await _run_step("📅 Exercising time slot reservation...", flows.reserve_time_slot, tab)
-    await _run_step("🛒 Visiting cart to trigger cart estimate query...", flows.visit_cart, tab)
+    if flow_group is None:
+        # Full walk: default for the manual capture_hashes tool/skill, and the
+        # fallback for an unrecognized/absent target operation.
+        await _run_step("📅 Exercising time slot reservation...", flows.reserve_time_slot, tab)
+        await _run_step("🛒 Visiting cart to trigger cart estimate query...", flows.visit_cart, tab)
 
-    print("\n➕ Adding a sample item to trigger cart mutation...")
-    await tab.get(flows.HEB_HOME)
-    await flows.random_time()
-    await _run_step("➕ Adding sample item 'milk'...", flows.add_ingredient,
-                    Ingredient("milk", ["1"], []), tab)
+        print("\n➕ Adding a sample item to trigger cart mutation...")
+        await tab.get(flows.HEB_HOME)
+        await flows.random_time()
+        await _run_step("➕ Adding sample item 'milk'...", flows.add_ingredient,
+                        Ingredient("milk", ["1"], []), tab)
 
-    search_text = store_search_address or "78701"
-    await _run_step(f"🏪 Exercising store search/change (near '{search_text}')...",
-                    flows.change_store_via_ui, tab, search_text)
-    await _run_step("🧾 Walking into checkout to trigger timeslot/checkout queries...",
-                    flows.checkout, tab)
+        search_text = store_search_address or "78701"
+        await _run_step(f"🏪 Exercising store search/change (near '{search_text}')...",
+                        flows.change_store_via_ui, tab, search_text)
+        await _run_step("🧾 Walking into checkout to trigger timeslot/checkout queries...",
+                        flows.checkout, tab)
 
-    # Clean up ONLY the sample 'milk' item we added above. It exists solely to
-    # trigger the cart-mutation hash; removing just this line leaves any items
-    # the user is accumulating through the week untouched (never clear the cart).
-    await _run_step("🧹 Removing sample item 'milk'...", flows.remove_ingredient,
-                    "milk", tab)
+        # Clean up ONLY the sample 'milk' item we added above. It exists solely to
+        # trigger the cart-mutation hash; removing just this line leaves any items
+        # the user is accumulating through the week untouched (never clear the cart).
+        await _run_step("🧹 Removing sample item 'milk'...", flows.remove_ingredient,
+                        "milk", tab)
+    elif flow_group == "store":
+        search_text = store_search_address or "78701"
+        await _run_step(f"🏪 Exercising store search/change (near '{search_text}')...",
+                        flows.change_store_via_ui, tab, search_text)
+    elif flow_group == "cart":
+        await _run_step("🛒 Visiting cart to trigger cart estimate query...", flows.visit_cart, tab)
+    elif flow_group == "item":
+        print("\n➕ Adding a sample item to trigger cart mutation...")
+        await tab.get(flows.HEB_HOME)
+        await flows.random_time()
+        await _run_step("➕ Adding sample item 'milk'...", flows.add_ingredient,
+                        Ingredient("milk", ["1"], []), tab)
+        await _run_step("🧹 Removing sample item 'milk'...", flows.remove_ingredient,
+                        "milk", tab)
+    elif flow_group == "checkout":
+        await _run_step("🧾 Walking into checkout to trigger timeslot/checkout queries...",
+                        flows.checkout, tab)
+    # "nav" needs nothing beyond the homepage load already done above.
 
     print("\n🔎 Finalizing GraphQL capture...")
     hashes = capturer.hashes
@@ -296,8 +367,11 @@ async def update_graphql_hashes_mode(browser, tab, logger, store_id, store_searc
     print(f"\n💾 Saved to: {path}")
     if samples_path:
         print(f"💾 Operation samples saved to: {samples_path}")
-    # Also export auth.json so the MCP session is refreshed in one run.
-    print("\n🔐 Exporting browser session for the GraphQL/MCP client...")
+    # Re-export auth.json as a cheap bonus: navigating the seeded session
+    # regenerates the rotating reese84 token, so writing it back keeps the MCP
+    # session fresh. This is NOT a login (auth was seeded above), so it does not
+    # reintroduce the login/hash coupling.
+    print("\n🔐 Re-exporting session (refreshes the rotating reese84 token)...")
     await export_session_to_authjson(browser, tab, store_id=store_id)
     await _prompt("\nPress Enter to close the browser and exit...")
 
@@ -313,6 +387,7 @@ async def main():
     checkout = (os.environ.get("CHECKOUT") or get_setting("CHECKOUT", "none")).strip().lower()
     store_id = (get_setting("STORE_ID", "737") or "737").strip()
     store_search_address = (get_setting("STORE_SEARCH_ADDRESS", "") or "").strip()
+    target_operation = (os.environ.get("CAPTURE_TARGET_OPERATION") or "").strip()
 
     if mode not in ("graphql", "nodriver"):
         print("\n" + "=" * 60)
@@ -359,7 +434,8 @@ async def main():
         if operation == "login_export":
             await login_export_mode(browser, tab, logger, store_id)
         elif operation == "capture_hashes":
-            await update_graphql_hashes_mode(browser, tab, logger, store_id, store_search_address)
+            await update_graphql_hashes_mode(browser, tab, logger, store_id,
+                                            store_search_address, target_operation)
         else:  # shop
             await shop_mode(browser, tab, logger, ingredient_list, store_id,
                             via_graphql=via_graphql, checkout=checkout)

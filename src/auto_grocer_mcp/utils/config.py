@@ -33,12 +33,6 @@ class Settings(BaseSettings):
         description="Path to Playwright auth state file",
     )
 
-    # Redis Configuration
-    redis_url: str | None = Field(
-        default=None,
-        description="Redis connection URL for caching",
-    )
-
     # Observability
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = Field(
         default="INFO",

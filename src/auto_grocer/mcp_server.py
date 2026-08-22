@@ -284,7 +284,7 @@ def _auto_authenticate(force: bool = False) -> dict:
         }
 
 
-def _capture_hashes() -> dict:
+def _capture_hashes(target_operation: str = "") -> dict:
     """Run the nodriver capture_hashes workflow to refresh persisted-query hashes.
 
     Logs in and exercises the HEB site (search/cart/timeslot/checkout) via the
@@ -300,6 +300,14 @@ def _capture_hashes() -> dict:
     login_export refreshes cookies but NOT the hashes. Blocks until it finishes
     (up to _CAPTURE_HASHES_TIMEOUT seconds) and reuses _AUTO_LOGIN_LOCK so it
     never runs concurrently with a login. Returns a dict describing the outcome.
+
+    Args:
+        target_operation: When set, only exercises the minimal browser flow
+            needed to trigger this one GraphQL operation (e.g.
+            "SelectPickupFulfillment" -> just the store-change flow) instead of
+            walking every flow. Much faster for the common case of a single
+            stale operation. Unrecognized/empty values fall back to the full
+            walk (see auto_grocer.session_maintenance.run).
     """
     with _AUTO_LOGIN_LOCK:
         # Prefer the project venv interpreter so dependencies resolve.
@@ -310,11 +318,15 @@ def _capture_hashes() -> dict:
         env.setdefault("DISPLAY", ":0")  # X server (WSLg on host, Xvfb in Docker)
         env["MODE"] = "nodriver"
         env["OPERATION"] = "capture_hashes"
+        if target_operation:
+            env["CAPTURE_TARGET_OPERATION"] = target_operation
         cmd = [python_exe, "-u", "-m", "auto_grocer.session_maintenance.run"]
 
         print(
-            "[auto-grocer] Running nodriver capture_hashes to refresh the "
-            "persisted-query hashes (this can take a few minutes)...",
+            "[auto-grocer] Running nodriver capture_hashes"
+            + (f" (targeted: {target_operation})" if target_operation else "")
+            + " to refresh the persisted-query hashes (this can take a "
+            "few minutes)...",
             file=sys.stderr,
         )
         try:
@@ -353,18 +365,18 @@ def _capture_hashes() -> dict:
         }
 
 
-def _auto_capture_hashes_callback() -> bool:
+def _auto_capture_hashes_callback(operation_name: str) -> bool:
     """Re-capture rotated GraphQL hashes for the client's auto-recovery hook.
 
-    Invoked by the GraphQL client (in a worker thread) when it detects a stale
-    persisted-query hash on any operation. Runs the browser capture_hashes flow
-    and returns True when fresh hashes were captured. Honors
-    AUTO_GROCER_AUTO_CAPTURE_HASHES.
+    Invoked on a background thread (never awaited) by the GraphQL client when
+    it detects a stale persisted-query hash on ``operation_name``. Runs the
+    targeted browser capture_hashes flow for just that operation and returns
+    True when fresh hashes were captured. Honors AUTO_GROCER_AUTO_CAPTURE_HASHES.
     """
     if not _AUTO_CAPTURE_HASHES:
         return False
     try:
-        result = _capture_hashes()
+        result = _capture_hashes(target_operation=operation_name)
     except Exception:  # noqa: BLE001 - recovery is best-effort
         return False
     return bool(result.get("ok"))

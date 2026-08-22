@@ -43,6 +43,81 @@ def _cdp_cookie_to_playwright(cookie):
     }
 
 
+def _cdp_same_site(value):
+    """Map a Playwright sameSite string to a nodriver CDP CookieSameSite enum."""
+    from nodriver import cdp
+
+    if not value:
+        return None
+    return {
+        "strict": cdp.network.CookieSameSite.STRICT,
+        "lax": cdp.network.CookieSameSite.LAX,
+        "none": cdp.network.CookieSameSite.NONE,
+    }.get(str(value).strip().lower())
+
+
+async def load_session_into_browser(browser, auth_path=None):
+    """Seed a fresh nodriver browser with cookies from an exported ``auth.json``.
+
+    Lets the hash-capture flow reuse an already-authenticated session instead of
+    re-running the full browser login (auth and hash refresh are separate
+    concerns: log in once via ``login_export``, then refresh hashes at will).
+
+    Args:
+        browser: nodriver.Browser to seed (via ``browser.cookies.set_all``).
+        auth_path: Optional override path for auth.json.
+
+    Returns:
+        The number of cookies seeded (0 when the file is missing, unreadable, or
+        has no cookies — the caller should then fall back to a full login).
+    """
+    from nodriver import cdp
+
+    auth_path = Path(auth_path).expanduser() if auth_path else DEFAULT_AUTH_PATH
+    if not auth_path.exists():
+        print(f"    ⚠️  No auth.json at {auth_path} to seed the session from.")
+        return 0
+
+    try:
+        with open(auth_path, encoding="utf-8") as f:
+            state = json.load(f)
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"    ⚠️  Could not read {auth_path}: {e}")
+        return 0
+
+    params = []
+    for c in state.get("cookies", []) or []:
+        name = c.get("name")
+        if not name:
+            continue
+        expires = c.get("expires", -1)
+        params.append(
+            cdp.network.CookieParam(
+                name=name,
+                value=c.get("value", "") or "",
+                domain=c.get("domain") or None,
+                path=c.get("path", "/") or "/",
+                secure=bool(c.get("secure", False)),
+                http_only=bool(c.get("httpOnly", False)),
+                same_site=_cdp_same_site(c.get("sameSite")),
+                expires=float(expires) if expires not in (None, -1) else None,
+            )
+        )
+
+    if not params:
+        print("    ⚠️  auth.json has no cookies to seed.")
+        return 0
+
+    try:
+        await browser.cookies.set_all(params)
+    except Exception as e:  # noqa: BLE001
+        print(f"    ⚠️  Failed to seed cookies into the browser: {e}")
+        return 0
+
+    print(f"    🍪 Seeded {len(params)} cookies from {auth_path} (skipping login).")
+    return len(params)
+
+
 async def _read_local_storage(tab):
     """Return localStorage as a list of {name, value} dicts (best-effort)."""
     try:

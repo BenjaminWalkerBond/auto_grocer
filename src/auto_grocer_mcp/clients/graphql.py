@@ -4,10 +4,10 @@ Supports both unauthenticated (typeahead) and authenticated (full product search
 modes. Authenticated mode uses browser session cookies for faster API access.
 """
 
-import asyncio
 import json
 import os
 import re
+import threading
 import time
 from collections.abc import Callable
 from typing import Any, cast
@@ -128,83 +128,132 @@ def reload_persisted_query_overrides() -> None:
 # ``PersistedQueryNotFound`` until fresh hashes are captured. Rather than surface
 # the failure to the user and wait for a manual ``capture_hashes`` run, the
 # client can invoke a registered callback that re-captures the hashes, reload the
-# updated overrides, and transparently retry the failed operation once.
+# updated overrides, and transparently retry the failed operation.
 #
 # The high-level MCP layer (``auto_grocer.mcp_server``) registers the browser
 # ``capture_hashes`` flow as this callback at import time. The callback is a
-# *blocking* subprocess, so it is dispatched to a worker thread and serialized so
-# concurrent operations don't launch multiple captures. A cooldown prevents
-# repeated re-captures when several operations hit the stale hash at once.
-_hash_refresh_callback: Callable[[], bool] | None = None
-_hash_refresh_lock: asyncio.Lock | None = None
+# *blocking* subprocess that drives a real browser and can take minutes -- far
+# longer than an MCP client's tool-call timeout (observed ~240s). So the
+# refresh is dispatched to a plain background thread that is NOT awaited: the
+# triggering operation fails fast with a "refresh in progress, retry shortly"
+# error instead of blocking until the capture finishes. A cooldown lets
+# operations that fail shortly after a successful refresh retry immediately
+# instead of re-triggering a capture. The callback receives the operation name
+# so the refresh can target just the flow needed for that operation instead of
+# walking every flow (see auto_grocer.session_maintenance.run).
+_hash_refresh_callback: Callable[[str], bool] | None = None
+_hash_refresh_state_lock = threading.Lock()
+_hash_refresh_in_progress: bool = False
 _last_hash_refresh_monotonic: float = 0.0
 _HASH_REFRESH_COOLDOWN_SECONDS: float = float(
     os.environ.get("AUTO_GROCER_HASH_REFRESH_COOLDOWN", "600")
 )
 
 
-def register_hash_refresh_callback(callback: Callable[[], bool] | None) -> None:
+def register_hash_refresh_callback(callback: Callable[[str], bool] | None) -> None:
     """Register a callback used to re-capture rotated persisted-query hashes.
 
-    The callback runs synchronously (it drives a browser via subprocess) and
-    returns ``True`` when fresh hashes were captured. Pass ``None`` to disable
-    automatic recovery. Intended to be called once from the MCP server layer.
+    The callback receives the stale operation's name and runs synchronously (it
+    drives a browser via subprocess), returning ``True`` when fresh hashes were
+    captured. It is invoked from a background thread, never awaited directly.
+    Pass ``None`` to disable automatic recovery. Intended to be called once
+    from the MCP server layer.
     """
     global _hash_refresh_callback
     _hash_refresh_callback = callback
 
 
-async def _attempt_hash_refresh(operation_name: str) -> bool:
-    """Re-capture persisted-query hashes after a stale-hash failure.
-
-    Returns ``True`` if the caller should retry the operation (either a fresh
-    capture succeeded, or a capture completed very recently and its hashes were
-    reloaded). Serialized and rate-limited so a burst of failing operations only
-    triggers a single browser capture.
-    """
-    global _last_hash_refresh_monotonic, _hash_refresh_lock
+def _run_hash_refresh(operation_name: str) -> None:
+    """Run the registered callback on a background thread and record the result."""
+    global _last_hash_refresh_monotonic, _hash_refresh_in_progress
 
     callback = _hash_refresh_callback
-    if callback is None:
-        return False
+    ok = False
+    try:
+        if callback is not None:
+            ok = bool(callback(operation_name))
+    except Exception as exc:  # noqa: BLE001 - refresh is best-effort
+        logger.error(
+            "Background hash refresh raised", operation=operation_name, error=str(exc)
+        )
+        ok = False
+    finally:
+        with _hash_refresh_state_lock:
+            _hash_refresh_in_progress = False
+            if ok:
+                _last_hash_refresh_monotonic = time.monotonic()
+        reload_persisted_query_overrides()
+        if ok:
+            logger.info("Background hash refresh completed", operation=operation_name)
+        else:
+            logger.error(
+                "Background hash refresh did not resolve hashes", operation=operation_name
+            )
 
-    if _hash_refresh_lock is None:
-        _hash_refresh_lock = asyncio.Lock()
 
-    async with _hash_refresh_lock:
+async def _attempt_hash_refresh(operation_name: str) -> str:
+    """React to a stale persisted-query hash without blocking the caller.
+
+    Never awaits the (multi-minute, browser-driven) refresh. Returns one of:
+
+        "retry"       - hashes were refreshed very recently (within the
+                        cooldown); overrides reloaded, caller should retry now.
+        "started"     - no refresh was running; one was just launched on a
+                        background thread. Caller should fail fast.
+        "in_progress" - a refresh triggered by an earlier operation is still
+                        running. Caller should fail fast.
+        "disabled"    - no callback registered; caller should raise the
+                        original stale-hash error unchanged.
+    """
+    global _hash_refresh_in_progress
+
+    with _hash_refresh_state_lock:
         now = time.monotonic()
-        # Another operation may have just refreshed the hashes while we waited
-        # for the lock; reuse that result instead of re-capturing.
+        # A refresh may have completed very recently (triggered by another
+        # operation); reuse it instead of starting another capture. Checked
+        # BEFORE the "no callback" bail-out so a cooldown grant still lets a
+        # caller retry even if nothing is currently registered.
         if _last_hash_refresh_monotonic and (
             now - _last_hash_refresh_monotonic
         ) < _HASH_REFRESH_COOLDOWN_SECONDS:
-            logger.info(
-                "Reusing recent hash refresh within cooldown; retrying operation",
-                operation=operation_name,
-            )
-            reload_persisted_query_overrides()
-            return True
+            status = "retry"
+        elif _hash_refresh_callback is None:
+            status = "disabled"
+        elif _hash_refresh_in_progress:
+            status = "in_progress"
+        else:
+            _hash_refresh_in_progress = True
+            status = "started"
 
-        logger.warning(
-            "Stale GraphQL persisted-query hash detected; auto-refreshing hashes",
+    if status == "retry":
+        logger.info(
+            "Reusing recent hash refresh within cooldown; retrying operation",
             operation=operation_name,
         )
-        try:
-            ok = await asyncio.to_thread(callback)
-        except Exception as exc:  # noqa: BLE001 - refresh is best-effort
-            logger.error(
-                "Automatic hash refresh raised", operation=operation_name, error=str(exc)
-            )
-            return False
-
-        _last_hash_refresh_monotonic = time.monotonic()
         reload_persisted_query_overrides()
-        if not ok:
-            logger.error(
-                "Automatic hash refresh did not resolve hashes",
-                operation=operation_name,
-            )
-        return bool(ok)
+        return status
+
+    if status == "in_progress":
+        logger.info(
+            "Hash refresh already running in background; failing fast",
+            operation=operation_name,
+        )
+        return status
+
+    if status == "disabled":
+        return status
+
+    logger.warning(
+        "Stale GraphQL persisted-query hash detected; triggering background hash refresh",
+        operation=operation_name,
+    )
+    threading.Thread(
+        target=_run_hash_refresh,
+        args=(operation_name,),
+        name="hash-refresh",
+        daemon=True,
+    ).start()
+    return status
 
 
 # Well-known HEB stores (fallback for store search)
@@ -455,16 +504,26 @@ class HEBGraphQLClient:
                             return cast(dict[str, Any], payload_data)
                     return {}
 
-                except PersistedQueryNotFoundError:
-                    # HEB rotated its hashes. Re-capture them once and retry.
-                    if refreshed or not await _attempt_hash_refresh(operation_name):
-                        raise
-                    refreshed = True
-                    logger.info(
-                        "Retrying persisted query after hash refresh",
-                        operation=operation_name,
-                    )
-                    continue
+                except PersistedQueryNotFoundError as e:
+                    # HEB rotated its hashes. Try a non-blocking refresh; only a
+                    # fresh-within-cooldown result retries this same call.
+                    status = None if refreshed else await _attempt_hash_refresh(operation_name)
+                    if status == "retry":
+                        refreshed = True
+                        logger.info(
+                            "Retrying persisted query after hash refresh",
+                            operation=operation_name,
+                        )
+                        continue
+                    if status in ("started", "in_progress"):
+                        raise PersistedQueryNotFoundError(
+                            f"Persisted query hash for '{operation_name}' is stale; a "
+                            "hash refresh has "
+                            + ("just started" if status == "started" else "already been triggered")
+                            + " in the background. Retry this operation in about "
+                            "60-90 seconds."
+                        ) from e
+                    raise
 
                 except (httpx.HTTPError, GraphQLError) as e:
                     self.circuit_breaker.record_failure()
@@ -2041,16 +2100,26 @@ class HEBGraphQLClient:
                         return cast(dict[str, Any], payload_data)
                 return {}
 
-            except PersistedQueryNotFoundError:
-                # HEB rotated its hashes. Re-capture them once and retry.
-                if refreshed or not await _attempt_hash_refresh(operation_name):
-                    raise
-                refreshed = True
-                logger.info(
-                    "Retrying persisted query after hash refresh",
-                    operation=operation_name,
-                )
-                continue
+            except PersistedQueryNotFoundError as e:
+                # HEB rotated its hashes. Try a non-blocking refresh; only a
+                # fresh-within-cooldown result retries this same call.
+                status = None if refreshed else await _attempt_hash_refresh(operation_name)
+                if status == "retry":
+                    refreshed = True
+                    logger.info(
+                        "Retrying persisted query after hash refresh",
+                        operation=operation_name,
+                    )
+                    continue
+                if status in ("started", "in_progress"):
+                    raise PersistedQueryNotFoundError(
+                        f"Persisted query hash for '{operation_name}' is stale; a "
+                        "hash refresh has "
+                        + ("just started" if status == "started" else "already been triggered")
+                        + " in the background. Retry this operation in about "
+                        "60-90 seconds."
+                    ) from e
+                raise
 
             except (httpx.HTTPError, GraphQLError) as e:
                 self.circuit_breaker.record_failure()

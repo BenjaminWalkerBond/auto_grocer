@@ -1,9 +1,15 @@
 """Tests for automatic stale-hash recovery in the GraphQL client.
 
 When HEB rotates its persisted-query hashes, any persisted operation starts
-failing with ``PersistedQueryNotFound``. The client should invoke a registered
-refresh callback, reload the hashes, and retry the operation once.
+failing with ``PersistedQueryNotFound``. The client triggers a registered
+refresh callback on a background thread (never blocking the caller) and fails
+fast with a "retry shortly" error. A subsequent operation within the cooldown
+window after a successful refresh retries immediately using the reloaded
+hashes.
 """
+
+import threading
+import time
 
 import pytest
 import respx
@@ -23,16 +29,23 @@ _STALE = {"errors": [{"message": "PersistedQueryNotFound"}]}
 _OK = {"data": {"cart": {"id": "abc"}}}
 
 
+def _wait_until_refresh_idle(timeout: float = 2.0) -> None:
+    """Block (test thread only) until the background refresh thread finishes."""
+    deadline = time.monotonic() + timeout
+    while graphql._hash_refresh_in_progress and time.monotonic() < deadline:
+        time.sleep(0.02)
+
+
 @pytest.fixture(autouse=True)
 def _reset_hash_hook():
     """Reset the module-level hash-refresh hook state around each test."""
     graphql.register_hash_refresh_callback(None)
     graphql._last_hash_refresh_monotonic = 0.0
-    graphql._hash_refresh_lock = None
+    graphql._hash_refresh_in_progress = False
     yield
     graphql.register_hash_refresh_callback(None)
     graphql._last_hash_refresh_monotonic = 0.0
-    graphql._hash_refresh_lock = None
+    graphql._hash_refresh_in_progress = False
 
 
 @pytest.fixture
@@ -42,28 +55,38 @@ def client():
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_stale_hash_triggers_refresh_and_retries(client):
-    """A stale hash should invoke the callback once and retry successfully."""
-    calls: list[int] = []
+async def test_stale_hash_triggers_background_refresh_and_fails_fast(client):
+    """A stale hash launches a background refresh and fails fast (never blocks)."""
+    started = threading.Event()
+    release = threading.Event()
+    calls: list[str] = []
 
-    def _refresh() -> bool:
-        calls.append(1)
+    def _refresh(operation_name: str) -> bool:
+        calls.append(operation_name)
+        started.set()
+        release.wait(timeout=2)
         return True
 
     graphql.register_hash_refresh_callback(_refresh)
+    respx.post(_URL).mock(return_value=Response(200, json=_STALE))
 
-    respx.post(_URL).mock(side_effect=[Response(200, json=_STALE), Response(200, json=_OK)])
+    with pytest.raises(graphql.PersistedQueryNotFoundError, match="background"):
+        await client._execute_persisted_query(_OP, {})
 
-    result = await client._execute_persisted_query(_OP, {"userIsLoggedIn": True})
+    assert started.wait(timeout=1), "refresh callback should have been invoked"
+    assert calls == [_OP]
+    assert graphql._hash_refresh_in_progress is True
 
-    assert result == {"cart": {"id": "abc"}}
-    assert len(calls) == 1  # refreshed exactly once
+    release.set()
+    _wait_until_refresh_idle()
+    assert graphql._hash_refresh_in_progress is False
+    assert graphql._last_hash_refresh_monotonic > 0
 
 
 @pytest.mark.asyncio
 @respx.mock
 async def test_no_callback_raises_persisted_query_error(client):
-    """Without a registered callback the stale-hash error propagates."""
+    """Without a registered callback the stale-hash error propagates unchanged."""
     respx.post(_URL).mock(return_value=Response(200, json=_STALE))
 
     with pytest.raises(graphql.PersistedQueryNotFoundError):
@@ -72,58 +95,83 @@ async def test_no_callback_raises_persisted_query_error(client):
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_failed_refresh_raises_after_single_attempt(client):
-    """If the refresh callback fails, the error propagates without a retry."""
-    calls: list[int] = []
+async def test_failed_refresh_does_not_start_a_cooldown(client):
+    """If the background refresh callback fails, no cooldown/retry is granted."""
+    release = threading.Event()
+    calls: list[str] = []
 
-    def _refresh() -> bool:
-        calls.append(1)
+    def _refresh(operation_name: str) -> bool:
+        calls.append(operation_name)
+        release.wait(timeout=2)
         return False
 
     graphql.register_hash_refresh_callback(_refresh)
-
     respx.post(_URL).mock(return_value=Response(200, json=_STALE))
 
     with pytest.raises(graphql.PersistedQueryNotFoundError):
         await client._execute_persisted_query(_OP, {})
 
-    assert len(calls) == 1  # attempted once, did not loop
+    release.set()
+    _wait_until_refresh_idle()
+
+    assert calls == [_OP]
+    assert graphql._last_hash_refresh_monotonic == 0.0  # failure grants no cooldown
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_persistent_stale_hash_retries_only_once(client):
-    """Even if the hash is still stale after refresh, retry happens only once."""
-    calls: list[int] = []
+async def test_concurrent_stale_operation_fails_fast_without_duplicate_refresh(client):
+    """A second stale operation while a refresh is running does not launch another."""
+    started = threading.Event()
+    release = threading.Event()
+    calls: list[str] = []
 
-    def _refresh() -> bool:
-        calls.append(1)
+    def _refresh(operation_name: str) -> bool:
+        calls.append(operation_name)
+        started.set()
+        release.wait(timeout=2)
         return True
 
     graphql.register_hash_refresh_callback(_refresh)
+    respx.post(_URL).mock(return_value=Response(200, json=_STALE))
 
-    # Always stale: first attempt, then the single post-refresh retry.
-    route = respx.post(_URL).mock(return_value=Response(200, json=_STALE))
+    with pytest.raises(graphql.PersistedQueryNotFoundError, match="just started"):
+        await client._execute_persisted_query(_OP, {})
+    assert started.wait(timeout=1)
 
-    with pytest.raises(graphql.PersistedQueryNotFoundError):
+    with pytest.raises(graphql.PersistedQueryNotFoundError, match="already been triggered"):
         await client._execute_persisted_query(_OP, {})
 
-    assert len(calls) == 1
-    assert route.call_count == 2  # original + one retry, no infinite loop
+    release.set()
+    _wait_until_refresh_idle()
+    assert calls == [_OP]  # only one background refresh was launched
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_with_client_path_also_recovers(client):
-    """The authenticated (with-client) executor recovers the same way."""
-    calls: list[int] = []
+async def test_refresh_within_cooldown_retries_immediately(client):
+    """An operation that fails shortly after a completed refresh retries at once."""
+    graphql._last_hash_refresh_monotonic = time.monotonic()  # simulate a recent success
+    calls: list[str] = []
 
-    def _refresh() -> bool:
-        calls.append(1)
+    def _refresh(operation_name: str) -> bool:
+        calls.append(operation_name)
         return True
 
     graphql.register_hash_refresh_callback(_refresh)
+    respx.post(_URL).mock(side_effect=[Response(200, json=_STALE), Response(200, json=_OK)])
 
+    result = await client._execute_persisted_query(_OP, {"userIsLoggedIn": True})
+
+    assert result == {"cart": {"id": "abc"}}
+    assert calls == []  # cooldown reused; no new background capture launched
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_with_client_path_recovers_within_cooldown(client):
+    """The authenticated (with-client) executor recovers the same way."""
+    graphql._last_hash_refresh_monotonic = time.monotonic()
     respx.post(_URL).mock(side_effect=[Response(200, json=_STALE), Response(200, json=_OK)])
 
     http_client = await client._get_client()
@@ -132,4 +180,3 @@ async def test_with_client_path_also_recovers(client):
     )
 
     assert result == {"cart": {"id": "abc"}}
-    assert len(calls) == 1
