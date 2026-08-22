@@ -13,8 +13,8 @@ Run standalone (host, real display):
 
 Run in the container (Xvfb via the image entrypoint):
     docker run --rm --network host \
-        -v auto_grocier_session:/root/.texas-grocery-mcp --env-file .env \
-        auto_grocier_mcp python -m session_maintenance.waf_probe
+        -v auto_grocer_session:/root/.texas-grocery-mcp --env-file .env \
+        auto_grocer_mcp python -m session_maintenance.waf_probe
 """
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ from typing import Any
 
 import nodriver
 
-from auto_grocier.session_maintenance.browser import start_browser, stop_browser
+from auto_grocer.session_maintenance.browser import start_browser, stop_browser
 
 HEB_HOME = "https://www.heb.com/"
 
@@ -76,7 +76,7 @@ _FINGERPRINT_JS = r"""
     ctx.textBaseline = 'top';
     ctx.font = "14px 'Arial'";
     ctx.fillStyle = '#f60'; ctx.fillRect(0, 0, 100, 20);
-    ctx.fillStyle = '#069'; ctx.fillText('auto_grocier waf probe \u2728', 2, 15);
+    ctx.fillStyle = '#069'; ctx.fillText('auto_grocer waf probe \u2728', 2, 15);
     const data = cc.toDataURL();
     let h = 0;
     for (let i = 0; i < data.length; i++) { h = (h * 31 + data.charCodeAt(i)) | 0; }
@@ -161,7 +161,7 @@ async def run_probe() -> dict:
     print("=" * 64)
     print("HEB WAF BASELINE PROBE")
     print("=" * 64)
-    print(f"DISPLAY={display}  NO_SANDBOX={os.environ.get('AUTO_GROCIER_NO_SANDBOX')}"
+    print(f"DISPLAY={display}  NO_SANDBOX={os.environ.get('AUTO_GROCER_NO_SANDBOX')}"
           f"  CHROME={os.environ.get('NODRIVER_BROWSER_PATH')}")
 
     browser = await start_browser(headless=False)
@@ -229,7 +229,7 @@ async def run_probe() -> dict:
         "timestamp": datetime.now().isoformat(),
         "display": display,
         "env": {
-            "no_sandbox": os.environ.get("AUTO_GROCIER_NO_SANDBOX"),
+            "no_sandbox": os.environ.get("AUTO_GROCER_NO_SANDBOX"),
             "chrome_path": os.environ.get("NODRIVER_BROWSER_PATH"),
         },
         "fingerprint": fingerprint,

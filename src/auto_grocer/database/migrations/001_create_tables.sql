@@ -1,4 +1,4 @@
--- Initial database schema for auto_grocier
+-- Initial database schema for auto_grocer
 -- Creates tables for tags, recipes, ingredients, and their relationships
 
 -- Create tags table

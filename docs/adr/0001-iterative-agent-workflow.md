@@ -6,7 +6,7 @@
 
 ## Context
 
-We want to automate iterative improvements to `auto_grocier` (an HEB grocery-automation
+We want to automate iterative improvements to `auto_grocer` (an HEB grocery-automation
 MCP server with a recipe database and GraphQL cart control) with clear role separation
 between product design, implementation, and testing.
 

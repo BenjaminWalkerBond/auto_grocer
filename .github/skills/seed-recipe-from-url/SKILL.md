@@ -1,12 +1,12 @@
 ---
 name: seed-recipe-from-url
-description: 'Add one or more recipes to the auto_grocier recipe database from a URL. Use whenever the user asks to "add this recipe", "add these recipes", "seed a recipe", "save this recipe to the database", or pastes a recipe link (a recipe web page OR a YouTube video/Short). ALWAYS fetch the real page and extract EVERY ingredient from it — never invent, guess, or recall ingredients from memory. Persists via the seed_recipes MCP tool.'
+description: 'Add one or more recipes to the auto_grocer recipe database from a URL. Use whenever the user asks to "add this recipe", "add these recipes", "seed a recipe", "save this recipe to the database", or pastes a recipe link (a recipe web page OR a YouTube video/Short). ALWAYS fetch the real page and extract EVERY ingredient from it — never invent, guess, or recall ingredients from memory. Persists via the seed_recipes MCP tool.'
 argument-hint: 'Paste a recipe URL to add it to the database'
 ---
 
 # Seed a Recipe From a URL
 
-Add a recipe to the auto_grocier database from its URL by reading the **actual
+Add a recipe to the auto_grocer database from its URL by reading the **actual
 page** and persisting its real ingredients with the `seed_recipes` MCP tool.
 
 ## THE IRON RULE — never invent ingredients
@@ -49,7 +49,7 @@ any user modifications they request (e.g. "remove the almonds", "no cilantro")
 to the list AFTER extracting the full set — never as a reason to skip fetching.
 
 ### 4. Persist with the MCP tool (once per recipe)
-Call `mcp_auto-grocier_seed_recipes` ONCE per recipe:
+Call `mcp_auto-grocer_seed_recipes` ONCE per recipe:
 - `title` — the recipe name from the page
 - `url` — the source URL (unique key; re-seeding the same URL UPDATES it and
   replaces its ingredients, so it is safe to correct/re-run)

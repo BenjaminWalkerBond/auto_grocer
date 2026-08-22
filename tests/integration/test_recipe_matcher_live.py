@@ -70,7 +70,7 @@ def db_session():
     try:
         from sqlalchemy import text
 
-        from auto_grocier.database.db_connection import get_db_session
+        from auto_grocer.database.db_connection import get_db_session
 
         db = get_db_session()
         # Force a real connection so unreachable DBs skip rather than error later.
@@ -86,9 +86,9 @@ def db_session():
 @pytest.mark.integration
 def test_recipe_matcher_end_to_end(db_session):
     """Seed recipes, match a natural-language request, build an ingredient list."""
-    from auto_grocier.database.ingredient_repository import IngredientRepository
-    from auto_grocier.database.recipe_repository import RecipeRepository
-    from auto_grocier.utility import recipe_matcher
+    from auto_grocer.database.ingredient_repository import IngredientRepository
+    from auto_grocer.database.recipe_repository import RecipeRepository
+    from auto_grocer.utility import recipe_matcher
 
     recipe_repo = RecipeRepository(db_session)
     ingredient_repo = IngredientRepository(db_session)
@@ -102,7 +102,7 @@ def test_recipe_matcher_end_to_end(db_session):
             "search_recipes should match Palak Paneer via its description"
 
         # 2. parse_and_match (force the ILIKE fallback by hiding Claude).
-        from auto_grocier import claude
+        from auto_grocer import claude
 
         saved_client = claude.client
         claude.client = None  # force offline fallback

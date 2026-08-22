@@ -7,7 +7,7 @@ from io import StringIO
 
 def test_logger_outputs_json():
     """Logger should output JSON to stderr."""
-    from auto_grocier_mcp.observability.logging import configure_logging, get_logger
+    from auto_grocer_mcp.observability.logging import configure_logging, get_logger
 
     # Capture stderr
     captured = StringIO()
@@ -36,7 +36,7 @@ def test_logger_outputs_json():
 
 def test_logger_includes_timestamp():
     """Logger should include ISO timestamp."""
-    from auto_grocier_mcp.observability.logging import configure_logging, get_logger
+    from auto_grocer_mcp.observability.logging import configure_logging, get_logger
 
     captured = StringIO()
     original_stderr = sys.stderr

@@ -4,12 +4,12 @@ from typing import TYPE_CHECKING, Annotated, Any
 
 from pydantic import Field
 
-from auto_grocier_mcp.auth.session import ensure_session
-from auto_grocier_mcp.clients.graphql import KNOWN_STORES
-from auto_grocier_mcp.state import StateManager
+from auto_grocer_mcp.auth.session import ensure_session
+from auto_grocer_mcp.clients.graphql import KNOWN_STORES
+from auto_grocer_mcp.state import StateManager
 
 if TYPE_CHECKING:
-    from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
+    from auto_grocer_mcp.clients.graphql import HEBGraphQLClient
 
 
 def _get_client() -> "HEBGraphQLClient":
@@ -171,7 +171,7 @@ async def store_change(
         ignore_conflicts: If True, force store change even if cart has items
             unavailable at the new store or with price changes. Default False.
     """
-    from auto_grocier_mcp.auth.session import is_authenticated
+    from auto_grocer_mcp.auth.session import is_authenticated
 
     store_id = store_id.strip()
 
@@ -308,7 +308,7 @@ def _update_store_cookie(store_id: str) -> bool:
     """
     import json
 
-    from auto_grocier_mcp.utils.config import get_settings
+    from auto_grocer_mcp.utils.config import get_settings
 
     settings = get_settings()
     auth_path = settings.auth_state_path
@@ -343,7 +343,7 @@ def _update_store_cookie(store_id: str) -> bool:
             })
             state["cookies"] = cookies
 
-        from auto_grocier_mcp.utils.secure_file import write_secure_json
+        from auto_grocer_mcp.utils.secure_file import write_secure_json
 
         write_secure_json(auth_path, state)
 

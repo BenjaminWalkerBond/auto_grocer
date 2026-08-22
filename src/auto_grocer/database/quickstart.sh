@@ -2,7 +2,7 @@
 # Quick start script for database setup
 
 echo "=========================================="
-echo "Auto Grocier Database Quick Start"
+echo "Auto Grocer Database Quick Start"
 echo "=========================================="
 echo ""
 
@@ -38,9 +38,9 @@ echo ""
 echo "1. Make sure PostgreSQL is running"
 echo "2. Create database and user:"
 echo "   sudo -u postgres psql"
-echo "   CREATE DATABASE auto_grocier;"
-echo "   CREATE USER grocier_user WITH PASSWORD 'your_password';"
-echo "   GRANT ALL PRIVILEGES ON DATABASE auto_grocier TO grocier_user;"
+echo "   CREATE DATABASE auto_grocer;"
+echo "   CREATE USER grocer_user WITH PASSWORD 'your_password';"
+echo "   GRANT ALL PRIVILEGES ON DATABASE auto_grocer TO grocer_user;"
 echo "   \\q"
 echo ""
 echo "3. Update .env with your database credentials"

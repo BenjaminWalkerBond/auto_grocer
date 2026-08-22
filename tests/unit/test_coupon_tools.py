@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from auto_grocier_mcp.models.coupon import Coupon, CouponCategory, CouponSearchResult
-from auto_grocier_mcp.tools.coupon import (
+from auto_grocer_mcp.models.coupon import Coupon, CouponCategory, CouponSearchResult
+from auto_grocer_mcp.tools.coupon import (
     CATEGORY_IDS,
     _resolve_category,
     coupon_categories,
@@ -109,7 +109,7 @@ class TestCouponList:
     @pytest.mark.asyncio
     async def test_coupon_list_requires_auth(self):
         """Test coupon_list requires authentication."""
-        with patch("auto_grocier_mcp.tools.coupon.is_authenticated", return_value=False):
+        with patch("auto_grocer_mcp.tools.coupon.is_authenticated", return_value=False):
             result = await coupon_list()
 
         assert result["error"] is True
@@ -127,8 +127,8 @@ class TestCouponList:
         )
 
         with (
-            patch("auto_grocier_mcp.tools.coupon.is_authenticated", return_value=True),
-            patch("auto_grocier_mcp.tools.coupon._get_client") as mock_get_client,
+            patch("auto_grocer_mcp.tools.coupon.is_authenticated", return_value=True),
+            patch("auto_grocer_mcp.tools.coupon._get_client") as mock_get_client,
         ):
             mock_client = AsyncMock()
             mock_client.get_coupons.return_value = mock_result
@@ -154,8 +154,8 @@ class TestCouponList:
         )
 
         with (
-            patch("auto_grocier_mcp.tools.coupon.is_authenticated", return_value=True),
-            patch("auto_grocier_mcp.tools.coupon._get_client") as mock_get_client,
+            patch("auto_grocer_mcp.tools.coupon.is_authenticated", return_value=True),
+            patch("auto_grocer_mcp.tools.coupon._get_client") as mock_get_client,
         ):
             mock_client = AsyncMock()
             mock_client.get_coupons.return_value = mock_result
@@ -176,7 +176,7 @@ class TestCouponSearch:
     @pytest.mark.asyncio
     async def test_coupon_search_requires_auth(self):
         """Test coupon_search requires authentication."""
-        with patch("auto_grocier_mcp.tools.coupon.is_authenticated", return_value=False):
+        with patch("auto_grocer_mcp.tools.coupon.is_authenticated", return_value=False):
             result = await coupon_search(query="chips")
 
         assert result["error"] is True
@@ -185,7 +185,7 @@ class TestCouponSearch:
     @pytest.mark.asyncio
     async def test_coupon_search_empty_query(self):
         """Test coupon_search rejects empty query."""
-        with patch("auto_grocier_mcp.tools.coupon.is_authenticated", return_value=True):
+        with patch("auto_grocer_mcp.tools.coupon.is_authenticated", return_value=True):
             result = await coupon_search(query="   ")
 
         assert result["error"] is True
@@ -211,8 +211,8 @@ class TestCouponSearch:
         )
 
         with (
-            patch("auto_grocier_mcp.tools.coupon.is_authenticated", return_value=True),
-            patch("auto_grocier_mcp.tools.coupon._get_client") as mock_get_client,
+            patch("auto_grocer_mcp.tools.coupon.is_authenticated", return_value=True),
+            patch("auto_grocer_mcp.tools.coupon._get_client") as mock_get_client,
         ):
             mock_client = AsyncMock()
             mock_client.get_coupons.return_value = mock_result
@@ -231,7 +231,7 @@ class TestCouponCategories:
     @pytest.mark.asyncio
     async def test_coupon_categories_requires_auth(self):
         """Test coupon_categories requires authentication."""
-        with patch("auto_grocier_mcp.tools.coupon.is_authenticated", return_value=False):
+        with patch("auto_grocer_mcp.tools.coupon.is_authenticated", return_value=False):
             result = await coupon_categories()
 
         assert result["error"] is True
@@ -253,8 +253,8 @@ class TestCouponCategories:
         )
 
         with (
-            patch("auto_grocier_mcp.tools.coupon.is_authenticated", return_value=True),
-            patch("auto_grocier_mcp.tools.coupon._get_client") as mock_get_client,
+            patch("auto_grocer_mcp.tools.coupon.is_authenticated", return_value=True),
+            patch("auto_grocer_mcp.tools.coupon._get_client") as mock_get_client,
         ):
             mock_client = AsyncMock()
             mock_client.get_coupons.return_value = mock_result
@@ -276,7 +276,7 @@ class TestCouponClip:
     @pytest.mark.asyncio
     async def test_coupon_clip_requires_auth(self):
         """Test coupon_clip requires authentication."""
-        with patch("auto_grocier_mcp.tools.coupon.is_authenticated", return_value=False):
+        with patch("auto_grocer_mcp.tools.coupon.is_authenticated", return_value=False):
             result = await coupon_clip(coupon_id=84035988)
 
         assert result["error"] is True
@@ -303,8 +303,8 @@ class TestCouponClip:
         )
 
         with (
-            patch("auto_grocier_mcp.tools.coupon.is_authenticated", return_value=True),
-            patch("auto_grocier_mcp.tools.coupon._get_client") as mock_get_client,
+            patch("auto_grocer_mcp.tools.coupon.is_authenticated", return_value=True),
+            patch("auto_grocer_mcp.tools.coupon._get_client") as mock_get_client,
         ):
             mock_client = AsyncMock()
             mock_client.get_coupons.return_value = mock_result
@@ -336,8 +336,8 @@ class TestCouponClip:
         )
 
         with (
-            patch("auto_grocier_mcp.tools.coupon.is_authenticated", return_value=True),
-            patch("auto_grocier_mcp.tools.coupon._get_client") as mock_get_client,
+            patch("auto_grocer_mcp.tools.coupon.is_authenticated", return_value=True),
+            patch("auto_grocer_mcp.tools.coupon._get_client") as mock_get_client,
         ):
             mock_client = AsyncMock()
             mock_client.get_coupons.return_value = mock_result
@@ -352,8 +352,8 @@ class TestCouponClip:
     async def test_coupon_clip_executes_with_confirm(self):
         """Test coupon_clip executes clip with confirm=True."""
         with (
-            patch("auto_grocier_mcp.tools.coupon.is_authenticated", return_value=True),
-            patch("auto_grocier_mcp.tools.coupon._get_client") as mock_get_client,
+            patch("auto_grocer_mcp.tools.coupon.is_authenticated", return_value=True),
+            patch("auto_grocer_mcp.tools.coupon._get_client") as mock_get_client,
         ):
             mock_client = AsyncMock()
             mock_client.clip_coupon.return_value = {
@@ -376,7 +376,7 @@ class TestCouponClipped:
     @pytest.mark.asyncio
     async def test_coupon_clipped_requires_auth(self):
         """Test coupon_clipped requires authentication."""
-        with patch("auto_grocier_mcp.tools.coupon.is_authenticated", return_value=False):
+        with patch("auto_grocer_mcp.tools.coupon.is_authenticated", return_value=False):
             result = await coupon_clipped()
 
         assert result["error"] is True
@@ -416,8 +416,8 @@ class TestCouponClipped:
         )
 
         with (
-            patch("auto_grocier_mcp.tools.coupon.is_authenticated", return_value=True),
-            patch("auto_grocier_mcp.tools.coupon._get_client") as mock_get_client,
+            patch("auto_grocer_mcp.tools.coupon.is_authenticated", return_value=True),
+            patch("auto_grocer_mcp.tools.coupon._get_client") as mock_get_client,
         ):
             mock_client = AsyncMock()
             mock_client.get_clipped_coupons.return_value = mock_result
@@ -442,8 +442,8 @@ class TestCouponClipped:
         )
 
         with (
-            patch("auto_grocier_mcp.tools.coupon.is_authenticated", return_value=True),
-            patch("auto_grocier_mcp.tools.coupon._get_client") as mock_get_client,
+            patch("auto_grocer_mcp.tools.coupon.is_authenticated", return_value=True),
+            patch("auto_grocer_mcp.tools.coupon._get_client") as mock_get_client,
         ):
             mock_client = AsyncMock()
             mock_client.get_clipped_coupons.return_value = mock_result

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Entrypoint for the auto_grocier MCP container.
+# Entrypoint for the auto_grocer MCP container.
 #
 # Starts a virtual X display (Xvfb) on $DISPLAY so the nodriver login flow has a
 # screen to drive Chromium headfully, then execs the requested command (default:

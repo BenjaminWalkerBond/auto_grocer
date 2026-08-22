@@ -207,7 +207,7 @@ wheels = [
 ]
 
 [[package]]
-name = "auto-grocier"
+name = "auto-grocer"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

@@ -1,7 +1,7 @@
 # Status: <topic>
 
 <!--
-Shared status file for the auto_grocier multi-agent workflow. This is the single
+Shared status file for the auto_grocer multi-agent workflow. This is the single
 source of truth passed between the Orchestrator and the Product Designer /
 Developer / Tester subagents. Subagents run in isolated contexts and cannot see
 each other, so ALL shared state lives here.

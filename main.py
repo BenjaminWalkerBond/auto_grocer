@@ -1,4 +1,4 @@
-"""auto_grocier entrypoint.
+"""auto_grocer entrypoint.
 
 The browser automation now runs on the async **nodriver** stack in the
 ``session_maintenance`` package (Selenium / undetected-chromedriver have been
@@ -16,7 +16,7 @@ You can also run the package directly:
 """
 import nodriver
 
-from auto_grocier.session_maintenance.run import main as _run_main
+from auto_grocer.session_maintenance.run import main as _run_main
 
 if __name__ == "__main__":
     # nodriver ships its own event loop helper; asyncio.run is unreliable with it.

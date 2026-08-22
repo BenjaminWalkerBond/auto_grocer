@@ -1,7 +1,7 @@
-# auto_grocier — Agent Instructions
+# auto_grocer — Agent Instructions
 
 This project automates HEB grocery ordering. The primary interface is the **MCP server**
-(`auto-grocier`), which exposes grocery operations as tools over pure GraphQL.
+(`auto-grocer`), which exposes grocery operations as tools over pure GraphQL.
 
 ---
 
@@ -11,7 +11,7 @@ This project automates HEB grocery ordering. The primary interface is the **MCP 
 
 Before using any HEB grocery tools, validate the session:
 
-1. Call `mcp_auto-grocier_auth_status`
+1. Call `mcp_auto-grocer_auth_status`
 2. If `authenticated: false` → run the **refresh-heb-login** skill, then `refresh_session`
 3. If tools return `OPERATION_NOT_CAPTURED` → run the **refresh-graphql-hashes** skill, then `refresh_session`
 
@@ -68,7 +68,7 @@ VS Code auto-launches via `.vscode/mcp.json`.
 ### Adding to Claude as a Custom Connector
 
 Claude exposes MCP servers through **Settings → Connectors → Add custom connector**.
-There are two ways to connect `auto-grocier`, depending on transport:
+There are two ways to connect `auto-grocer`, depending on transport:
 
 #### Option A — Local stdio (works today, recommended)
 
@@ -94,7 +94,7 @@ the key is **`mcpServers`** — and paste that path in place of `<ABSOLUTE_PATH>
 ```json
 {
   "mcpServers": {
-    "auto-grocier": {
+    "auto-grocer": {
       "command": "docker",
       "args": [
         "compose",
@@ -107,7 +107,7 @@ the key is **`mcpServers`** — and paste that path in place of `<ABSOLUTE_PATH>
 ```
 
 > On Windows, use forward slashes in the JSON (e.g.
-> `C:/Users/you/auto_grocier/docker/docker-compose.yml`) — the PowerShell command
+> `C:/Users/you/auto_grocer/docker/docker-compose.yml`) — the PowerShell command
 > above already emits them.
 
 Config file location:
@@ -117,7 +117,7 @@ Config file location:
 | Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
 | macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
 
-Restart Claude, confirm `auto-grocier` shows a connected tool count, then ask it to
+Restart Claude, confirm `auto-grocer` shows a connected tool count, then ask it to
 call `auth_status`.
 
 #### Option B — Remote URL connector (requires HTTP transport)
@@ -129,12 +129,12 @@ This transport is **not enabled by default** — stdio is. Once enabled:
 
 1. Start the server in HTTP mode (bound to loopback):
    ```bash
-   AUTO_GROCIER_TRANSPORT=http uv run python mcp_server.py
+   AUTO_GROCER_TRANSPORT=http uv run python mcp_server.py
    ```
 2. Default endpoint URL: **`http://127.0.0.1:8000/mcp`**
-   (override host/port via `AUTO_GROCIER_HTTP_HOST` / `AUTO_GROCIER_HTTP_PORT`).
+   (override host/port via `AUTO_GROCER_HTTP_HOST` / `AUTO_GROCER_HTTP_PORT`).
 3. In Claude: **Settings → Connectors → Add custom connector** → paste the URL and the
-   bearer token (`AUTO_GROCIER_HTTP_TOKEN`, required in HTTP mode).
+   bearer token (`AUTO_GROCER_HTTP_TOKEN`, required in HTTP mode).
 4. For access outside localhost, front the loopback port with an HTTPS tunnel
    (Cloudflare Tunnel / Tailscale Funnel) and use the `https://<name>/mcp` URL — never
    a raw port-forward.

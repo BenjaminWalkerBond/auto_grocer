@@ -2,7 +2,7 @@
 
 ## 🎉 Implementation Complete!
 
-The PostgreSQL database integration has been successfully implemented for the auto_grocier project.
+The PostgreSQL database integration has been successfully implemented for the auto_grocer project.
 
 ---
 
@@ -105,9 +105,9 @@ brew services start postgresql
 ### 2. Create Database
 ```bash
 sudo -u postgres psql
-CREATE DATABASE auto_grocier;
-CREATE USER grocier_user WITH PASSWORD 'change-me';
-GRANT ALL PRIVILEGES ON DATABASE auto_grocier TO grocier_user;
+CREATE DATABASE auto_grocer;
+CREATE USER grocer_user WITH PASSWORD 'change-me';
+GRANT ALL PRIVILEGES ON DATABASE auto_grocer TO grocer_user;
 \q
 ```
 
@@ -116,8 +116,8 @@ Edit `.env`:
 ```
 DATABASE_HOST=localhost
 DATABASE_PORT=5432
-DATABASE_NAME=auto_grocier
-DATABASE_USER=grocier_user
+DATABASE_NAME=auto_grocer
+DATABASE_USER=grocer_user
 DATABASE_PASSWORD=your_password
 ```
 
@@ -142,8 +142,8 @@ python database/test_database.py
 
 ### Save Ingredient to Database
 ```python
-from auto_grocier.database.db_connection import get_db_session
-from auto_grocier.database.ingredient_repository import IngredientRepository
+from auto_grocer.database.db_connection import get_db_session
+from auto_grocer.database.ingredient_repository import IngredientRepository
 
 # Create session
 db = get_db_session()
@@ -175,7 +175,7 @@ healthy = ingredient_repo.get_by_tags(["fish", "vegetable"], match_all=False)
 
 ### Save Recipe with Ingredients
 ```python
-from auto_grocier.database.recipe_repository import RecipeRepository
+from auto_grocer.database.recipe_repository import RecipeRepository
 
 recipe_repo = RecipeRepository(db)
 
@@ -216,9 +216,9 @@ Modify `populate_ingredient_list()` to save to database:
 
 ```python
 def populate_ingredient_list_and_save(url_list):
-    from auto_grocier.database.db_connection import get_db_session
-    from auto_grocier.database.ingredient_repository import IngredientRepository
-    from auto_grocier.database.recipe_repository import RecipeRepository
+    from auto_grocer.database.db_connection import get_db_session
+    from auto_grocer.database.ingredient_repository import IngredientRepository
+    from auto_grocer.database.recipe_repository import RecipeRepository
     
     db = get_db_session()
     ingredient_repo = IngredientRepository(db)
@@ -254,9 +254,9 @@ Add database save/load methods:
 class IngredientList:
     def save_to_database(self, recipe_url=None):
         """Save all ingredients to database"""
-        from auto_grocier.database.db_connection import get_db_session
-        from auto_grocier.database.ingredient_repository import IngredientRepository
-        from auto_grocier.database.recipe_repository import RecipeRepository
+        from auto_grocer.database.db_connection import get_db_session
+        from auto_grocer.database.ingredient_repository import IngredientRepository
+        from auto_grocer.database.recipe_repository import RecipeRepository
         
         db = get_db_session()
         ingredient_repo = IngredientRepository(db)
@@ -321,13 +321,13 @@ pip install sqlalchemy psycopg2-binary
 
 ### Connection Errors
 ```python
-from auto_grocier.database.db_connection import test_connection
+from auto_grocer.database.db_connection import test_connection
 test_connection()
 ```
 
 ### View Configuration
 ```python
-from auto_grocier.database.db_config import DatabaseConfig
+from auto_grocer.database.db_config import DatabaseConfig
 DatabaseConfig.print_config()
 ```
 
@@ -349,6 +349,6 @@ DatabaseConfig.print_config()
 
 ## 🎊 Success!
 
-Your auto_grocier project now has a robust PostgreSQL database backend for storing and managing ingredients, recipes, and tags!
+Your auto_grocer project now has a robust PostgreSQL database backend for storing and managing ingredients, recipes, and tags!
 
 **Questions or issues?** Check the `database/README.md` file for detailed documentation.

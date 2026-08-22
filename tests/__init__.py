@@ -1,4 +1,4 @@
-"""auto_grocier test suite.
+"""auto_grocer test suite.
 
 Layout
 ------

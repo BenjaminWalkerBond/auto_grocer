@@ -1,5 +1,5 @@
 """Helpers for writing the Playwright-format ``auth.json`` storage-state file the
-vendored ``auto_grocier_mcp`` GraphQL client reads.
+vendored ``auto_grocer_mcp`` GraphQL client reads.
 
 The GraphQL client authenticates from ``auth.json`` (HEB session cookies plus the
 ``reese84`` WAF/bot-detection token). The session is produced by the nodriver
@@ -11,7 +11,7 @@ There is no Selenium dependency here anymore.
 import json
 from pathlib import Path
 
-# Default location expected by auto_grocier_mcp (see utils/config.py)
+# Default location expected by auto_grocer_mcp (see utils/config.py)
 DEFAULT_AUTH_PATH = Path("~/.texas-grocery-mcp/auth.json").expanduser()
 
 
@@ -76,7 +76,7 @@ def _force_authenticated():
     and rely on HEB's response to reveal whether the WAF accepts them.
     """
     try:
-        import auto_grocier_mcp.auth.session as session
+        import auto_grocer_mcp.auth.session as session
 
         session._is_authenticated = True
     except Exception:  # noqa: BLE001

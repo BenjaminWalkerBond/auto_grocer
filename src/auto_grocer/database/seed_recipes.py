@@ -22,10 +22,10 @@ import sys
 # Allow running directly: add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from auto_grocier.database.db_connection import get_db_session
-from auto_grocier.database.ingredient_repository import IngredientRepository
-from auto_grocier.database.recipe_repository import RecipeRepository
-from auto_grocier.recipe_grabber import extract_recipe_metadata, populate_ingredient_list
+from auto_grocer.database.db_connection import get_db_session
+from auto_grocer.database.ingredient_repository import IngredientRepository
+from auto_grocer.database.recipe_repository import RecipeRepository
+from auto_grocer.recipe_grabber import extract_recipe_metadata, populate_ingredient_list
 
 DEFAULT_URLS_FILE = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),

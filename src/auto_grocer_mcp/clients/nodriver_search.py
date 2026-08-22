@@ -68,7 +68,7 @@ class NodriverSearchClient:
             return self._browser
 
         # Reuse the maintained nodriver launcher (Xvfb / --no-sandbox aware).
-        from auto_grocier.session_maintenance.browser import start_browser
+        from auto_grocer.session_maintenance.browser import start_browser
 
         logger.info("Launching in-process nodriver browser for search fallback")
         browser = await start_browser(headless=False)
@@ -86,7 +86,7 @@ class NodriverSearchClient:
         CDP ``CookieParam`` objects so the rendered page carries the same
         authenticated session the httpx client uses.
         """
-        from auto_grocier_mcp.auth.session import get_cookies
+        from auto_grocer_mcp.auth.session import get_cookies
 
         cookies = get_cookies()
         if not cookies:

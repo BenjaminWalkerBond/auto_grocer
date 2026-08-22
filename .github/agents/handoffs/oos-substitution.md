@@ -1,7 +1,7 @@
 # Status: Intelligent Out-of-Stock Substitution
 
 <!--
-Shared status file for the auto_grocier multi-agent workflow. This is the single
+Shared status file for the auto_grocer multi-agent workflow. This is the single
 source of truth passed between the Orchestrator and the Product Designer /
 Developer / Tester subagents. Subagents run in isolated contexts and cannot see
 each other, so ALL shared state lives here.
@@ -89,8 +89,8 @@ Add a new `find_substitute` tool to the MCP server that:
 | File | Change |
 |------|--------|
 | `claude.py` | Add `evaluate_substitutes()` function |
-| `auto_grocier_mcp/tools/substitution.py` | New file with `find_substitute` tool |
-| `auto_grocier_mcp/server.py` | Register the new tool |
+| `auto_grocer_mcp/tools/substitution.py` | New file with `find_substitute` tool |
+| `auto_grocer_mcp/server.py` | Register the new tool |
 | `tests/unit/test_substitution.py` | Unit tests for Claude prompt and parsing |
 | `tests/integration/test_substitution_live.py` | Integration test with real HEB search |
 
@@ -138,8 +138,8 @@ The prompt must:
 ## dev_plan (Developer — write BEFORE any code)
 files_to_change:
   - claude.py                               # Add evaluate_substitutes() function
-  - auto_grocier_mcp/tools/substitution.py # New file - find_substitute tool
-  - auto_grocier_mcp/server.py             # Register find_substitute tool
+  - auto_grocer_mcp/tools/substitution.py # New file - find_substitute tool
+  - auto_grocer_mcp/server.py             # Register find_substitute tool
   - tests/unit/test_substitution.py         # Unit tests with mocked Claude
   - tests/integration/test_substitution_live.py # Live integration tests
 
@@ -221,11 +221,11 @@ summary: |
 
 changed_files:
   - claude.py (added evaluate_substitutes function ~150 LOC)
-  - auto_grocier_mcp/tools/substitution.py (new file ~280 LOC)
-  - auto_grocier_mcp/server.py (import + registration)
+  - auto_grocer_mcp/tools/substitution.py (new file ~280 LOC)
+  - auto_grocer_mcp/server.py (import + registration)
   - tests/unit/test_substitution.py (new file, 18 tests)
   - tests/integration/test_substitution_live.py (new file, 8 integration tests)
-  - auto_grocier_mcp/tools/cart.py (fixed pre-existing leading whitespace)
+  - auto_grocer_mcp/tools/cart.py (fixed pre-existing leading whitespace)
 
 ## Test results
 - **ruff check** (new files): All checks passed. Pre-existing W293 whitespace warnings in `claude.py` lines 58/61 — not introduced by this PR.
@@ -241,7 +241,7 @@ changed_files:
 AC7 (MODE=test manual run) not executed — requires valid HEB session and live browser; deferred to integration testing phase.
 commands:
   1. source venv/bin/activate
-  2. ruff check claude.py auto_grocier_mcp/tools/substitution.py auto_grocier_mcp/server.py tests/unit/test_substitution.py
+  2. ruff check claude.py auto_grocer_mcp/tools/substitution.py auto_grocer_mcp/server.py tests/unit/test_substitution.py
   3. pytest tests/unit/test_substitution.py -v
   4. pytest tests/unit/ -v
 criteria_mapping:

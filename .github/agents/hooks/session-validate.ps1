@@ -18,14 +18,14 @@ $content = @"
 
 The Grocery Ordering agent has started. Before using any HEB tools, you MUST:
 
-1. Call ``mcp_auto-grocier_auth_status`` to verify the session
+1. Call ``mcp_auto-grocer_auth_status`` to verify the session
 2. If ``authenticated: false``:
    - Run the **refresh-heb-login** skill
-   - After that skill completes, call ``mcp_auto-grocier_refresh_session``
-   - Re-check ``mcp_auto-grocier_auth_status``
+   - After that skill completes, call ``mcp_auto-grocer_refresh_session``
+   - Re-check ``mcp_auto-grocer_auth_status``
 3. If tools return ``OPERATION_NOT_CAPTURED``:
    - Run the **refresh-graphql-hashes** skill
-   - After that skill completes, call ``mcp_auto-grocier_refresh_session``
+   - After that skill completes, call ``mcp_auto-grocer_refresh_session``
 
 Delete this file once the session is validated.
 "@

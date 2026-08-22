@@ -4,7 +4,7 @@ import pytest
 import respx
 from httpx import Response
 
-from auto_grocier_mcp.clients.graphql import (
+from auto_grocer_mcp.clients.graphql import (
     KNOWN_STORES,
     PERSISTED_QUERIES,
     GraphQLError,
@@ -25,7 +25,7 @@ async def test_search_stores_returns_result_with_geocoding(client):
     # Mock the geocoding service
     from unittest.mock import AsyncMock, patch
 
-    from auto_grocier_mcp.services.geocoding import GeocodingResult
+    from auto_grocer_mcp.services.geocoding import GeocodingResult
 
     mock_geocoding_result = GeocodingResult(
         latitude=30.2672,
@@ -61,7 +61,7 @@ async def test_search_stores_returns_result_with_geocoding(client):
         return_value=Response(200, json=mock_store_response)
     )
 
-    with patch("auto_grocier_mcp.clients.graphql.GeocodingService") as mock_geo_class:
+    with patch("auto_grocer_mcp.clients.graphql.GeocodingService") as mock_geo_class:
         mock_geo_service = AsyncMock()
         mock_geo_service.geocode = AsyncMock(return_value=mock_geocoding_result)
         mock_geo_service.close = AsyncMock()
@@ -119,7 +119,7 @@ async def test_search_products_uses_typeahead(client, monkeypatch):
     """Should use typeahead for product search."""
     # Mock as not authenticated to force typeahead fallback
     monkeypatch.setattr(
-        "auto_grocier_mcp.clients.graphql.is_authenticated",
+        "auto_grocer_mcp.clients.graphql.is_authenticated",
         lambda: False,
     )
 
@@ -220,7 +220,7 @@ async def test_persisted_query_not_found_error(client):
         return_value=Response(200, json=mock_response)
     )
 
-    from auto_grocier_mcp.clients.graphql import PersistedQueryNotFoundError
+    from auto_grocer_mcp.clients.graphql import PersistedQueryNotFoundError
 
     # Test the underlying method directly
     with pytest.raises(PersistedQueryNotFoundError):
@@ -272,11 +272,11 @@ def test_client_throttlers_use_settings(monkeypatch):
     # Then reload config module to pick up new env vars
     import importlib
 
-    import auto_grocier_mcp.utils.config as config_module
+    import auto_grocer_mcp.utils.config as config_module
     importlib.reload(config_module)
 
     # Also reload the graphql module so it uses fresh settings
-    import auto_grocier_mcp.clients.graphql as graphql_module
+    import auto_grocer_mcp.clients.graphql as graphql_module
     importlib.reload(graphql_module)
 
     try:
@@ -515,7 +515,7 @@ async def test_select_store_reports_error_on_graphql_error():
 
     from unittest.mock import AsyncMock, MagicMock, patch
 
-    from auto_grocier_mcp.clients.graphql import GraphQLError
+    from auto_grocer_mcp.clients.graphql import GraphQLError
 
     with patch.object(client, "_get_authenticated_client") as mock_get_auth:
         mock_auth_client = MagicMock()

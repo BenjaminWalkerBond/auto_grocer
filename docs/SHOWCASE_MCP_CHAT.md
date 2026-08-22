@@ -1,6 +1,6 @@
 # Showcase — MCP Server in the Chat Window
 
-Shot list / outline for recording the **`auto-grocier` MCP server driving a real HEB
+Shot list / outline for recording the **`auto-grocer` MCP server driving a real HEB
 cart from your coding-agent chat** (GitHub Copilot Agent mode / Claude Desktop). The
 whole stack runs in Docker (Postgres + MCP + headless Chromium); you just talk to it.
 
@@ -13,7 +13,7 @@ whole stack runs in Docker (Postgres + MCP + headless Chromium); you just talk t
 
 - [ ] Docker Desktop running; MCP image built
       (`docker compose -f docker/docker-compose.yml build mcp`).
-- [ ] `.vscode/mcp.json` present so Copilot auto-detects `auto-grocier`.
+- [ ] `.vscode/mcp.json` present so Copilot auto-detects `auto-grocer`.
 - [ ] `.env` filled in (HEB creds, Gmail IMAP app password, `CLAUDE_API_KEY`,
       `DATABASE_PASSWORD`).
 - [ ] A **valid HEB session already seeded** (do a warm-up so the demo doesn't stall
@@ -25,7 +25,7 @@ whole stack runs in Docker (Postgres + MCP + headless Chromium); you just talk t
 
 ## 1. Hook (0:00–0:15)
 
-- [ ] On screen: chat panel, `auto-grocier` shown as a connected MCP server.
+- [ ] On screen: chat panel, `auto-grocer` shown as a connected MCP server.
 - [ ] Talking point: "No script, no clicking — I just *ask* my agent to shop my HEB
       cart. It calls MCP tools that drive HEB over GraphQL."
 

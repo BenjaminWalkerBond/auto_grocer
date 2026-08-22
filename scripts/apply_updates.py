@@ -25,12 +25,12 @@ import re
 import sys
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-# The app now lives under src/auto_grocier/ (installable package layout).
-_PKG_ROOT = os.path.join(REPO_ROOT, "src", "auto_grocier")
+# The app now lives under src/auto_grocer/ (installable package layout).
+_PKG_ROOT = os.path.join(REPO_ROOT, "src", "auto_grocer")
 UPDATED_FUNCTIONS_DIR = os.path.join(_PKG_ROOT, "session_maintenance", "updated_functions")
 
 # Where to look for a function when the recorded source path can't be used
-# (e.g. it was captured inside Docker as /app/src/auto_grocier/session_maintenance/flows.py).
+# (e.g. it was captured inside Docker as /app/src/auto_grocer/session_maintenance/flows.py).
 _SEARCH_GLOBS = (
     os.path.join(_PKG_ROOT, "session_maintenance", "*.py"),
     os.path.join(_PKG_ROOT, "utility", "*.py"),

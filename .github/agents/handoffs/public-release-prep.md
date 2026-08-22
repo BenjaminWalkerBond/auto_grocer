@@ -1,7 +1,7 @@
 # Status: public-release-prep
 
 <!--
-Shared status file for the auto_grocier multi-agent workflow. This is the single
+Shared status file for the auto_grocer multi-agent workflow. This is the single
 source of truth passed between the Orchestrator and the Product Designer /
 Developer / Tester subagents. Subagents run in isolated contexts and cannot see
 each other, so ALL shared state lives here.
@@ -14,7 +14,7 @@ Rules:
 -->
 
 topic: public-release-prep
-chosen_idea: Prepare auto_grocier for its first public open-source release — scrub secrets/PII from the working tree and git history, add MIT licensing and full attribution to the vendored texas-grocery-mcp fork, correct the docs, clean up repo hygiene, harden CI, and tag v0.1.0.
+chosen_idea: Prepare auto_grocer for its first public open-source release — scrub secrets/PII from the working tree and git history, add MIT licensing and full attribution to the vendored texas-grocery-mcp fork, correct the docs, clean up repo hygiene, harden CI, and tag v0.1.0.
 status: READY_FOR_DEV   # READY_FOR_DEV | INFEASIBLE | READY_FOR_TEST | TESTS_FAILED | PASSED | ERROR | BLOCKED
 next_agent: product-designer
 current_cycle: 6
@@ -60,7 +60,7 @@ CI now: ci.yml lints `ruff check .` (all first-party) and runs the full `pytest 
 both gating; a `typecheck` mypy job runs ADVISORY (continue-on-error: true); a new
 .github/workflows/docker-build.yml runs the compose build scoped to main push/PR with a path
 filter, setting a throwaway DATABASE_PASSWORD and creating an empty .env for interpolation.
-Also fixed the Cycle 4 cosmetic leftover: auto_grocier_mcp/server.py line 1 docstring.
+Also fixed the Cycle 4 cosmetic leftover: auto_grocer_mcp/server.py line 1 docstring.
 
 DEFERRED TECH DEBT (post-release): F841/E722 in session_maintenance/ + utility/; tightening
 mypy from advisory to gating; test coverage for session_maintenance/ and utility/, which
@@ -86,7 +86,7 @@ non_goals:
   - Re-opening Cycles 1-4 (secrets, licensing/attribution, docs, hygiene, the rename).
   - Any change to hyphenated on-disk runtime names (~/.texas-grocery-mcp/, the Docker volume,
     keyring SERVICE_NAME) — permanent per Cycle 4.
-  - Linting/reformatting the vendored auto_grocier_mcp/ tree — it stays extend-excluded.
+  - Linting/reformatting the vendored auto_grocer_mcp/ tree — it stays extend-excluded.
     (The single one-line docstring edit in Q-9 is a targeted content fix, not reformatting.)
   - Adding new RUNTIME dependencies. (mypy is dev-only tooling in requirements-dev.txt.)
   - Rewriting F841/E722 in the untested trees (deliberately deferred, see Q-4).
@@ -130,7 +130,7 @@ scope_and_approach: >
     for F401 re-export side effects. Ruff honors __all__, so a symbol re-exported via __all__
     is left alone; but an __init__.py that re-exports WITHOUT __all__ will be mis-fixed. Where
     a removed import was a deliberate re-export, either add it to __all__ or annotate
-    `# noqa: F401`. (auto_grocier_mcp/**/__init__.py is ruff-excluded and NOT touched.)
+    `# noqa: F401`. (auto_grocer_mcp/**/__init__.py is ruff-excluded and NOT touched.)
     Re-run `pytest tests/unit` after the auto-fix to confirm no import breakage.
 
   Q-3 — Manually review and fix EVERY F821.
@@ -160,7 +160,7 @@ scope_and_approach: >
 
   Q-5 — Fix the 6 Windows permission-test failures (platform-aware; POSIX assertion preserved).
     Exactly six tests fail with `assert 438 == 384` (0o666 vs 0o600 = SECURE_FILE_MODE,
-    auto_grocier_mcp/utils/secure_file.py L15):
+    auto_grocer_mcp/utils/secure_file.py L15):
       - tests/unit/test_secure_file.py L18  test_creates_file_with_correct_permissions
       - tests/unit/test_secure_file.py L61  test_fixes_insecure_permissions_on_existing_file
       - tests/unit/test_secure_file.py L99  test_fixes_insecure_permissions
@@ -180,7 +180,7 @@ scope_and_approach: >
 
   Q-6 — Expand .github/workflows/ci.yml (gating lint + full test).
     - Lint step -> `ruff check .` (drop the narrow `mcp_server.py utility/graphql_cart.py
-      tests/` scope; auto_grocier_mcp stays excluded via pyproject). Update the stale L34
+      tests/` scope; auto_grocer_mcp stays excluded via pyproject). Update the stale L34
       comment.
     - Test step -> `pytest tests/unit` (full suite; the 6 POSIX tests run and pass on ubuntu).
     - Keep triggers: push + pull_request to `dev` and `main`. Both jobs gating (no
@@ -192,7 +192,7 @@ scope_and_approach: >
     Add a SEPARATE workflow .github/workflows/docker-build.yml running
     `docker compose -f docker/docker-compose.yml build mcp`, triggered ONLY on push to `main`
     + pull_request targeting `main`, and PATH-FILTERED to Docker-relevant files (docker/**,
-    requirements.txt, requirements-dev.txt, mcp_server.py, auto_grocier_mcp/**,
+    requirements.txt, requirements-dev.txt, mcp_server.py, auto_grocer_mcp/**,
     pyproject.toml). Justification: the image installs Chromium/nodriver — heavy, slow, and
     network-flake-prone; running it on every dev-branch PR would drag the loop. A separate file
     is required because per-job trigger/path scoping is not possible within one workflow's `on:`.
@@ -204,20 +204,20 @@ scope_and_approach: >
   Q-8 — Add type checking (ADVISORY / NON-BLOCKING — explicitly not a gate this cycle).
     - Add `mypy` to requirements-dev.txt (dev-only tooling; not a runtime dep).
     - Add [tool.mypy] to pyproject.toml: python_version = "3.12",
-      ignore_missing_imports = true, and `exclude` covering auto_grocier_mcp, debug_logs,
+      ignore_missing_imports = true, and `exclude` covering auto_grocer_mcp, debug_logs,
       word_dictionaries, tests.
     - Add a `typecheck` CI job with `continue-on-error: true`, running mypy over the
-      first-party source (excluding auto_grocier_mcp). It reports but does NOT block; it can be
+      first-party source (excluding auto_grocer_mcp). It reports but does NOT block; it can be
       tightened / red-gated in a later cycle.
 
   Q-9 — Fix the Cycle-4 cosmetic docstring leftover.
-    auto_grocier_mcp/server.py line 1 reads `"""Texas Grocery MCP Server - FastMCP entry
-    point."""` -> `"""Auto Grocier MCP Server - FastMCP entry point."""`. This is the ONLY edit
-    under auto_grocier_mcp/; it does not affect the ruff count (tree remains excluded).
+    auto_grocer_mcp/server.py line 1 reads `"""Texas Grocery MCP Server - FastMCP entry
+    point."""` -> `"""Auto Grocer MCP Server - FastMCP entry point."""`. This is the ONLY edit
+    under auto_grocer_mcp/; it does not affect the ruff count (tree remains excluded).
 
 acceptance_criteria:
   1. `ruff check .` exits 0 with ZERO reported errors (down from the 286 baseline), with
-     auto_grocier_mcp still excluded.
+     auto_grocer_mcp still excluded.
   2. `ruff check . --select F821` reports 0 — no F821 remains anywhere in first-party code,
      AND the dev notes enumerate every original F821 site with its resolution.
   3. `ruff check . --select F401,I001,W293` reports 0 repo-wide.
@@ -229,7 +229,7 @@ acceptance_criteria:
   5. No first-party __init__.py lost a consumed re-export:
      `python -c "import classes, database, session_maintenance"` exits 0.
   6. pyproject.toml still sets line-length = 100, target-version = "py312", and extend-exclude
-     still contains "auto_grocier_mcp".
+     still contains "auto_grocer_mcp".
   7. `python -m compileall -q mcp_server.py classes database session_maintenance utility
      recipe_grabber.py claude.py main.py` exits 0.
   8. On WINDOWS, `pytest tests/unit` reports 0 failed / 338 passed / 8 skipped.
@@ -241,13 +241,13 @@ acceptance_criteria:
   11. Exactly 6 skipif markers were added, on exactly the 6 enumerated tests and no others:
       `grep -rn "skipif" tests/unit/test_secure_file.py tests/unit/test_credentials.py`
       returns 5 + 1.
-  12. auto_grocier_mcp/server.py line 1 no longer contains "Texas Grocery MCP"; `git diff`
-      under auto_grocier_mcp/ is exactly that 1 line.
+  12. auto_grocer_mcp/server.py line 1 no longer contains "Texas Grocery MCP"; `git diff`
+      under auto_grocer_mcp/ is exactly that 1 line.
   13. .github/workflows/ci.yml lint step runs `ruff check .` and the test step runs
       `pytest tests/unit`; both gating (no continue-on-error); triggers still include push +
       pull_request to `dev` and `main`.
   14. A `typecheck` job (mypy) exists with `continue-on-error: true`; `mypy` is declared in
-      requirements-dev.txt; [tool.mypy] in pyproject.toml excludes auto_grocier_mcp.
+      requirements-dev.txt; [tool.mypy] in pyproject.toml excludes auto_grocer_mcp.
   15. The Docker-build check runs `docker compose -f docker/docker-compose.yml build mcp`, is
       scoped so it does NOT run on every dev-branch PR (main push/PR + path filter), and sets a
       throwaway DATABASE_PASSWORD in its env so compose interpolation succeeds.
@@ -291,7 +291,7 @@ risks_and_dependencies:
 feasibility: FEASIBLE (with two documented, flagged judgment calls — see Q-3).
 
 ### Q-1 triage output (ruff 0.16.0, `ruff check . --statistics`, baseline 286)
-Per-rule breakdown (auto_grocier_mcp/debug_logs/word_dictionaries already excluded):
+Per-rule breakdown (auto_grocer_mcp/debug_logs/word_dictionaries already excluded):
 
 | Rule | Count | Fixable | Class | Handling |
 |------|-------|---------|-------|----------|
@@ -335,7 +335,7 @@ F841 concentration: 3 in `recipe_grabber.py` (OUTSIDE scoped trees → fixed ind
 - `.github/workflows/ci.yml` — Q-6 lint→`ruff check .`, test→`pytest tests/unit`, + Q-8 typecheck job.
 - `.github/workflows/docker-build.yml` — Q-7 NEW scoped Docker build check.
 - `requirements-dev.txt` — Q-8 add `mypy`.
-- `auto_grocier_mcp/server.py` — Q-9 one-line docstring fix (the ONLY edit under that tree).
+- `auto_grocer_mcp/server.py` — Q-9 one-line docstring fix (the ONLY edit under that tree).
 
 ### Q-3 — every F821 site + planned resolution (criterion 2 enumeration)
 1. `mcp_server.py:703` `request` (also `clear_first` in same block): the body of the
@@ -383,20 +383,20 @@ job + Q-7 docker-build workflow + Q-9 docstring → full verification block.
 
 ## Cycle 4 outcome: PASSED (2026-07-30)
 All 16 criteria verified. Zero regressions (pytest 6f/338p/2s, ruff 286).
-`texas_grocery_mcp/` -> `auto_grocier_mcp/` via a single `git mv` (rename history preserved).
+`texas_grocery_mcp/` -> `auto_grocer_mcp/` via a single `git mv` (rename history preserved).
 61 files touched, ~150 of the occurrences in tests/unit/ including every `patch("...")`
 string target. Upstream MIT LICENSE byte-identical across the move
 (sha256 1d763a80c06995adde817c91c5230d13e788a47fc3a84b22296ebf225d3da21d).
 All 33 surviving HYPHENATED `texas-grocery-mcp` matches individually reviewed and confirmed
 in the KEEP set — zero over-eager replacements, so keyring SERVICE_NAME, the
 ~/.texas-grocery-mcp/ session dir, and the Docker volume mount are intact.
-Dormant vendored server identity fixed: `FastMCP(name="auto-grocier-mcp")`.
+Dormant vendored server identity fixed: `FastMCP(name="auto-grocer-mcp")`.
 Adjudications: (a) C2-vs-C10 design contradiction — the underscore token legitimately
 survives in exactly 3 attribution-prose sites (NOTICE:16, pyproject.toml:6, README.md:279)
 stating the package was "formerly imported as texas_grocery_mcp"; accepted, matching the
 Cycle 2 precedent. (b) The Developer renamed 5 `utility/*.py` files the design failed to
 enumerate — real imports, required by C2, verified logic-free.
-KNOWN COSMETIC LEFTOVER (no criterion covered it): `auto_grocier_mcp/server.py` line 1
+KNOWN COSMETIC LEFTOVER (no criterion covered it): `auto_grocer_mcp/server.py` line 1
 module docstring still reads "Texas Grocery MCP Server". Candidate for Cycle 5/6 cleanup.
 
 ## Cycle 3 outcome: PASSED (2026-07-30)
@@ -406,21 +406,21 @@ Deleted: Pipfile, Pipfile.lock, root DATABASE_IMPLEMENTATION.md, docs/README.md,
 Fixed a REAL LATENT BUG: scripts/apply_updates.py read grocery_browser/updated_functions/
 while self-healing writes to session_maintenance/updated_functions/.
 docker/docker-compose.yml now uses fail-fast `${DATABASE_PASSWORD:?...}` in both places
-with an auto_grocier_pgdata migration note.
-Adjudications: (a) the one `grocier_user_123` still rendered by `docker compose config`
+with an auto_grocer_pgdata migration note.
+Adjudications: (a) the one `grocer_user_123` still rendered by `docker compose config`
 comes from the owner's UNTRACKED, gitignored personal .env via `env_file: ../.env`, not the
 tracked compose file — accepted, a fresh clone is clean. (b) The designer's claim that the
 two DATABASE_IMPLEMENTATION.md files were byte-identical was WRONG; the Developer caught
-the difference (root had `grocier_user_123`, docs/ had `your_password`) and aligned docs/
+the difference (root had `grocer_user_123`, docs/ had `your_password`) and aligned docs/
 to `change-me`.
 
 ---
 
-## Cycle 4 design (Product Designer, Mode C) — Package rename texas_grocery_mcp -> auto_grocier_mcp
+## Cycle 4 design (Product Designer, Mode C) — Package rename texas_grocery_mcp -> auto_grocer_mcp
 
 goal: >
-  Rename the vendored Python package directory texas_grocery_mcp/ to auto_grocier_mcp/ and
-  rewrite every PYTHON IDENTIFIER `texas_grocery_mcp` (underscores) to `auto_grocier_mcp`
+  Rename the vendored Python package directory texas_grocery_mcp/ to auto_grocer_mcp/ and
+  rewrite every PYTHON IDENTIFIER `texas_grocery_mcp` (underscores) to `auto_grocer_mcp`
   across the ~30 files that reference it — internal package imports, mcp_server.py, the
   entire tests/ tree (including the string `patch("texas_grocery_mcp....")` mock targets),
   two first-party consumer scripts, and the packaging/CI/agent config — so that shipping a
@@ -453,7 +453,7 @@ scope_and_approach: >
   ### THE DISCRIMINATOR RULE (read first; applies to every work item)
   Two distinct tokens differ only by separator:
     - `texas_grocery_mcp` (UNDERSCORES) = Python package / import path / package dir name
-      -> RENAME to `auto_grocier_mcp`. NO EXCEPTIONS.
+      -> RENAME to `auto_grocer_mcp`. NO EXCEPTIONS.
     - `texas-grocery-mcp` (HYPHENS) = keyring service name, ~/.texas-grocery-mcp/ path,
       Docker volume/mount, OR the upstream project name/URL used for attribution
       -> KEEP UNCHANGED, except the small enumerated cosmetic/identity set in R-4 and R-5.
@@ -467,15 +467,15 @@ scope_and_approach: >
   at L18/L298 (KEEP). This CANNOT be a blanket per-file substitution.
 
   R-1 — Move the directory with history (FIRST, as a single Git rename).
-    `git mv texas_grocery_mcp auto_grocier_mcp`. This moves the entire subtree — including
-    texas_grocery_mcp/LICENSE -> auto_grocier_mcp/LICENSE — in one operation, so the upstream
+    `git mv texas_grocery_mcp auto_grocer_mcp`. This moves the entire subtree — including
+    texas_grocery_mcp/LICENSE -> auto_grocer_mcp/LICENSE — in one operation, so the upstream
     MIT LICENSE rides along BYTE-FOR-BYTE and Git records a rename (preserving git blame
     provenance). Do NOT delete-and-recreate. BEFORE the move, capture sha256 of
-    texas_grocery_mcp/LICENSE; after, confirm it matches auto_grocier_mcp/LICENSE (criterion 5).
+    texas_grocery_mcp/LICENSE; after, confirm it matches auto_grocer_mcp/LICENSE (criterion 5).
     The tree is broken until R-2/R-3 complete; that is expected.
 
   R-2 — Rewrite the Python identifier in all .py files:
-    - Vendored package internals (~28 modules, now under auto_grocier_mcp/): all top-level
+    - Vendored package internals (~28 modules, now under auto_grocer_mcp/): all top-level
       and function-local imports — clients/graphql.py, clients/__init__.py, models/__init__.py,
       reliability/__init__.py, services/__init__.py, observability/{__init__,health,logging}.py,
       auth/{__init__,session,credentials,browser_refresh}.py,
@@ -500,7 +500,7 @@ scope_and_approach: >
       manual_scripts/test_graphql_mode.py (~L111).
 
   R-3 — Rewrite the underscore identifier in non-.py packaging / CI / agent config:
-    - pyproject.toml L40 `extend-exclude = ["texas_grocery_mcp", ...]` -> "auto_grocier_mcp"
+    - pyproject.toml L40 `extend-exclude = ["texas_grocery_mcp", ...]` -> "auto_grocer_mcp"
       (THIS is what keeps the vendored tree out of the ruff count — see risks), plus the
       provenance comment prose at L5/L8 and the exclude comment at L38.
     - requirements.txt L19 comment.
@@ -508,16 +508,16 @@ scope_and_approach: >
     - .github/agents/developer.agent.md L38.
     - .github/agents/handoffs/oos-substitution.md package-path refs
       (L92/L93/L141/L142/L224/L225/L228/L244).
-    - Package-path (slash) references in NOTICE and README.md -> auto_grocier_mcp/... (R-6).
+    - Package-path (slash) references in NOTICE and README.md -> auto_grocer_mcp/... (R-6).
 
   R-4 — Fix the dormant upstream identity. RECOMMENDATION: RENAME the identity string;
     do NOT delete the file.
-    auto_grocier_mcp/server.py ~L162 hard-codes `FastMCP(name="texas-grocery-mcp", ...)` with
+    auto_grocer_mcp/server.py ~L162 hard-codes `FastMCP(name="texas-grocery-mcp", ...)` with
     instructions headed "## Texas Grocery MCP". This server is NEVER started — the real entry
-    point is mcp_server.py L519 `FastMCP(name="auto-grocier")`, and a repo-wide search for
+    point is mcp_server.py L519 `FastMCP(name="auto-grocer")`, and a repo-wide search for
     `texas_grocery_mcp.server` finds NO importers (verified dormant). Change the identity to
-    `name="auto-grocier-mcp"` and the heading to "## Auto Grocier MCP" (kept intentionally
-    distinct from the canonical `auto-grocier` so it doesn't masquerade as the shipped server).
+    `name="auto-grocer-mcp"` and the heading to "## Auto Grocer MCP" (kept intentionally
+    distinct from the canonical `auto-grocer` so it doesn't masquerade as the shipped server).
     Justification for rename over delete: (a) this is a rename cycle, not a deletion cycle —
     Cycle 3 already handled dead-code removal; (b) NOTICE cites .../server.py as a genuine fork
     modification (the find_substitute tool-registration line), so deleting would make that
@@ -525,7 +525,7 @@ scope_and_approach: >
     reversible. This hyphenated string is an ENUMERATED EXCEPTION to the discriminator rule.
 
   R-5 — Cosmetic user-visible install strings (the other enumerated hyphen exceptions).
-    Replace `pip install texas-grocery-mcp[browser]` -> `pip install auto-grocier-mcp[browser]`
+    Replace `pip install texas-grocery-mcp[browser]` -> `pip install auto-grocer-mcp[browser]`
     at auth/browser_refresh.py L7, L302, L804, and tools/session.py L249. These are user-facing
     guidance strings, not a keyring/path/volume key and not attribution.
 
@@ -534,7 +534,7 @@ scope_and_approach: >
     KEEP every existing attribution element — "Michael Walker", the upstream URL
     https://github.com/mgwalkerjr95/texas-grocery-mcp (HYPHENS, KEEP), "MIT", "modified from
     the original" — repoint package-path references from texas_grocery_mcp/... to
-    auto_grocier_mcp/... (including auto_grocier_mcp/LICENSE), and ADD a clause stating the
+    auto_grocer_mcp/... (including auto_grocer_mcp/LICENSE), and ADD a clause stating the
     package was FORMERLY IMPORTED AS `texas_grocery_mcp` so the lineage is traceable. The
     upstream MIT LICENSE TEXT must remain byte-for-byte verbatim — only surrounding prose changes.
 
@@ -547,16 +547,16 @@ scope_and_approach: >
     upstream project name/URL in NOTICE/README/pyproject.
 
 acceptance_criteria:
-  1. Directory texas_grocery_mcp/ does NOT exist; auto_grocier_mcp/ exists and contains
+  1. Directory texas_grocery_mcp/ does NOT exist; auto_grocer_mcp/ exists and contains
      auth/credentials.py, clients/graphql.py, server.py, and LICENSE.
   2. `git grep -nE "texas_grocery_mcp"` (UNDERSCORES) across the whole repo EXCLUDING
      .github/agents/handoffs/public-release-prep.md returns ZERO matches.
   3. OVER-EAGER-REPLACEMENT GUARD: `git grep -nE "texas-grocery-mcp"` (HYPHENS) still returns
      matches, and each surviving match is in the KEEP set (R-7) — no hyphenated
      runtime/attribution name was rewritten except the enumerated R-4/R-5 strings.
-  4. auto_grocier_mcp/auth/credentials.py still contains, byte-identical,
+  4. auto_grocer_mcp/auth/credentials.py still contains, byte-identical,
      `SERVICE_NAME = "texas-grocery-mcp"` (hyphens).
-  5. LICENSE BYTE-IDENTICAL: sha256(auto_grocier_mcp/LICENSE) equals the sha256 of
+  5. LICENSE BYTE-IDENTICAL: sha256(auto_grocer_mcp/LICENSE) equals the sha256 of
      texas_grocery_mcp/LICENSE captured immediately before R-1, and it still contains
      `MIT` and `Michael Walker`.
   6. Runtime paths unchanged: docker/docker-compose.yml still mounts
@@ -564,22 +564,22 @@ acceptance_criteria:
      `mkdir -p /root/.texas-grocery-mcp`, .gitignore/.dockerignore still ignore
      `.texas-grocery-mcp/`; utils/config.py and clients/graphql.py still reference
      `~/.texas-grocery-mcp/...`.
-  7. pyproject.toml extend-exclude now lists "auto_grocier_mcp" and no longer lists
+  7. pyproject.toml extend-exclude now lists "auto_grocer_mcp" and no longer lists
      "texas_grocery_mcp".
-  8. Dormant-server identity fixed: auto_grocier_mcp/server.py FastMCP(name=...) is no longer
+  8. Dormant-server identity fixed: auto_grocer_mcp/server.py FastMCP(name=...) is no longer
      "texas-grocery-mcp" and its instructions heading is no longer "## Texas Grocery MCP";
-     mcp_server.py still contains `FastMCP(name="auto-grocier")` UNCHANGED.
+     mcp_server.py still contains `FastMCP(name="auto-grocer")` UNCHANGED.
   9. Cosmetic install strings updated: no `pip install texas-grocery-mcp[browser]` remains in
      auth/browser_refresh.py or tools/session.py.
   10. ATTRIBUTION EXPLICIT POST-RENAME: NOTICE, README.md Credits, and the pyproject.toml
       provenance comment each still contain "Michael Walker",
       github.com/mgwalkerjr95/texas-grocery-mcp, "MIT", and "modified from the original",
       AND each now states the package was formerly imported as `texas_grocery_mcp`.
-  11. auto_grocier_mcp/LICENSE exists, and NOTICE/README.md/pyproject.toml reference
-      auto_grocier_mcp/LICENSE (not texas_grocery_mcp/LICENSE).
-  12. Every .py under auto_grocier_mcp/ parses: `python -m compileall -q auto_grocier_mcp`
+  11. auto_grocer_mcp/LICENSE exists, and NOTICE/README.md/pyproject.toml reference
+      auto_grocer_mcp/LICENSE (not texas_grocery_mcp/LICENSE).
+  12. Every .py under auto_grocer_mcp/ parses: `python -m compileall -q auto_grocer_mcp`
       exits 0.
-  13. `git grep -c "auto_grocier_mcp" mcp_server.py` >= 11 and
+  13. `git grep -c "auto_grocer_mcp" mcp_server.py` >= 11 and
       `git grep -c "texas_grocery_mcp" mcp_server.py` == 0.
   14. FULL UNIT SUITE MATCHES BASELINE EXACTLY: `pytest tests/unit` = 6 failed / 338 passed /
       2 skipped, same categories/counts. This is the real proof the renamed imports and every
@@ -601,7 +601,7 @@ risks_and_dependencies:
     THE GENUINELY DANGEROUS EDGE is a PARTIAL MOVE WHERE OLD AND NEW PACKAGE DIRS COEXIST:
     a leftover texas_grocery_mcp/ lets a stale patch("texas_grocery_mcp...") resolve against
     the WRONG module object, so it SILENTLY FAILS TO INTERCEPT the code-under-test (which now
-    imports auto_grocier_mcp) while the test may still pass — "patching nothing." Mitigation:
+    imports auto_grocer_mcp) while the test may still pass — "patching nothing." Mitigation:
     single clean `git mv` with zero leftover (criterion 16), zero-underscore grep (2), and the
     full suite green at baseline (14).
   - `git mv` VS DELETE+ADD — LOSING HISTORY. Recreating the directory discards Git's rename
@@ -609,7 +609,7 @@ risks_and_dependencies:
     undesirable for an attribution-sensitive fork. Mitigation: R-1 mandates a single git mv;
     criterion 5 hashes the LICENSE to prove content survived.
   - THE MIT NOTICE SURVIVING THE MOVE. The LICENSE text moves for free inside R-1, but the
-    surrounding attribution prose must be repointed to auto_grocier_mcp/LICENSE while KEEPING
+    surrounding attribution prose must be repointed to auto_grocer_mcp/LICENSE while KEEPING
     upstream's hyphenated project name and URL. An over-eager pass could FALSIFY the
     attribution by renaming the upstream project itself. Mitigation: R-6 + R-7, verified by
     criteria 10/11 and the hyphen-KEEP guard 3.
@@ -628,7 +628,7 @@ feasibility: FEASIBLE (with one documented criterion tension — see conflict no
 
 pre-move LICENSE hash (criterion 5 anchor):
   sha256(texas_grocery_mcp/LICENSE) = 1d763a80c06995adde817c91c5230d13e788a47fc3a84b22296ebf225d3da21d
-  Captured BEFORE any move via `sha256sum`. Post-move hash of auto_grocier_mcp/LICENSE must equal this.
+  Captured BEFORE any move via `sha256sum`. Post-move hash of auto_grocer_mcp/LICENSE must equal this.
 
 inventory (working-tree, not just tracked — Cycle 1-3 left untracked files git grep misses):
   - Underscore token `texas_grocery_mcp` appears in 60 files (excl. handoff + .github/skills).
@@ -640,27 +640,27 @@ inventory (working-tree, not just tracked — Cycle 1-3 left untracked files git
     real `import texas_grocery_mcp...` statements + docstrings. These are the UNDERSCORE token
     (import path) per the discriminator rule, so they MUST be renamed — both to satisfy the
     repo-wide zero-underscore criterion 2 AND to keep those first-party consumers importable.
-  - texas_grocery_mcp/LICENSE is UNTRACKED; `git mv texas_grocery_mcp auto_grocier_mcp` renames
+  - texas_grocery_mcp/LICENSE is UNTRACKED; `git mv texas_grocery_mcp auto_grocer_mcp` renames
     the directory on disk (carrying the untracked LICENSE along) and stages the tracked .py
     renames — preserving git-blame provenance on the vendored code (criterion 5/16).
 
 approach (execution order — matches R-1..R-7):
   1. Record LICENSE sha256 (done, above).
-  2. `git mv texas_grocery_mcp auto_grocier_mcp` — single rename, no delete+recreate.
+  2. `git mv texas_grocery_mcp auto_grocer_mcp` — single rename, no delete+recreate.
   3. Underscore pass: literal, case-sensitive, separator-SENSITIVE replace of the exact string
-     `texas_grocery_mcp` -> `auto_grocier_mcp` across every file in the inventory (all .py under
-     auto_grocier_mcp/, mcp_server.py, entire tests/ tree incl. patch("...") STRING literals,
+     `texas_grocery_mcp` -> `auto_grocer_mcp` across every file in the inventory (all .py under
+     auto_grocer_mcp/, mcp_server.py, entire tests/ tree incl. patch("...") STRING literals,
      session_maintenance/auth_export.py, manual_scripts/test_graphql_mode.py, utility/*.py,
      pyproject.toml extend-exclude+prose, requirements.txt, ci.yml, developer.agent.md,
      oos-substitution.md, README.md, NOTICE). Because `_` can never match `-`, this is safe by
      construction and CANNOT touch any hyphenated `texas-grocery-mcp` string. Excludes the
      handoff file and .github/skills/ entirely.
-  4. R-4 (hyphen exception): auto_grocier_mcp/server.py `name="texas-grocery-mcp"` ->
-     `name="auto-grocier-mcp"`, heading `## Texas Grocery MCP` -> `## Auto Grocier MCP`.
+  4. R-4 (hyphen exception): auto_grocer_mcp/server.py `name="texas-grocery-mcp"` ->
+     `name="auto-grocer-mcp"`, heading `## Texas Grocery MCP` -> `## Auto Grocer MCP`.
   5. R-5 (hyphen exception): 4x `pip install texas-grocery-mcp[browser]` ->
-     `auto-grocier-mcp[browser]` (browser_refresh.py L7/L302/L804, tools/session.py L249).
+     `auto-grocer-mcp[browser]` (browser_refresh.py L7/L302/L804, tools/session.py L249).
   6. R-6: reword attribution in NOTICE / README Credits / pyproject provenance comment — repoint
-     paths to auto_grocier_mcp/... (done by step 3) and ADD the "formerly imported as
+     paths to auto_grocer_mcp/... (done by step 3) and ADD the "formerly imported as
      `texas_grocery_mcp`" lineage clause. KEEP upstream hyphen name/URL, MIT, Michael Walker.
   7. R-7: verify KEEP list untouched (SERVICE_NAME, ~/.texas-grocery-mcp paths, docker mounts,
      test_credentials keyring args + dir, upstream name/URL).
@@ -679,7 +679,7 @@ CONFLICT NOTE (surfaced for the Tester/Orchestrator):
   criterion 10 satisfied.
 
 verification (before handoff): pre==post LICENSE sha256; `git grep` hyphen KEEP-set review;
-  `python -m compileall -q auto_grocier_mcp` == 0; `git ls-files texas_grocery_mcp` empty; dir
+  `python -m compileall -q auto_grocer_mcp` == 0; `git ls-files texas_grocery_mcp` empty; dir
   gone; `.venv-win\Scripts\python.exe -m pytest tests/unit -q` == 6f/338p/2s; ruff == 286.
 
 ## Cycle 4 test_plan (Tester, 2026-07-30)
@@ -690,19 +690,19 @@ No HEB MCP tools invoked.
 
 | Check | Command / method | Maps to criterion |
 |-------|-----------------|-------------------|
-| auto_grocier_mcp/ exists with required files; texas_grocery_mcp/ absent | `ls auto_grocier_mcp/...`, `ls texas_grocery_mcp/` | C1, C16 |
+| auto_grocer_mcp/ exists with required files; texas_grocery_mcp/ absent | `ls auto_grocer_mcp/...`, `ls texas_grocery_mcp/` | C1, C16 |
 | Zero underscore token (excl. handoff) | `git grep -nE "texas_grocery_mcp" -- ":(exclude).github/agents/handoffs"` + `grep -n` NOTICE | C2 (+ adjudication) |
 | Hyphen KEEP-set: all 33+ matches are in R-7 | `git grep -nE "texas-grocery-mcp"` + `grep -n "texas-grocery-mcp" NOTICE` → review every line | C3, C4, C6 |
 | SERVICE_NAME byte-identical | `grep -n "SERVICE_NAME" credentials.py` | C4 |
-| LICENSE sha256 matches pre-move anchor | `sha256sum auto_grocier_mcp/LICENSE` vs developer anchor | C5 |
+| LICENSE sha256 matches pre-move anchor | `sha256sum auto_grocer_mcp/LICENSE` vs developer anchor | C5 |
 | Docker/ignore/config runtime paths unchanged | `grep -n "texas-grocery-mcp"` docker+ignore+config files | C6 |
-| pyproject.toml extend-exclude = auto_grocier_mcp | `grep -n "extend-exclude" pyproject.toml` | C7 |
+| pyproject.toml extend-exclude = auto_grocer_mcp | `grep -n "extend-exclude" pyproject.toml` | C7 |
 | server.py identity + heading fixed; mcp_server.py unchanged | `grep` FastMCP, `sed` L161-165, `grep` mcp_server.py | C8 |
 | No `pip install texas-grocery-mcp[browser]` | `grep` browser_refresh.py + tools/session.py | C9 |
 | Attribution files have all required elements + lineage clause | `grep` NOTICE, README.md, pyproject.toml | C10 |
-| auto_grocier_mcp/LICENSE referenced (not texas_grocery_mcp/LICENSE) | `grep "auto_grocier_mcp/LICENSE"` attribution files | C11 |
-| `python -m compileall -q auto_grocier_mcp` exits 0 | `.venv-win/Scripts/python.exe` | C12 |
-| mcp_server.py auto_grocier_mcp count ≥11; texas_grocery_mcp count = 0 | `grep -c` | C13 |
+| auto_grocer_mcp/LICENSE referenced (not texas_grocery_mcp/LICENSE) | `grep "auto_grocer_mcp/LICENSE"` attribution files | C11 |
+| `python -m compileall -q auto_grocer_mcp` exits 0 | `.venv-win/Scripts/python.exe` | C12 |
+| mcp_server.py auto_grocer_mcp count ≥11; texas_grocery_mcp count = 0 | `grep -c` | C13 |
 | pytest tests/unit = 6f/338p/2s | `.venv-win/Scripts/python.exe -m pytest tests/unit -q` | C14 |
 | ruff check . = 286 errors | `.venv-win/Scripts/python.exe -m ruff check .` | C15 |
 | git ls-files texas_grocery_mcp empty; directory absent | `git ls-files texas_grocery_mcp`; `ls texas_grocery_mcp/` | C16 |
@@ -716,7 +716,7 @@ No HEB MCP tools invoked.
 
 ### Per-criterion results
 
-- **C1** PASS — `auto_grocier_mcp/` exists; `auth/credentials.py`, `clients/graphql.py`,
+- **C1** PASS — `auto_grocer_mcp/` exists; `auth/credentials.py`, `clients/graphql.py`,
   `server.py`, and `LICENSE` all confirmed present. `texas_grocery_mcp/` directory absent
   (`ls` returns "No such file or directory").
 
@@ -732,36 +732,36 @@ No HEB MCP tools invoked.
   hyphenated matches**. Every single match maps to the R-7 KEEP set (reviewed line-by-line,
   see Step 3 review below). Zero over-eager replacements.
 
-- **C4** PASS — `auto_grocier_mcp/auth/credentials.py:23` contains
+- **C4** PASS — `auto_grocer_mcp/auth/credentials.py:23` contains
   `SERVICE_NAME = "texas-grocery-mcp"` byte-identical.
 
-- **C5** PASS — `sha256sum auto_grocier_mcp/LICENSE` = `1d763a80c06995adde817c91c5230d13e788a47fc3a84b22296ebf225d3da21d`,
+- **C5** PASS — `sha256sum auto_grocer_mcp/LICENSE` = `1d763a80c06995adde817c91c5230d13e788a47fc3a84b22296ebf225d3da21d`,
   which equals the Developer's pre-move anchor exactly. `grep -c "MIT\|Michael Walker"
-  auto_grocier_mcp/LICENSE` = 3 (non-zero). Note: `auto_grocier_mcp/LICENSE` is untracked
-  (was untracked as `texas_grocery_mcp/LICENSE` before the move); `git show HEAD:auto_grocier_mcp/LICENSE`
+  auto_grocer_mcp/LICENSE` = 3 (non-zero). Note: `auto_grocer_mcp/LICENSE` is untracked
+  (was untracked as `texas_grocery_mcp/LICENSE` before the move); `git show HEAD:auto_grocer_mcp/LICENSE`
   returns empty blob — this is expected and consistent with the pre-move state. Disk hash
   equality is the definitive proof.
 
 - **C6** PASS — All runtime paths confirmed unchanged:
-  `docker/docker-compose.yml:88` mounts `auto_grocier_session:/root/.texas-grocery-mcp`;
+  `docker/docker-compose.yml:88` mounts `auto_grocer_session:/root/.texas-grocery-mcp`;
   `docker/Dockerfile.mcp:46` runs `mkdir -p /root/.texas-grocery-mcp`;
   `.gitignore:48` and `.dockerignore:34` both ignore `.texas-grocery-mcp/`;
-  `auto_grocier_mcp/utils/config.py:32` and `auto_grocier_mcp/clients/graphql.py:84/92/921`
+  `auto_grocer_mcp/utils/config.py:32` and `auto_grocer_mcp/clients/graphql.py:84/92/921`
   all reference `~/.texas-grocery-mcp/...`.
 
-- **C7** PASS — `pyproject.toml:41`: `extend-exclude = ["auto_grocier_mcp", "debug_logs",
+- **C7** PASS — `pyproject.toml:41`: `extend-exclude = ["auto_grocer_mcp", "debug_logs",
   "word_dictionaries"]`. `texas_grocery_mcp` does not appear in extend-exclude.
 
-- **C8** PASS — `auto_grocier_mcp/server.py:161-165`: `FastMCP(name="auto-grocier-mcp",
-  ...)`. MCP_INSTRUCTIONS heading at line 103 is `## Auto Grocier MCP - Session Management`
+- **C8** PASS — `auto_grocer_mcp/server.py:161-165`: `FastMCP(name="auto-grocer-mcp",
+  ...)`. MCP_INSTRUCTIONS heading at line 103 is `## Auto Grocer MCP - Session Management`
   (not "## Texas Grocery MCP"). `mcp_server.py:519-521` still instantiates
-  `FastMCP(name="auto-grocier")` unchanged. **Minor observation:** `server.py` module
+  `FastMCP(name="auto-grocer")` unchanged. **Minor observation:** `server.py` module
   docstring at line 1 still reads `"""Texas Grocery MCP Server - FastMCP entry point."""` —
   this is neither the `texas_grocery_mcp` underscore token nor the `texas-grocery-mcp`
   hyphen token and is not addressed by any criterion; noted for completeness, not a failure.
 
 - **C9** PASS — All 4 `pip install` strings updated: `browser_refresh.py:7/302/804` and
-  `tools/session.py:249` all now read `pip install auto-grocier-mcp[browser]`. Zero
+  `tools/session.py:249` all now read `pip install auto-grocer-mcp[browser]`. Zero
   `pip install texas-grocery-mcp[browser]` remaining.
 
 - **C10** PASS — Independently verified all three attribution files:
@@ -776,12 +776,12 @@ No HEB MCP tools invoked.
   All required elements present in all three files.
 
 - **C11** PASS — `NOTICE:23`, `README.md:280`, and `pyproject.toml:9` all reference
-  `auto_grocier_mcp/LICENSE`. Zero references to `texas_grocery_mcp/LICENSE` found.
+  `auto_grocer_mcp/LICENSE`. Zero references to `texas_grocery_mcp/LICENSE` found.
 
-- **C12** PASS — `.venv-win/Scripts/python.exe -m compileall -q auto_grocier_mcp` produces
+- **C12** PASS — `.venv-win/Scripts/python.exe -m compileall -q auto_grocer_mcp` produces
   no output and exits 0.
 
-- **C13** PASS — `grep -n "auto_grocier_mcp" mcp_server.py | wc -l` = **14** (≥11).
+- **C13** PASS — `grep -n "auto_grocer_mcp" mcp_server.py | wc -l` = **14** (≥11).
   `grep -c "texas_grocery_mcp" mcp_server.py` = **0**.
 
 - **C14** PASS — `pytest tests/unit -q` = **6 failed, 338 passed, 2 skipped**.
@@ -790,7 +790,7 @@ No HEB MCP tools invoked.
   import failures.
 
 - **C15** PASS — `ruff check .` = **286 errors**. Identical to baseline. Confirms
-  `auto_grocier_mcp` is correctly excluded via `extend-exclude`.
+  `auto_grocer_mcp` is correctly excluded via `extend-exclude`.
 
 - **C16** PASS — `git ls-files texas_grocery_mcp` returns empty. `ls texas_grocery_mcp/`
   fails with "No such file or directory". Zero coexistence.
@@ -805,9 +805,9 @@ All 33 hyphenated `texas-grocery-mcp` matches classified:
 | `.github/skills/refresh-heb-login/SKILL.md:11,42` | `/root/.texas-grocery-mcp` Docker path | R-7: untouched skills |
 | `.gitignore:48` | `.texas-grocery-mcp/` | R-7: gitignore rule |
 | `README.md:273,276` | project name + URL | R-7: upstream attribution name/URL |
-| `auto_grocier_mcp/auth/credentials.py:23,59` | `SERVICE_NAME`, `~/.texas-grocery-mcp` | R-7: keyring SERVICE_NAME + session dir |
-| `auto_grocier_mcp/clients/graphql.py:84,92,921` | `~/.texas-grocery-mcp/...` | R-7: session path references |
-| `auto_grocier_mcp/utils/config.py:32` | `~/.texas-grocery-mcp/auth.json` | R-7: session path |
+| `auto_grocer_mcp/auth/credentials.py:23,59` | `SERVICE_NAME`, `~/.texas-grocery-mcp` | R-7: keyring SERVICE_NAME + session dir |
+| `auto_grocer_mcp/clients/graphql.py:84,92,921` | `~/.texas-grocery-mcp/...` | R-7: session path references |
+| `auto_grocer_mcp/utils/config.py:32` | `~/.texas-grocery-mcp/auth.json` | R-7: session path |
 | `docker/Dockerfile.mcp:46` | `/root/.texas-grocery-mcp` | R-7: Docker mkdir |
 | `docker/docker-compose.yml:88` | `/root/.texas-grocery-mcp` volume mount | R-7: Docker volume |
 | `mcp_server.py:31,41,42,43,193` | `~/.texas-grocery-mcp/...` docstrings | R-7: session path in docstrings |
@@ -827,9 +827,9 @@ All 33 hyphenated `texas-grocery-mcp` matches classified:
 the Cycle 2 precedent.**
 
 The 3 underscore occurrences are:
-1. `NOTICE:15-16`: `"The vendored \`auto_grocier_mcp/\` package (formerly imported as \`texas_grocery_mcp\`)"` — attribution prose.
-2. `pyproject.toml:5-6`: `"# ... the vendored \`auto_grocier_mcp/\` package (formerly imported as\n# \`texas_grocery_mcp\`) is derived from..."` — provenance comment.
-3. `README.md:278-279`: `"The vendored code lives in \`auto_grocier_mcp/\` (formerly imported as \`texas_grocery_mcp\`)"` — credits prose.
+1. `NOTICE:15-16`: `"The vendored \`auto_grocer_mcp/\` package (formerly imported as \`texas_grocery_mcp\`)"` — attribution prose.
+2. `pyproject.toml:5-6`: `"# ... the vendored \`auto_grocer_mcp/\` package (formerly imported as\n# \`texas_grocery_mcp\`) is derived from..."` — provenance comment.
+3. `README.md:278-279`: `"The vendored code lives in \`auto_grocer_mcp/\` (formerly imported as \`texas_grocery_mcp\`)"` — credits prose.
 
 None are live imports, `patch()` string targets, directory paths, config keys, or functional
 code of any kind. All three are REQUIRED by C10 (the "formerly imported as" lineage clause).
@@ -847,8 +847,8 @@ no logic altered.**
 `git diff HEAD -- utility/graphql_auth.py utility/graphql_cart.py utility/graphql_checkout.py
 utility/graphql_hash_capture.py utility/graphql_store.py` reviewed. Every changed line is
 one of:
-- `from texas_grocery_mcp... import ...` → `from auto_grocier_mcp... import ...`
-- `import texas_grocery_mcp...` → `import auto_grocier_mcp...`
+- `from texas_grocery_mcp... import ...` → `from auto_grocer_mcp... import ...`
+- `import texas_grocery_mcp...` → `import auto_grocer_mcp...`
 - docstring/comment text replacing the package name
 - a path string in a comment
 
@@ -861,13 +861,13 @@ failed to enumerate these 5 files; the Developer's expansion was correct and nec
 
 **Method:** Directly imported 4 modules from the renamed package using the Windows Python
 interpreter (`.venv-win/Scripts/python.exe`), then called `hasattr()` on each symbol that
-appears as a `patch("auto_grocier_mcp....")` target in the test suite.
+appears as a `patch("auto_grocer_mcp....")` target in the test suite.
 
 **Results:**
-- `auto_grocier_mcp.reliability.cache.datetime` → `True` ✓ (`test_cache.py:37`)
-- `auto_grocier_mcp.tools.cart.is_authenticated` → `True` ✓ (`test_cart_tools.py:22`)
-- `auto_grocier_mcp.auth.credentials.KEYRING_AVAILABLE` → `True` ✓ (`test_credentials.py:25`)
-- `auto_grocier_mcp.clients.graphql.GeocodingService` → `True` ✓ (`test_graphql_client.py:64`)
+- `auto_grocer_mcp.reliability.cache.datetime` → `True` ✓ (`test_cache.py:37`)
+- `auto_grocer_mcp.tools.cart.is_authenticated` → `True` ✓ (`test_cart_tools.py:22`)
+- `auto_grocer_mcp.auth.credentials.KEYRING_AVAILABLE` → `True` ✓ (`test_credentials.py:25`)
+- `auto_grocer_mcp.clients.graphql.GeocodingService` → `True` ✓ (`test_graphql_client.py:64`)
 
 All 4 patch targets resolve to real attributes on real modules. No "patching nothing" risk.
 The full unit suite passing at 338 confirms the remaining ~100+ patch targets also resolve.
@@ -890,7 +890,7 @@ intact (33 matches, all in KEEP set). LICENSE sha256 matches pre-move anchor. pa
 resolve. scope expansion was required and is import/string-path only.
 Adjudication: 3 underscore token occurrences accepted as documented lineage exceptions
 (consistent with Cycle 2 precedent); C2 and C10 both satisfied.
-Minor observation: `auto_grocier_mcp/server.py` module docstring (line 1) still reads
+Minor observation: `auto_grocer_mcp/server.py` module docstring (line 1) still reads
 "Texas Grocery MCP Server" — neither criterion C8 nor any other criterion requires this to be
 changed; noted but not a failure.
 
@@ -925,12 +925,12 @@ design's stated coverage by C10 + C11. All checks are offline except `docker com
 | Root `DATABASE_IMPLEMENTATION.md` absent; `docs/` copy present | `ls` both paths | C7 |
 | `docs/README.md` absent; no `docs/README.md` in README.md; offline relative-link check | `ls`, `grep`, Python script | C8 |
 | `.github/push.yaml` absent; no `push.yaml` refs outside handoffs | `ls`, `git grep` | C9 |
-| No `grocier_user_123` outside handoffs | `git grep -nE ...` | C10 |
+| No `grocer_user_123` outside handoffs | `git grep -nE ...` | C10 |
 | `DATABASE_PASSWORD:?` appears >= 2 times in docker-compose.yml | `git grep -n` | C11 |
 | Docker CLI unavailable in WSL → fallback to C10 + C11 coverage | `docker compose config` fails; design states C10+C11 sufficient | C12 |
-| Migration-note comment with `auto_grocier_pgdata` in compose | `grep -n` | C13 |
+| Migration-note comment with `auto_grocer_pgdata` in compose | `grep -n` | C13 |
 | `pytest tests/unit -q` = 6f/338p/2s; `ruff check .` = 286 errors | `.venv-win\Scripts\python.exe` | C14 |
-| Adjudication A: `.env` untracked; compose (working tree) clean | `git ls-files .env`, `git check-ignore .env`, `grep grocier_user_123 docker/docker-compose.yml` | C10/C12 adj. |
+| Adjudication A: `.env` untracked; compose (working tree) clean | `git ls-files .env`, `git check-ignore .env`, `grep grocer_user_123 docker/docker-compose.yml` | C10/C12 adj. |
 | Adjudication B: extra H-2 edits prose/comment only | `git diff HEAD -- <files>` | C1 expansion |
 | Byte-identical claim | `git show HEAD:DATABASE_IMPLEMENTATION.md \| sed -n '107,111p'` vs docs/ | Design accuracy |
 | self_healing.py L23 NOT modified | `sed -n '21,25p' session_maintenance/self_healing.py` | C6 scope guard |
@@ -950,10 +950,10 @@ design's stated coverage by C10 + C11. All checks are offline except `docker com
 - **C7** PASS — Root `DATABASE_IMPLEMENTATION.md` absent; `docs/DATABASE_IMPLEMENTATION.md` exists.
 - **C8** PASS — `docs/README.md` absent; `grep "docs/README.md" README.md` returns empty; offline relative-link script reports 0 broken links.
 - **C9** PASS — `.github/push.yaml` absent; `git grep -n "push.yaml"` (excl. handoffs) returns empty.
-- **C10** PASS — `git grep -nE "grocier_user_123"` (excl. handoffs) returns empty.
+- **C10** PASS — `git grep -nE "grocer_user_123"` (excl. handoffs) returns empty.
 - **C11** PASS — `git grep -n "DATABASE_PASSWORD:?" docker/docker-compose.yml` = 2 matches (L37 POSTGRES_PASSWORD, L70 DATABASE_URL).
 - **C12** CONDITIONAL PASS — Docker CLI not available in WSL (no Docker Desktop WSL integration). Design states: "If the Docker CLI is unavailable, criteria 10 & 11 fully cover the literal removal and fail-fast form." Both C10 and C11 pass. Developer ran via Windows docker.exe and reported exit 0 with `testpw123` rendered; independently unverifiable here but C10+C11 provide full coverage per design.
-- **C13** PASS — Migration-note comment referencing `auto_grocier_pgdata` found at L30 of `docker/docker-compose.yml` near the postgres service.
+- **C13** PASS — Migration-note comment referencing `auto_grocer_pgdata` found at L30 of `docker/docker-compose.yml` near the postgres service.
 - **C14** PASS — `pytest tests/unit -q` = **6 failed, 338 passed, 2 skipped** (identical to baseline). `ruff check .` = **286 errors** (identical to baseline). Zero regressions.
 
 ### Adjudication A — C12 `.env` leakage claim
@@ -963,11 +963,11 @@ design's stated coverage by C10 + C11. All checks are offline except `docker com
 Independently verified:
 1. `git ls-files .env` returns empty — `.env` is **untracked**.
 2. `git check-ignore -v .env` returns `.gitignore:2:.env` — `.env` is gitignored.
-3. `grep "grocier_user_123" docker/docker-compose.yml` (working tree) returns **nothing** — the tracked compose file contains zero occurrences.
-4. `git show HEAD:docker/docker-compose.yml | grep grocier_user_123` shows the old literal was present pre-change at both L29 and L62 — now correctly removed.
-5. A stranger cloning the repo gets no `.env`, so `docker compose config` would render no `grocier_user_123`.
+3. `grep "grocer_user_123" docker/docker-compose.yml` (working tree) returns **nothing** — the tracked compose file contains zero occurrences.
+4. `git show HEAD:docker/docker-compose.yml | grep grocer_user_123` shows the old literal was present pre-change at both L29 and L62 — now correctly removed.
+5. A stranger cloning the repo gets no `.env`, so `docker compose config` would render no `grocer_user_123`.
 
-The one `grocier_user_123` occurrence the Developer observed in their `docker compose config` output is sourced solely from the owner's personal, untracked, gitignored `.env` file via `env_file: ../.env` in the compose file. This is a local-machine artifact, not a tracked-repo problem. C10 and C11 are satisfied; C12 (design's stated fallback) is satisfied. **No failure.**
+The one `grocer_user_123` occurrence the Developer observed in their `docker compose config` output is sourced solely from the owner's personal, untracked, gitignored `.env` file via `env_file: ../.env` in the compose file. This is a local-machine artifact, not a tracked-repo problem. C10 and C11 are satisfied; C12 (design's stated fallback) is satisfied. **No failure.**
 
 ### Adjudication B — Scope expansion (3 extra H-2 sites)
 
@@ -986,8 +986,8 @@ Criterion 1 requires ZERO `grocery_browser` matches. These three sites would hav
 **Finding: The Designer was WRONG; the Developer was CORRECT.**
 
 Independently verified via `git show HEAD:DATABASE_IMPLEMENTATION.md` vs `git show HEAD:docs/DATABASE_IMPLEMENTATION.md` at L109:
-- Root (pre-deletion): `CREATE USER grocier_user WITH PASSWORD 'grocier_user_123';`
-- docs/ copy: `CREATE USER grocier_user WITH PASSWORD 'your_password';`
+- Root (pre-deletion): `CREATE USER grocer_user WITH PASSWORD 'grocer_user_123';`
+- docs/ copy: `CREATE USER grocer_user WITH PASSWORD 'your_password';`
 
 The two files were **not** byte-identical — they differed at exactly L109. The Designer's claim that `git diff --no-index` would return empty was incorrect. The Developer's stated resolution (delete root copy as designed, align docs/ placeholder to `change-me`) is correct and consistent with design intent.
 
@@ -1038,7 +1038,7 @@ correct. Files changed: `requirements.txt`, `.gitattributes`, `scripts/apply_upd
 ## Cycle 3 design (Product Designer, Mode C) — Repo hygiene
 
 goal: >
-  Remove dead weight and internal contradictions so a stranger cloning auto_grocier sees
+  Remove dead weight and internal contradictions so a stranger cloning auto_grocer sees
   exactly one coherent story. Collapse the three competing dependency systems down to
   `requirements.txt` (runtime, single source of truth — already declared as such by
   pyproject.toml's `dynamic = ["dependencies"]`) plus `requirements-dev.txt` (dev),
@@ -1048,13 +1048,13 @@ goal: >
   which today reads from the wrong directory); de-duplicate the two identical
   DATABASE_IMPLEMENTATION.md files (keep docs/); delete the stale docs/README.md
   Best-README-Template boilerplate and the .github/push.yaml stub; and eliminate the weak
-  hardcoded Postgres fallback password `grocier_user_123` in docker/docker-compose.yml in
+  hardcoded Postgres fallback password `grocer_user_123` in docker/docker-compose.yml in
   favor of a fail-fast required variable, while documenting the existing-volume migration
   risk. CLAUDE.md stays at the repo root unchanged (beyond one dead-path fix). No runtime
   behavior, no package rename, no lint cleanup.
 
 non_goals:
-  - The texas_grocery_mcp -> auto_grocier_mcp package rename (Cycle 4).
+  - The texas_grocery_mcp -> auto_grocer_mcp package rename (Cycle 4).
   - Ruff's 286 pre-existing errors, the 6 Windows-only 0o600 pytest failures, CI/type-check
     expansion, Docker build-check in CI (Cycle 5). No lint fixes designed here.
   - CHANGELOG / v0.1.0 tag / GitHub Release (Cycle 6).
@@ -1063,8 +1063,8 @@ non_goals:
   - Deleting .github/agents/, .claude/, or .github/skills/ (owner decision 3 — kept as
     contributor tooling). In particular, do NOT edit the two SKILL.md files that correctly
     say grocery_browser.run "no longer exists" (Cycle 2 accepted exception).
-  - Any change to on-disk runtime names: ~/.texas-grocery-mcp/, the auto_grocier_session /
-    auto_grocier_pgdata Docker volume names, keyring SERVICE_NAME.
+  - Any change to on-disk runtime names: ~/.texas-grocery-mcp/, the auto_grocer_session /
+    auto_grocer_pgdata Docker volume names, keyring SERVICE_NAME.
   - Relocating manual_scripts/ (nice-to-have, not release-blocking).
 
 scope_and_approach: >
@@ -1124,7 +1124,7 @@ scope_and_approach: >
       - `git grep -nE "\]\((\.\./)?DATABASE_IMPLEMENTATION\.md" -- ':!.github/agents/handoffs'`
         -> README links only docs/DATABASE_IMPLEMENTATION.md (verified L218).
     Actions: `git rm DATABASE_IMPLEMENTATION.md` (root). In the kept
-    docs/DATABASE_IMPLEMENTATION.md, replace the example literal `grocier_user_123` (L109)
+    docs/DATABASE_IMPLEMENTATION.md, replace the example literal `grocer_user_123` (L109)
     with `change-me` to match .env.example. KEEP docs/DATABASE_PLAN.md — it is a distinct,
     still-referenced (README L217) planning doc, not a duplicate.
 
@@ -1143,14 +1143,14 @@ scope_and_approach: >
     Action: `git rm .github/push.yaml`.
 
   H-6 — Harden the docker-compose DB password.
-    Pre-change verification: `git grep -n "grocier_user_123" -- ':!.github/agents/handoffs'`
+    Pre-change verification: `git grep -n "grocer_user_123" -- ':!.github/agents/handoffs'`
     -> docker/docker-compose.yml L29 & L62 (and the doc example handled in H-3).
     .env.example already defines DATABASE_PASSWORD=change-me (verified L26) — keep it.
-    Actions in docker/docker-compose.yml: replace BOTH `${DATABASE_PASSWORD:-grocier_user_123}`
+    Actions in docker/docker-compose.yml: replace BOTH `${DATABASE_PASSWORD:-grocer_user_123}`
     (L29 POSTGRES_PASSWORD, L62 DATABASE_URL) with the fail-fast form
     `${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set — see .env.example}`, removing the
     literal entirely. Add a migration-note comment near the postgres service stating that
-    the password is baked into the auto_grocier_pgdata volume at first init, so an existing
+    the password is baked into the auto_grocer_pgdata volume at first init, so an existing
     volume created under the old default keeps that password; to adopt a new one, either set
     DATABASE_PASSWORD to the previously-baked value or recreate the volume with
     `docker compose ... down -v` (which wipes local DB data). Because DATABASE_PASSWORD must
@@ -1187,15 +1187,15 @@ acceptance_criteria:
      scripted check used in Cycle 2).
   9. .github/push.yaml is absent and `git grep -n "push.yaml" -- ':!.github/agents/handoffs'`
      returns nothing.
-  10. `git grep -nE "grocier_user_123" -- ':!.github/agents/handoffs'` returns NO matches.
+  10. `git grep -nE "grocer_user_123" -- ':!.github/agents/handoffs'` returns NO matches.
   11. docker/docker-compose.yml uses `${DATABASE_PASSWORD:?...}` in BOTH the
       POSTGRES_PASSWORD and the DATABASE_URL values
       (`git grep -n 'DATABASE_PASSWORD:?' docker/docker-compose.yml` >= 2 matches).
   12. `docker compose -f docker/docker-compose.yml config` run with
       DATABASE_PASSWORD=testpw123 set in the environment exits 0, and its rendered output
-      contains `testpw123` and does NOT contain `grocier_user_123`. (If the Docker CLI is
+      contains `testpw123` and does NOT contain `grocer_user_123`. (If the Docker CLI is
       unavailable, criteria 10 & 11 fully cover the literal removal and fail-fast form.)
-  13. A migration-note comment referencing the auto_grocier_pgdata volume is present in
+  13. A migration-note comment referencing the auto_grocer_pgdata volume is present in
       docker/docker-compose.yml near the postgres service.
   14. No regression vs. baseline: `ruff check .` still reports 286 errors and
       `pytest tests/unit` still reports 6 failed / 338 passed / 2 skipped.
@@ -1205,13 +1205,13 @@ risks_and_dependencies:
     ci.yml installs -r requirements.txt -r requirements-dev.txt (both verified). H-1 must
     KEEP requirements.txt/requirements-dev.txt and remove only Pipfile/Pipfile.lock + the
     openai line. Neither build nor CI uses pipenv, so removing the Pipfiles is inert.
-  - Postgres password change can strand the existing auto_grocier_pgdata volume. Postgres
+  - Postgres password change can strand the existing auto_grocer_pgdata volume. Postgres
     bakes POSTGRES_PASSWORD at first init. Today ${DATABASE_PASSWORD} is usually empty at
     compose-interpolation time, so existing local volumes were initialized with the old
-    literal grocier_user_123. After H-6, if the owner supplies a NEW DATABASE_PASSWORD the
+    literal grocer_user_123. After H-6, if the owner supplies a NEW DATABASE_PASSWORD the
     app's DATABASE_URL uses it but the existing volume still authenticates with the old one
     -> connection failure. Mitigation (documented in the compose comment): set
-    DATABASE_PASSWORD=grocier_user_123 to keep the existing volume, OR
+    DATABASE_PASSWORD=grocer_user_123 to keep the existing volume, OR
     `docker compose ... down -v` to recreate it (destroys local recipe/ingredient data —
     re-seed afterward). Pre-first-public-release, so only the owner holds a volume.
   - Removing openai could break an unnoticed import. Guarded by the pre-change grep
@@ -1245,8 +1245,8 @@ pre_change_verification_results:
     session_maintenance. They are legitimately stale module names, so repointing is correct
     and consistent with the design intent.
   - DISCREPANCY (H-3): the two DATABASE_IMPLEMENTATION.md files are NOT byte-identical.
-    They differ only at L109: root has `grocier_user_123`; docs/ already has the safe
-    placeholder `your_password`. `grocier_user_123` therefore lives only in the root copy
+    They differ only at L109: root has `grocer_user_123`; docs/ already has the safe
+    placeholder `your_password`. `grocer_user_123` therefore lives only in the root copy
     (deleted by H-3) and docker-compose.yml (fixed by H-6). Resolution: delete the root
     copy as designed; in the kept docs/ copy, align `your_password` -> `change-me` to match
     .env.example (the design's stated intent). Criterion 10 is satisfied either way.
@@ -1312,7 +1312,7 @@ H-2 (delete grocery_browser/, repoint refs):
 H-3 (de-dup DATABASE_IMPLEMENTATION.md):
   - Deleted root DATABASE_IMPLEMENTATION.md via `git rm`.
   - DISCREPANCY RESOLVED: the two files were NOT byte-identical. They differed only at
-    L109 — root had `grocier_user_123`, docs/ already had the safe placeholder
+    L109 — root had `grocer_user_123`, docs/ already had the safe placeholder
     `your_password`. Aligned docs/DATABASE_IMPLEMENTATION.md L109 `your_password` ->
     `change-me` per the design's stated intent (match .env.example). Criterion 10 satisfied.
 
@@ -1326,7 +1326,7 @@ H-6 (docker-compose DB password):
   - docker/docker-compose.yml: both POSTGRES_PASSWORD and DATABASE_URL now use
     `${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set — see .env.example}`; literal
     removed. Added a migration-note comment above the postgres `environment:` block
-    referencing auto_grocier_pgdata and the down -v recreate path, and noting
+    referencing auto_grocer_pgdata and the down -v recreate path, and noting
     DATABASE_PASSWORD must be present in the compose interpolation environment.
 
 NOTHING was committed (no `git commit`/`git push`). Deletions are staged by `git rm`;
@@ -1343,18 +1343,18 @@ Verification results (all offline):
   - C7 root DATABASE_IMPLEMENTATION.md absent, docs/ present: PASS.
   - C8 offline README relative-link resolver: 0 broken: PASS.
   - C9 .github/push.yaml absent, no push.yaml refs: PASS.
-  - C10 no grocier_user_123 in repo (excl. handoffs): PASS.
+  - C10 no grocer_user_123 in repo (excl. handoffs): PASS.
   - C11 `DATABASE_PASSWORD:?` count in compose = 2: PASS.
   - C12 `docker compose config` with DATABASE_PASSWORD=testpw123 (run via Windows
     docker.exe/PowerShell — the WSL distro has no Docker integration): exit 0; rendered
     POSTGRES_PASSWORD=testpw123 (L54) and DATABASE_URL=...:testpw123@... (L20). NOTE: the
-    rendered output ALSO shows one `DATABASE_PASSWORD: grocier_user_123` under the mcp
+    rendered output ALSO shows one `DATABASE_PASSWORD: grocer_user_123` under the mcp
     service `environment:` — that value comes from `env_file: ../.env`, the owner's
     UNTRACKED, GITIGNORED personal .env (confirmed `git ls-files .env` empty +
     `git check-ignore .env`), NOT from the compose file. The tracked compose file is fully
     clean; criteria 10 & 11 (which the design says fully cover the literal removal) pass.
-    A stranger cloning the repo has no .env, so their `config` renders no grocier_user_123.
-  - C13 migration-note comment referencing auto_grocier_pgdata present near postgres: PASS.
+    A stranger cloning the repo has no .env, so their `config` renders no grocer_user_123.
+  - C13 migration-note comment referencing auto_grocer_pgdata present near postgres: PASS.
   - C14 regression vs baseline: `pytest tests/unit` = 6 failed / 338 passed / 2 skipped
     (identical); `ruff check .` = 286 errors (identical). PASS.
 
@@ -1388,7 +1388,7 @@ Cycle 1 modified zero `.py` files, so these are baseline conditions:
 ## Cycle 2 design (Product Designer, Mode C)
 
 goal: >
-  Make auto_grocier's user-facing documentation literally true for a stranger who
+  Make auto_grocer's user-facing documentation literally true for a stranger who
   clones the repo. Fix every stale module reference (docs invoke the non-existent
   `grocery_browser.run`; the real module is `session_maintenance.run`, per main.py L22),
   repair the two broken README links (`docs/CLAUDE_SETUP.md`, `grocery_browser/README.md`),
@@ -1405,12 +1405,12 @@ non_goals:
     the duplicate DATABASE_IMPLEMENTATION.md, removal of the dead grocery_browser/
     directory, and the docker-compose fallback password (all Cycle 3). Do NOT delete
     grocery_browser/ or edit .gitignore's grocery_browser/updated_functions/ rules.
-  - The texas_grocery_mcp -> auto_grocier_mcp package rename (Cycle 4). Docs keep the
+  - The texas_grocery_mcp -> auto_grocer_mcp package rename (Cycle 4). Docs keep the
     current name.
   - Ruff's 286 pre-existing errors, the 6 Windows pytest permission failures, CI
     expansion (Cycle 5).
   - CHANGELOG / v0.1.0 tag / GitHub Release (Cycle 6).
-  - ANY change to on-disk runtime names (~/.texas-grocery-mcp/, the auto_grocier_session
+  - ANY change to on-disk runtime names (~/.texas-grocery-mcp/, the auto_grocer_session
     Docker volume, keyring SERVICE_NAME) — permanently out of scope.
   - Re-opening Cycle 1 (LICENSE/NOTICE/disclaimer/credits, WAF-tone softening). Leave the
     "anti-bot evasion" wording in session_maintenance/README.md L15 alone — it is Cycle 1's
@@ -1563,7 +1563,7 @@ risks_and_dependencies:
 ---
 
 ## Owner decisions (CONFIRMED by the user — do not relitigate)
-1. **License:** MIT for auto_grocier itself.
+1. **License:** MIT for auto_grocer itself.
 2. **Distribution:** source-only (git clone + `docker compose`). No PyPI, no GHCR.
 3. **Agent scaffolding:** KEEP `.github/agents/` and `.claude/` public as contributor tooling.
 4. **Git history:** use `git filter-repo` to scrub if secrets/PII are found in history
@@ -1571,7 +1571,7 @@ risks_and_dependencies:
    operation — the developer MUST stop and get explicit user approval immediately before
    running it, and MUST create a backup clone/bundle first.**
 5. **Vendored fork:** KEEP vendored, but RENAME the Python package
-   `texas_grocery_mcp` → `auto_grocier_mcp`. Do NOT change the on-disk runtime names
+   `texas_grocery_mcp` → `auto_grocer_mcp`. Do NOT change the on-disk runtime names
    (`~/.texas-grocery-mcp/` session dir, the Docker volume, keyring `SERVICE_NAME`) —
    changing those orphans existing sessions and keyring entries. That is a deferred
    follow-up, explicitly out of scope.
@@ -1582,7 +1582,7 @@ risks_and_dependencies:
 - **Cycle 1 — Secret & PII scrub + Legal/Licensing/Attribution.** (BLOCKERS. In progress.)
 - **Cycle 2 — Docs correctness.** Stale module names, broken links, cross-platform quickstart.
 - **Cycle 3 — Repo hygiene.** Dependency systems, duplicate docs, dead packages, compose password.
-- **Cycle 4 — Package rename** `texas_grocery_mcp` → `auto_grocier_mcp`.
+- **Cycle 4 — Package rename** `texas_grocery_mcp` → `auto_grocer_mcp`.
 - **Cycle 5 — CI & quality gates.** Ruff coverage, type checking, Docker build check.
 - **Cycle 6 — CHANGELOG, v0.1.0 tag, GitHub Release.**
 
@@ -1633,7 +1633,7 @@ risks_and_dependencies:
   `.github/agents/developer.agent.md`, `.github/agents/handoffs/oos-substitution.md`.
 
 ### Trademark/confusion
-- The shipped product speaks as `auto-grocier` (`mcp_server.py` L519 `FastMCP(name="auto-grocier")`).
+- The shipped product speaks as `auto-grocer` (`mcp_server.py` L519 `FastMCP(name="auto-grocer")`).
 - But `texas_grocery_mcp/server.py` L161 hard-codes `FastMCP(name="texas-grocery-mcp")` in a
   runnable-but-dormant entry point; `texas_grocery_mcp/auth/credentials.py` L23 sets
   `SERVICE_NAME = "texas-grocery-mcp"` (becomes the OS keyring label).
@@ -1644,7 +1644,7 @@ risks_and_dependencies:
   `main.py` L6, `docs/ARCHITECTURE.md` L8, `session_maintenance/README.md` L42.
   `.github/skills/refresh-heb-login/SKILL.md` L40 already says it no longer exists.
 - Broken README links: `docs/CLAUDE_SETUP.md` (L172, L210), `grocery_browser/README.md` (L177).
-- `docker/docker-compose.yml` L30 hardcodes fallback password `grocier_user_123`.
+- `docker/docker-compose.yml` L30 hardcodes fallback password `grocer_user_123`.
 - Three dependency systems: `Pipfile`/`Pipfile.lock` vs `requirements.txt` vs `pyproject.toml`
   (which declares requirements.txt the single source of truth at L8). Stale
   `openai==0.28.0` in `requirements.txt` L11 despite the migration to `anthropic`.
@@ -1664,7 +1664,7 @@ risks_and_dependencies:
 
 ## Design (Product Designer, Mode C)
 goal: >
-  Remove the two hard release blockers for auto_grocier's first public source-only
+  Remove the two hard release blockers for auto_grocer's first public source-only
   release: (A) eliminate real owner PII and live secrets from the working tree AND git
   history, then add an automated secret-scanner guard; and (B) establish complete,
   legally sound licensing and attribution — a root MIT LICENSE, the upstream MIT LICENSE
@@ -1675,7 +1675,7 @@ goal: >
   the vendored work's authorship. Cycles 2–6 are separate loops and are NOT touched here.
 
 non_goals:
-  - Package rename texas_grocery_mcp -> auto_grocier_mcp (Cycle 4).
+  - Package rename texas_grocery_mcp -> auto_grocer_mcp (Cycle 4).
   - Docs correctness: grocery_browser.run vs session_maintenance.run, broken README
     links, cross-platform quickstart (Cycle 2).
   - Dependency-system consolidation, duplicate DATABASE_IMPLEMENTATION.md, dead packages,
@@ -1683,7 +1683,7 @@ non_goals:
   - CI / ruff coverage / type-checking / Docker build check expansion (Cycle 5).
   - CHANGELOG, v0.1.0 tag, GitHub Release (Cycle 6).
   - ANY change to on-disk runtime names: ~/.texas-grocery-mcp/ session dir, the
-    auto_grocier_session Docker volume, keyring SERVICE_NAME (permanently out of scope,
+    auto_grocer_session Docker volume, keyring SERVICE_NAME (permanently out of scope,
     owner decision 5).
 
 scope_and_approach: >
@@ -1712,7 +1712,7 @@ scope_and_approach: >
        identifiers). This is committable without gitleaks being installed locally.
   A-4. IF and ONLY IF A-1 shows secrets/PII in history: this is a DESTRUCTIVE rewrite.
        The developer MUST (a) stop and obtain fresh explicit user approval, (b) create a
-       backup immediately beforehand via `git bundle create ../auto_grocier-backup.bundle
+       backup immediately beforehand via `git bundle create ../auto_grocer-backup.bundle
        --all` AND a mirror clone, THEN (c) run `git filter-repo` to purge the paths
        (`--path debug_logs/ --path .env --invert-paths`) and/or replace secret strings.
        The developer MUST NOT run filter-repo unprompted.
@@ -1724,7 +1724,7 @@ scope_and_approach: >
 
   PART B — Legal, licensing, attribution (only after Part A verified)
 
-  B-1. Add root `LICENSE` — standard MIT text, copyright the auto_grocier owner,
+  B-1. Add root `LICENSE` — standard MIT text, copyright the auto_grocer owner,
        year 2026.
   B-2. Reproduce upstream's MIT license verbatim at `texas_grocery_mcp/LICENSE`. The
        developer MUST fetch the real file from
@@ -2462,7 +2462,7 @@ commands_and_criteria_mapping:
 environment_prerequisites:
   - Use .venv-win/Scripts/python.exe (Python 3.12.10); repo venv/ is a broken WSL venv.
   - No HEB session or network required.
-  - Run from WSL bash in /mnt/c/Users/benbo/.../auto_grocier.
+  - Run from WSL bash in /mnt/c/Users/benbo/.../auto_grocer.
 criterion_1_caveat_decision: >
   The criterion as written (`':!.github/agents/handoffs'` only) will return two matches
   in .github/skills/ SKILL.md files. These are EXPLANATORY PROSE that correctly states
@@ -2596,15 +2596,15 @@ regression_results:
   (.gitkeep L4/L7, utility/graphql_auth.py L6, utility/graphql_hash_capture.py L7) — all
   repointed to session_maintenance (prose/docstring only) so criterion 1 returns empty;
   (b) the two DATABASE_IMPLEMENTATION.md files were NOT byte-identical — docs/ already had
-  the safe placeholder `your_password` (only the deleted root copy held grocier_user_123),
+  the safe placeholder `your_password` (only the deleted root copy held grocer_user_123),
   so aligned docs/ L109 to `change-me` per design intent. Implemented H-1..H-6. Deleted
   Pipfile, Pipfile.lock, DATABASE_IMPLEMENTATION.md (root), docs/README.md, .github/push.yaml
   (git rm) and grocery_browser/ (working tree). Repointed apply_updates.py (fixes the real
   latent bug — it now reads session_maintenance/updated_functions/), self_healing.py (L23
   untouched), docs/ARCHITECTURE.md, CLAUDE.md, both READMEs, .gitignore, two utility docstrings.
   Hardened docker-compose to `${DATABASE_PASSWORD:?...}` in both spots with a
-  auto_grocier_pgdata migration note. NOT committed. All 14 criteria PASS; C12 caveat: the
-  lone rendered grocier_user_123 is the owner's untracked/gitignored personal .env via
+  auto_grocer_pgdata migration note. NOT committed. All 14 criteria PASS; C12 caveat: the
+  lone rendered grocer_user_123 is the owner's untracked/gitignored personal .env via
   env_file, not the tracked compose file (fully clean). Regression identical to baseline
   (pytest 6f/338p/2s, ruff 286). status -> READY_FOR_TEST, next_agent -> tester,
   dev_attempts -> 1.
@@ -2613,16 +2613,16 @@ regression_results:
 
 ## Cycle 4 Implementation notes (Developer, 2026-07-30)
 
-pre-move sha256(texas_grocery_mcp/LICENSE) = post-move sha256(auto_grocier_mcp/LICENSE) =
+pre-move sha256(texas_grocery_mcp/LICENSE) = post-move sha256(auto_grocer_mcp/LICENSE) =
   1d763a80c06995adde817c91c5230d13e788a47fc3a84b22296ebf225d3da21d  (BYTE-IDENTICAL, criterion 5).
 
 What changed (R-1..R-7):
-  - R-1: `git mv texas_grocery_mcp auto_grocier_mcp` (single rename). `git status` shows R/RM
+  - R-1: `git mv texas_grocery_mcp auto_grocer_mcp` (single rename). `git status` shows R/RM
     rename entries for all ~48 tracked modules -> history preserved. Untracked LICENSE rode
     along on the filesystem rename. Stale __pycache__ dirs (compiled under the old path) were
     deleted (gitignored, regenerated) so no stale bytecode references the old name.
   - R-2/R-3: literal, case-sensitive, separator-SENSITIVE replace `texas_grocery_mcp` ->
-    `auto_grocier_mcp` across 61 files (all package internals, mcp_server.py [14 sites], the
+    `auto_grocer_mcp` across 61 files (all package internals, mcp_server.py [14 sites], the
     ENTIRE tests/ tree incl. every patch("...") STRING literal, session_maintenance/auth_export.py,
     manual_scripts/test_graphql_mode.py, pyproject.toml extend-exclude + provenance prose,
     requirements.txt, ci.yml, developer.agent.md, oos-substitution.md). Because `_` can never
@@ -2634,13 +2634,13 @@ What changed (R-1..R-7):
     statements + docstrings. These are the UNDERSCORE token (import path) per the discriminator
     rule, so I renamed them too (required for both criterion 2 and to keep those first-party
     consumers importable). Their HYPHEN `~/.texas-grocery-mcp/...` path strings were left intact.
-  - R-4: auto_grocier_mcp/server.py `name="texas-grocery-mcp"` -> `name="auto-grocier-mcp"`,
-    heading `## Texas Grocery MCP` -> `## Auto Grocier MCP`. mcp_server.py L520
-    `name="auto-grocier"` UNCHANGED.
-  - R-5: 4x `pip install texas-grocery-mcp[browser]` -> `auto-grocier-mcp[browser]`
+  - R-4: auto_grocer_mcp/server.py `name="texas-grocery-mcp"` -> `name="auto-grocer-mcp"`,
+    heading `## Texas Grocery MCP` -> `## Auto Grocer MCP`. mcp_server.py L520
+    `name="auto-grocer"` UNCHANGED.
+  - R-5: 4x `pip install texas-grocery-mcp[browser]` -> `auto-grocer-mcp[browser]`
     (browser_refresh.py L7/L302/L804, tools/session.py L249).
   - R-6: NOTICE, README Credits, pyproject provenance comment now point paths to
-    auto_grocier_mcp/... (incl. auto_grocier_mcp/LICENSE) AND each gained the clause
+    auto_grocer_mcp/... (incl. auto_grocer_mcp/LICENSE) AND each gained the clause
     "(formerly imported as `texas_grocery_mcp`)". Upstream hyphen name/URL, MIT, "Michael
     Walker", "modified from the original" all KEPT verbatim.
   - R-7: KEEP-set reviewed line-by-line \u2014 all 34 surviving hyphen matches are legit
@@ -2662,19 +2662,19 @@ CRITERION 2 vs 10 TENSION (developer adjudication needed):
   needs an explicit adjudication, not a silent dev choice.
 
 Verification results (all run; `.venv-win` per project convention, WSL venv broken):
-  C1 old dir absent + auto_grocier_mcp/ has credentials.py/graphql.py/server.py/LICENSE \u2013 PASS
+  C1 old dir absent + auto_grocer_mcp/ has credentials.py/graphql.py/server.py/LICENSE \u2013 PASS
   C2 underscore grep = 3 deliberate lineage mentions only (see tension note above) \u2013 ADJUDICATE
   C3 hyphen grep still returns KEEP-set; every match reviewed & belongs \u2013 PASS
   C4 SERVICE_NAME = "texas-grocery-mcp" byte-present (credentials.py:23) \u2013 PASS
   C5 sha256 pre==post, LICENSE has MIT + Michael Walker \u2013 PASS
   C6 docker mount / Dockerfile mkdir / ignores / config+graphql ~ paths intact \u2013 PASS
-  C7 pyproject extend-exclude = ["auto_grocier_mcp", ...] \u2013 PASS
-  C8 server.py name="auto-grocier-mcp" + heading fixed; mcp_server name="auto-grocier" intact \u2013 PASS
+  C7 pyproject extend-exclude = ["auto_grocer_mcp", ...] \u2013 PASS
+  C8 server.py name="auto-grocer-mcp" + heading fixed; mcp_server name="auto-grocer" intact \u2013 PASS
   C9 no `pip install texas-grocery-mcp[browser]` in source \u2013 PASS
   C10 attribution states Michael Walker/URL/MIT/modified + "formerly imported as texas_grocery_mcp" \u2013 PASS
-  C11 NOTICE/README/pyproject reference auto_grocier_mcp/LICENSE \u2013 PASS
-  C12 `python -m compileall -q auto_grocier_mcp` exit 0 \u2013 PASS
-  C13 mcp_server.py: 14 auto_grocier_mcp / 0 texas_grocery_mcp \u2013 PASS
+  C11 NOTICE/README/pyproject reference auto_grocer_mcp/LICENSE \u2013 PASS
+  C12 `python -m compileall -q auto_grocer_mcp` exit 0 \u2013 PASS
+  C13 mcp_server.py: 14 auto_grocer_mcp / 0 texas_grocery_mcp \u2013 PASS
   C14 `pytest tests/unit` = 6 failed / 338 passed / 2 skipped (same Windows-only perm failures) \u2013 PASS
   C15 `ruff check .` = 286 errors \u2013 PASS
   C16 `git ls-files texas_grocery_mcp` empty; dir gone; renames recorded as R/RM \u2013 PASS
@@ -2715,8 +2715,8 @@ tree (uncommitted). ruff and pytest are installed in `.venv-win`.
 | pytest count | `pytest tests/unit -q` | C8, C10 |
 | skipif conditions and assertions | `grep -n "sys.platform\|skipif\|0o600\|SECURE_FILE_MODE" test_secure_file.py test_credentials.py` | C9 |
 | skipif count | `grep -n "skipif" tests/unit/test_secure_file.py tests/unit/test_credentials.py` | C11 |
-| server.py line 1 content | `head -1 auto_grocier_mcp/server.py` | C12 |
-| Cycle 5 changes to auto_grocier_mcp/ | `diff --strip-trailing-cr <(git show HEAD:texas_grocery_mcp/server.py \| sed s/texas/auto/g ...) auto_grocier_mcp/server.py` | C12 |
+| server.py line 1 content | `head -1 auto_grocer_mcp/server.py` | C12 |
+| Cycle 5 changes to auto_grocer_mcp/ | `diff --strip-trailing-cr <(git show HEAD:texas_grocery_mcp/server.py \| sed s/texas/auto/g ...) auto_grocer_mcp/server.py` | C12 |
 | ci.yml lint + test steps | Read `.github/workflows/ci.yml` | C13 |
 | typecheck job + requirements-dev.txt + pyproject | Read ci.yml typecheck job; `grep mypy requirements-dev.txt`; read `[tool.mypy]` | C14 |
 | docker-build.yml scope + DATABASE_PASSWORD | Read `.github/workflows/docker-build.yml` | C15 |
@@ -2754,7 +2754,7 @@ tree (uncommitted). ruff and pytest are installed in `.venv-win`.
   (prints `✓ Database engine created successfully`; no ImportError).
 
 - **C6** PASS — pyproject.toml `[tool.ruff]` has `line-length = 100`, `target-version =
-  "py312"`, and `extend-exclude` contains `"auto_grocier_mcp"` (and also
+  "py312"`, and `extend-exclude` contains `"auto_grocer_mcp"` (and also
   `"session_maintenance/updated_functions"` added this cycle).
 
 - **C7** PASS — `python -m compileall -q mcp_server.py classes database session_maintenance
@@ -2776,7 +2776,7 @@ tree (uncommitted). ruff and pytest are installed in `.venv-win`.
   19, 66, 108, 124, 140). `grep -n "skipif" tests/unit/test_credentials.py` → 1 match
   (line 89). Total = 6 skipif markers on exactly the 6 enumerated permission-check tests.
 
-- **C12** PASS — `head -1 auto_grocier_mcp/server.py` = `"""Auto Grocier MCP Server -
+- **C12** PASS — `head -1 auto_grocer_mcp/server.py` = `"""Auto Grocer MCP Server -
   FastMCP entry point."""` — no "Texas Grocery MCP" present. `diff --strip-trailing-cr`
   between the original (Cycle 4 renamed) content and the current file shows exactly 1 line
   changed in the Cycle 5 scope: line 1 docstring. (Lines 103 and 162 changes are Cycle 4
@@ -2787,13 +2787,13 @@ tree (uncommitted). ruff and pytest are installed in `.venv-win`.
   include push + pull_request to `dev` and `main`.
 
 - **C14** PASS — `typecheck` job has `continue-on-error: true`. `requirements-dev.txt:12`
-  contains `mypy>=1.11.0`. `pyproject.toml` `[tool.mypy]` excludes `auto_grocier_mcp`,
+  contains `mypy>=1.11.0`. `pyproject.toml` `[tool.mypy]` excludes `auto_grocer_mcp`,
   `debug_logs`, `word_dictionaries`, and `tests`.
 
 - **C15** PASS — `docker-build.yml` runs `docker compose -f docker/docker-compose.yml build
   mcp`. Scoped to `push.branches: [main]` and `pull_request.branches: [main]` with
   `paths:` filter covering docker/**, requirements*.txt, mcp_server.py,
-  auto_grocier_mcp/**, pyproject.toml. Sets `DATABASE_PASSWORD: ci` in job `env:`.
+  auto_grocer_mcp/**, pyproject.toml. Sets `DATABASE_PASSWORD: ci` in job `env:`.
   Also creates `touch .env` before the build step to handle the missing `env_file:`.
 
 - **C16** PASS — `python -c "import yaml; [yaml.safe_load(open(p)) for p in

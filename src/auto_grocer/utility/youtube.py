@@ -15,7 +15,7 @@ from typing import Optional
 
 import requests
 
-from auto_grocier.claude import MODEL, client, get_recipe_metadata_txt
+from auto_grocer.claude import MODEL, client, get_recipe_metadata_txt
 
 # Match an 11-char YouTube video id from the common URL shapes.
 _VIDEO_ID_PATTERNS = [

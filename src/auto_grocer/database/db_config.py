@@ -20,7 +20,7 @@ class DatabaseConfig:
     # Database settings from the environment (.env or real env vars).
     DB_HOST = os.environ.get('DATABASE_HOST', 'localhost')
     DB_PORT = os.environ.get('DATABASE_PORT', '5432')
-    DB_NAME = os.environ.get('DATABASE_NAME', 'auto_grocier')
+    DB_NAME = os.environ.get('DATABASE_NAME', 'auto_grocer')
     DB_USER = os.environ.get('DATABASE_USER', 'postgres')
     DB_PASSWORD = os.environ.get('DATABASE_PASSWORD', '')
 

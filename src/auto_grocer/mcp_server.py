@@ -1,5 +1,5 @@
 """
-auto_grocier MCP server (standalone, GraphQL-only).
+auto_grocer MCP server (standalone, GraphQL-only).
 
 Exposes the project's grocery automation to an MCP client (e.g. VS Code Copilot
 Chat) so you can drive the whole flow conversationally:
@@ -26,7 +26,7 @@ Chat) so you can drive the whole flow conversationally:
 ARCHITECTURE
 ------------
 This server is PURE GraphQL and contains NO browser automation. It talks to
-HEB's internal GraphQL API through the vendored ``auto_grocier_mcp`` client,
+HEB's internal GraphQL API through the vendored ``auto_grocer_mcp`` client,
 reusing an authenticated session previously exported to
 ``~/.texas-grocery-mcp/auth.json``.
 
@@ -35,7 +35,7 @@ hashes (including the timeslot/checkout operations), is the job of a SEPARATE
 maintenance workflow driven by nodriver (async CDP browser, runs under Xvfb in
 Docker):
 
-    MODE=nodriver OPERATION=capture_hashes python -m auto_grocier.session_maintenance.run
+    MODE=nodriver OPERATION=capture_hashes python -m auto_grocer.session_maintenance.run
 
 That workflow logs in, exercises the site, and writes:
   * ~/.texas-grocery-mcp/auth.json                (session for this server)
@@ -45,7 +45,7 @@ That workflow logs in, exercises the site, and writes:
 If a tool reports NOT_AUTHENTICATED or OPERATION_NOT_CAPTURED, re-run that
 maintenance workflow, then call refresh_session here. The ``capture_hashes`` tool
 runs this same OPERATION=capture_hashes flow on demand (the only path that clears
-``hashes_ok: false``). When AUTO_GROCIER_AUTO_LOGIN
+``hashes_ok: false``). When AUTO_GROCER_AUTO_LOGIN
 is enabled (default), authenticated tools refresh an expired session
 automatically by running the nodriver login_export operation; the ``login`` tool
 triggers the same flow on demand.
@@ -62,33 +62,33 @@ from collections.abc import Callable
 
 from fastmcp import FastMCP
 
-from auto_grocier.classes.Ingredient import Ingredient
-from auto_grocier.classes.IngredientList import IngredientList
-from auto_grocier.claude import get_setting
-from auto_grocier.recipe_grabber import clean_ingredient
-from auto_grocier.utility.graphql_cart import graphql_cart_sync
-from auto_grocier.utility.graphql_checkout import (
+from auto_grocer.classes.Ingredient import Ingredient
+from auto_grocer.classes.IngredientList import IngredientList
+from auto_grocer.claude import get_setting
+from auto_grocer.recipe_grabber import clean_ingredient
+from auto_grocer.utility.graphql_cart import graphql_cart_sync
+from auto_grocer.utility.graphql_checkout import (
     checkout_sync,
     list_timeslots_sync,
     reserve_timeslot_sync,
 )
-from auto_grocier.utility.graphql_store import select_store
+from auto_grocer.utility.graphql_store import select_store
 
 # Route all structlog/stdlib logging to stderr so the stdio JSON-RPC channel on
-# stdout stays clean. The vendored auto_grocier_mcp client logs via structlog;
+# stdout stays clean. The vendored auto_grocer_mcp client logs via structlog;
 # without this, structlog uses its UNCONFIGURED default (a PrintLogger writing to
 # stdout), which corrupts the MCP protocol and shows up in the client as
 # "Failed to parse message" warnings. configure_logging() sends everything to
 # stderr at INFO (suppressing the client's debug lines). Never let logging setup
 # break server startup.
 try:
-    from auto_grocier_mcp.observability.logging import configure_logging as _configure_logging
+    from auto_grocer_mcp.observability.logging import configure_logging as _configure_logging
 
     _configure_logging()
 except Exception:  # noqa: BLE001
     pass
 
-# This module lives at <repo>/src/auto_grocier/mcp_server.py, so the repo root
+# This module lives at <repo>/src/auto_grocer/mcp_server.py, so the repo root
 # (which holds .env, venv/, and the docker/ tree) is three levels up.
 _PROJECT_ROOT = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -96,26 +96,26 @@ _PROJECT_ROOT = os.path.dirname(
 
 # Set to True to permit the place_order tool to actually submit a paid order.
 # Left False by default so checkout can never charge accidentally.
-_ALLOW_PLACE_ORDER = os.environ.get("AUTO_GROCIER_ALLOW_PLACE_ORDER", "").lower() in (
+_ALLOW_PLACE_ORDER = os.environ.get("AUTO_GROCER_ALLOW_PLACE_ORDER", "").lower() in (
     "1", "true", "yes",
 )
 
 # When True (default), authenticated tools will automatically run the browser
 # login-and-export workflow if no valid session is available, instead of just
-# returning NOT_AUTHENTICATED. Set AUTO_GROCIER_AUTO_LOGIN=0 to disable and use
+# returning NOT_AUTHENTICATED. Set AUTO_GROCER_AUTO_LOGIN=0 to disable and use
 # the manual workflow (run the script yourself, then call refresh_session).
-_AUTO_LOGIN = os.environ.get("AUTO_GROCIER_AUTO_LOGIN", "1").lower() in (
+_AUTO_LOGIN = os.environ.get("AUTO_GROCER_AUTO_LOGIN", "1").lower() in (
     "1", "true", "yes",
 )
 
 # How long (seconds) to allow the browser login-and-export to run before giving
 # up. The flow logs in, may handle email verification, and exports auth.json.
-_AUTO_LOGIN_TIMEOUT = int(os.environ.get("AUTO_GROCIER_AUTO_LOGIN_TIMEOUT", "300"))
+_AUTO_LOGIN_TIMEOUT = int(os.environ.get("AUTO_GROCER_AUTO_LOGIN_TIMEOUT", "300"))
 
 # How long (seconds) to allow the hash-capture flow to run. It logs in AND
 # exercises the site (search/cart/timeslot/checkout) to sniff the rotating
 # persisted-query hashes, so it takes longer than a plain login_export.
-_CAPTURE_HASHES_TIMEOUT = int(os.environ.get("AUTO_GROCIER_CAPTURE_TIMEOUT", "600"))
+_CAPTURE_HASHES_TIMEOUT = int(os.environ.get("AUTO_GROCER_CAPTURE_TIMEOUT", "600"))
 
 # Serialize auto-login so concurrent tool calls don't launch multiple browsers.
 _AUTO_LOGIN_LOCK = threading.Lock()
@@ -125,9 +125,9 @@ _NOT_AUTHED = {
     "code": "NOT_AUTHENTICATED",
     "message": (
         "No valid HEB session and automatic login is disabled or failed. "
-        "Enable auto-login (AUTO_GROCIER_AUTO_LOGIN=1), call the login tool, or "
+        "Enable auto-login (AUTO_GROCER_AUTO_LOGIN=1), call the login tool, or "
         "refresh the session manually (MODE=nodriver OPERATION=login_export "
-        "python -m auto_grocier.session_maintenance.run), then call refresh_session."
+        "python -m auto_grocer.session_maintenance.run), then call refresh_session."
     ),
 }
 
@@ -142,7 +142,7 @@ def _store_id(override: str = "") -> str:
 def _is_authed() -> bool:
     """Return True if a valid exported HEB session is available for GraphQL."""
     try:
-        from auto_grocier_mcp.auth.session import is_authenticated
+        from auto_grocer_mcp.auth.session import is_authenticated
         return bool(is_authenticated())
     except Exception:
         return False
@@ -158,7 +158,7 @@ def _session_expiry() -> dict:
     import time
     from datetime import datetime, timezone
     try:
-        from auto_grocier_mcp.utils.config import get_settings
+        from auto_grocer_mcp.utils.config import get_settings
         path = get_settings().auth_state_path
         with open(path) as f:
             state = json.load(f)
@@ -201,12 +201,12 @@ def _hashes_ok() -> bool:
 def _reload_session_caches() -> None:
     """Drop cached settings/hashes so the next check re-reads auth.json."""
     try:
-        from auto_grocier_mcp.utils.config import get_settings
+        from auto_grocer_mcp.utils.config import get_settings
         get_settings.cache_clear()
     except Exception:
         pass
     try:
-        from auto_grocier_mcp.clients.graphql import reload_persisted_query_overrides
+        from auto_grocer_mcp.clients.graphql import reload_persisted_query_overrides
         reload_persisted_query_overrides()
     except Exception:
         pass
@@ -237,10 +237,10 @@ def _auto_authenticate(force: bool = False) -> dict:
         env.setdefault("DISPLAY", ":0")  # X server (WSLg on host, Xvfb in Docker)
         env["MODE"] = "nodriver"
         env["OPERATION"] = "login_export"
-        cmd = [python_exe, "-u", "-m", "auto_grocier.session_maintenance.run"]
+        cmd = [python_exe, "-u", "-m", "auto_grocer.session_maintenance.run"]
 
         print(
-            "[auto-grocier] No valid session - running nodriver login "
+            "[auto-grocer] No valid session - running nodriver login "
             "(login_export) to refresh auth.json (this can take a minute)...",
             file=sys.stderr,
         )
@@ -263,7 +263,7 @@ def _auto_authenticate(force: bool = False) -> dict:
         ok = _is_authed()
         if not ok:
             print(
-                "[auto-grocier] Auto-login finished but session still invalid. "
+                "[auto-grocer] Auto-login finished but session still invalid. "
                 f"(returncode={proc.returncode})",
                 file=sys.stderr,
             )
@@ -279,7 +279,7 @@ def _capture_hashes() -> dict:
     """Run the nodriver capture_hashes workflow to refresh persisted-query hashes.
 
     Logs in and exercises the HEB site (search/cart/timeslot/checkout) via the
-    async nodriver flow (``auto_grocier.session_maintenance.run`` with
+    async nodriver flow (``auto_grocer.session_maintenance.run`` with
     MODE=nodriver OPERATION=capture_hashes), sniffing HEB's rotating
     persisted-query hashes over CDP under Xvfb inside the Docker image. It
     rewrites all three session files:
@@ -301,10 +301,10 @@ def _capture_hashes() -> dict:
         env.setdefault("DISPLAY", ":0")  # X server (WSLg on host, Xvfb in Docker)
         env["MODE"] = "nodriver"
         env["OPERATION"] = "capture_hashes"
-        cmd = [python_exe, "-u", "-m", "auto_grocier.session_maintenance.run"]
+        cmd = [python_exe, "-u", "-m", "auto_grocer.session_maintenance.run"]
 
         print(
-            "[auto-grocier] Running nodriver capture_hashes to refresh the "
+            "[auto-grocer] Running nodriver capture_hashes to refresh the "
             "persisted-query hashes (this can take a few minutes)...",
             file=sys.stderr,
         )
@@ -329,7 +329,7 @@ def _capture_hashes() -> dict:
         ok = authed and hashes_ok
         if not ok:
             print(
-                "[auto-grocier] capture_hashes finished but session/hashes still "
+                "[auto-grocer] capture_hashes finished but session/hashes still "
                 f"invalid (returncode={proc.returncode}, authenticated={authed}, "
                 f"hashes_ok={hashes_ok}).",
                 file=sys.stderr,
@@ -348,7 +348,7 @@ def _ensure_authed() -> bool:
     """Ensure a valid HEB session exists, auto-running login if needed.
 
     Returns True if authenticated (possibly after a successful auto-login).
-    Honors AUTO_GROCIER_AUTO_LOGIN; when disabled, behaves like _is_authed().
+    Honors AUTO_GROCER_AUTO_LOGIN; when disabled, behaves like _is_authed().
     """
     if _is_authed():
         return True
@@ -393,7 +393,7 @@ def _summarize(report: dict) -> dict:
 
 def _graphql_get_cart_sync() -> dict:
     async def _run():
-        from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
+        from auto_grocer_mcp.clients.graphql import HEBGraphQLClient
         client = HEBGraphQLClient()
         try:
             return await client.get_cart()
@@ -409,12 +409,12 @@ def _remove_from_cart_sync(matchers: list[str]) -> dict:
     sku id, or a substring of the product name. Matching items are removed by
     setting their quantity to 0.
     """
-    from auto_grocier.utility.graphql_cart import _extract_sku
+    from auto_grocer.utility.graphql_cart import _extract_sku
 
     needles = [m.strip().lower() for m in matchers if m and m.strip()]
 
     async def _run():
-        from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
+        from auto_grocer_mcp.clients.graphql import HEBGraphQLClient
         client = HEBGraphQLClient()
         removed = []
         not_found = []
@@ -464,7 +464,7 @@ def _add_by_id_sync(entries: list[dict]) -> dict:
     missing a product_id or sku are reported as failures.
     """
     async def _run():
-        from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
+        from auto_grocer_mcp.clients.graphql import HEBGraphQLClient
         client = HEBGraphQLClient()
         added = []
         failed = []
@@ -523,7 +523,7 @@ def _add_by_id_sync(entries: list[dict]) -> dict:
 
 def _search_products_sync(query: str, store_id: str, limit: int) -> list:
     async def _run():
-        from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
+        from auto_grocer_mcp.clients.graphql import HEBGraphQLClient
         client = HEBGraphQLClient()
         try:
             result = await client.search_products(
@@ -547,7 +547,7 @@ def _search_products_sync(query: str, store_id: str, limit: int) -> list:
 
 def _product_details_sync(product_id: str, store_id: str) -> dict | None:
     async def _run():
-        from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
+        from auto_grocer_mcp.clients.graphql import HEBGraphQLClient
         client = HEBGraphQLClient()
         try:
             details = await client.get_product_details(
@@ -561,7 +561,7 @@ def _product_details_sync(product_id: str, store_id: str) -> dict | None:
 
 def _get_coupons_sync(search: str, category_id: int, limit: int) -> dict:
     async def _run():
-        from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
+        from auto_grocer_mcp.clients.graphql import HEBGraphQLClient
         client = HEBGraphQLClient()
         try:
             result = await client.get_coupons(
@@ -577,7 +577,7 @@ def _get_coupons_sync(search: str, category_id: int, limit: int) -> dict:
 
 def _clipped_coupons_sync(limit: int) -> dict:
     async def _run():
-        from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
+        from auto_grocer_mcp.clients.graphql import HEBGraphQLClient
         client = HEBGraphQLClient()
         try:
             result = await client.get_clipped_coupons(limit=int(limit))
@@ -589,7 +589,7 @@ def _clipped_coupons_sync(limit: int) -> dict:
 
 def _clip_coupon_sync(coupon_id: int) -> dict:
     async def _run():
-        from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
+        from auto_grocer_mcp.clients.graphql import HEBGraphQLClient
         client = HEBGraphQLClient()
         try:
             return await client.clip_coupon(int(coupon_id))
@@ -600,7 +600,7 @@ def _clip_coupon_sync(coupon_id: int) -> dict:
 
 def _search_stores_sync(address: str, radius_miles: int) -> dict:
     async def _run():
-        from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
+        from auto_grocer_mcp.clients.graphql import HEBGraphQLClient
         client = HEBGraphQLClient()
         try:
             result = await client.search_stores(
@@ -616,12 +616,12 @@ def _search_stores_sync(address: str, radius_miles: int) -> dict:
 # MCP server + tools
 # ---------------------------------------------------------------------------
 mcp = FastMCP(
-    name="auto-grocier",
+    name="auto-grocer",
     instructions=(
         "Drive HEB grocery automation over GraphQL. This server reuses an "
         "exported HEB session. If no valid session exists, authenticated tools "
         "automatically run a browser login to refresh it (set "
-        "AUTO_GROCIER_AUTO_LOGIN=0 to disable and use refresh_session manually). "
+        "AUTO_GROCER_AUTO_LOGIN=0 to disable and use refresh_session manually). "
         "Typical order: add_groceries / add_recipe_ingredients -> get_cart -> "
         "list_timeslots -> reserve_timeslot -> checkout (review only). "
         "place_order is guarded and will charge."
@@ -839,10 +839,10 @@ def add_recipe_ingredients(request: str, clear_first: bool = False) -> dict:
     if not _ensure_authed():
         return _NOT_AUTHED
 
-    from auto_grocier.database.db_connection import get_db_session
-    from auto_grocier.database.ingredient_repository import IngredientRepository
-    from auto_grocier.database.recipe_repository import RecipeRepository
-    from auto_grocier.utility.recipe_matcher import build_ingredient_list, parse_and_match
+    from auto_grocer.database.db_connection import get_db_session
+    from auto_grocer.database.ingredient_repository import IngredientRepository
+    from auto_grocer.database.recipe_repository import RecipeRepository
+    from auto_grocer.utility.recipe_matcher import build_ingredient_list, parse_and_match
 
     db = get_db_session()
     try:
@@ -876,9 +876,9 @@ def find_recipes(request: str) -> dict:
     Args:
         request: Natural-language description of the meals/recipes you want.
     """
-    from auto_grocier.database.db_connection import get_db_session
-    from auto_grocier.database.recipe_repository import RecipeRepository
-    from auto_grocier.utility.recipe_matcher import parse_and_match
+    from auto_grocer.database.db_connection import get_db_session
+    from auto_grocer.database.recipe_repository import RecipeRepository
+    from auto_grocer.utility.recipe_matcher import parse_and_match
 
     db = get_db_session()
     try:
@@ -918,9 +918,9 @@ def query_recipes(
         include_ingredients: Include each recipe's ingredient list in the result.
         limit: Max recipes to return when listing (default 50).
     """
-    from auto_grocier.database.db_connection import get_db_session
-    from auto_grocier.database.ingredient_repository import IngredientRepository
-    from auto_grocier.database.recipe_repository import RecipeRepository
+    from auto_grocer.database.db_connection import get_db_session
+    from auto_grocer.database.ingredient_repository import IngredientRepository
+    from auto_grocer.database.recipe_repository import RecipeRepository
 
     try:
         db = get_db_session()
@@ -992,8 +992,8 @@ def list_all_recipes(page: int = 1) -> dict:
     Args:
         page: 1-indexed page number (10 recipes per page). Defaults to 1.
     """
-    from auto_grocier.database.db_connection import get_db_session
-    from auto_grocier.database.recipe_repository import RecipeRepository
+    from auto_grocer.database.db_connection import get_db_session
+    from auto_grocer.database.recipe_repository import RecipeRepository
 
     PAGE_SIZE = 10
 
@@ -1091,9 +1091,9 @@ def seed_recipes(
             Derived from the video for YouTube URLs when blank.
         cook_time: Optional cook time in minutes (0 or omit if unknown).
     """
-    from auto_grocier.database.db_connection import get_db_session
-    from auto_grocier.database.ingredient_repository import IngredientRepository
-    from auto_grocier.database.recipe_repository import RecipeRepository
+    from auto_grocer.database.db_connection import get_db_session
+    from auto_grocer.database.ingredient_repository import IngredientRepository
+    from auto_grocer.database.recipe_repository import RecipeRepository
 
     if not url or not str(url).strip():
         return {"error": True, "code": "INVALID_INPUT", "message": "A recipe 'url' is required."}
@@ -1106,7 +1106,7 @@ def seed_recipes(
     youtube_source = False
     is_youtube_url: Callable[[str], bool] | None
     try:
-        from auto_grocier.utility.youtube import is_youtube_url, youtube_recipe_from_url
+        from auto_grocer.utility.youtube import is_youtube_url, youtube_recipe_from_url
     except Exception:  # noqa: BLE001 - module optional at import time
         is_youtube_url = None
 
@@ -1373,7 +1373,7 @@ def place_order() -> dict:
     Submit the final paid order via GraphQL. THIS CHARGES YOUR PAYMENT METHOD.
 
     Disabled by default for safety; enable by setting the environment variable
-    AUTO_GROCIER_ALLOW_PLACE_ORDER=1 before starting the server. Run checkout
+    AUTO_GROCER_ALLOW_PLACE_ORDER=1 before starting the server. Run checkout
     (review) first.
     """
     if not _ensure_authed():
@@ -1383,7 +1383,7 @@ def place_order() -> dict:
             "error": True,
             "code": "PLACE_ORDER_DISABLED",
             "message": (
-                "place_order is disabled. Set AUTO_GROCIER_ALLOW_PLACE_ORDER=1 "
+                "place_order is disabled. Set AUTO_GROCER_ALLOW_PLACE_ORDER=1 "
                 "in the server environment to enable submitting a paid order."
             ),
         }

@@ -4,16 +4,16 @@ from typing import TYPE_CHECKING, Annotated, Any
 
 from pydantic import Field
 
-from auto_grocier_mcp.auth.session import (
+from auto_grocer_mcp.auth.session import (
     check_auth,
     ensure_session,
     get_auth_instructions,
     is_authenticated,
 )
-from auto_grocier_mcp.state import StateManager
+from auto_grocer_mcp.state import StateManager
 
 if TYPE_CHECKING:
-    from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
+    from auto_grocer_mcp.clients.graphql import HEBGraphQLClient
 
 
 def _get_client() -> "HEBGraphQLClient":
@@ -482,8 +482,8 @@ async def cart_add_with_retry(
 
     # If failed with CART_ADD_NOT_VERIFIED and auto-correct is enabled
     if result.get("code") == "CART_ADD_NOT_VERIFIED" and auto_correct_ids:
-        from auto_grocier_mcp.tools.product import product_search
-        from auto_grocier_mcp.tools.store import get_default_store_id
+        from auto_grocer_mcp.tools.product import product_search
+        from auto_grocer_mcp.tools.store import get_default_store_id
 
         # Try to find product by searching with the SKU/product_id as query
         search_query = sku_id or product_id

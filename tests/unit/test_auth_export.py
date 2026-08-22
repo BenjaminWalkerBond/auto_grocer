@@ -1,14 +1,14 @@
 """Unit tests for the nodriver -> auth.json session export.
 
 Verifies ``export_session_to_authjson`` produces the structure the
-auto_grocier_mcp GraphQL client expects. Runs fully offline using fake
+auto_grocer_mcp GraphQL client expects. Runs fully offline using fake
 CDP cookie/tab/browser stand-ins (no network, no real browser).
 """
 import json
 import os
 import tempfile
 
-from auto_grocier.session_maintenance.auth_export import export_session_to_authjson
+from auto_grocer.session_maintenance.auth_export import export_session_to_authjson
 
 
 class _FakeCDPCookie:

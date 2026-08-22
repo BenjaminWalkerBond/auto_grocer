@@ -2,14 +2,14 @@
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
-# Provenance: the vendored `auto_grocier_mcp/` package (formerly imported as
+# Provenance: the vendored `auto_grocer_mcp/` package (formerly imported as
 # `texas_grocery_mcp`) is derived from and "modified from the original"
 # texas-grocery-mcp by Michael Walker
 # (https://github.com/mgwalkerjr95/texas-grocery-mcp), used under the MIT
-# License. See the root NOTICE file and auto_grocier_mcp/LICENSE for details.
+# License. See the root NOTICE file and auto_grocer_mcp/LICENSE for details.
 
 [project]
-name = "auto-grocier"
+name = "auto-grocer"
 version = "0.1.0"
 description = "HEB grocery automation MCP server with recipe database and GraphQL cart control."
 requires-python = ">=3.12"
@@ -55,8 +55,8 @@ dependencies = [
 
 [project.scripts]
 # Installed console entry points (created by `uv sync` / pip install).
-auto-grocier-mcp = "auto_grocier.mcp_server:main"
-auto-grocier = "auto_grocier.session_maintenance.run:cli"
+auto-grocer-mcp = "auto_grocer.mcp_server:main"
+auto-grocer = "auto_grocer.session_maintenance.run:cli"
 
 [dependency-groups]
 dev = [
@@ -68,16 +68,16 @@ dev = [
 ]
 
 [tool.uv]
-# Installable src-layout package: `uv sync` builds and installs `auto_grocier`
-# (and the vendored `auto_grocier_mcp`) editable into the environment, so the
-# console scripts and `python -m auto_grocier.*` resolve without sys.path hacks.
+# Installable src-layout package: `uv sync` builds and installs `auto_grocer`
+# (and the vendored `auto_grocer_mcp`) editable into the environment, so the
+# console scripts and `python -m auto_grocer.*` resolve without sys.path hacks.
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
 # Ship the tag word-lists that IngredientList loads at runtime.
-"auto_grocier" = ["word_dictionaries/*.txt"]
+"auto_grocer" = ["word_dictionaries/*.txt"]
 
 [tool.pytest.ini_options]
 minversion = "7.0"
@@ -93,16 +93,16 @@ markers = [
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-# Focus linting on our own code; the vendored auto_grocier_mcp library is a
+# Focus linting on our own code; the vendored auto_grocer_mcp library is a
 # third-party fork we keep as-is. session_maintenance/updated_functions holds
 # GENERATED self-healing fragments ("review before applying") that are spliced
 # as text into session_maintenance/flows.py — they reference names that resolve
 # only in that target module, so they are excluded like other generated output.
 extend-exclude = [
-    "src/auto_grocier_mcp",
+    "src/auto_grocer_mcp",
     "debug_logs",
-    "src/auto_grocier/word_dictionaries",
-    "src/auto_grocier/session_maintenance/updated_functions",
+    "src/auto_grocer/word_dictionaries",
+    "src/auto_grocer/session_maintenance/updated_functions",
 ]
 
 [tool.ruff.lint]
@@ -114,8 +114,8 @@ ignore = ["E501"]
 # intentional debugging holds) and E722 (bare except) in the untested
 # session_maintenance/ + utility/ trees. Fixing them by hand pre-release is
 # unguarded (no test coverage). Tracked as tech debt.
-"src/auto_grocier/session_maintenance/**" = ["F841", "E722"]
-"src/auto_grocier/utility/**" = ["F841", "E722"]
+"src/auto_grocer/session_maintenance/**" = ["F841", "E722"]
+"src/auto_grocer/utility/**" = ["F841", "E722"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -124,9 +124,9 @@ ignore_missing_imports = true
 # vendored fork, generated output, data dirs, and the test suite are out of
 # scope for first-party type coverage.
 exclude = [
-    "src/auto_grocier_mcp",
+    "src/auto_grocer_mcp",
     "debug_logs",
-    "src/auto_grocier/word_dictionaries",
+    "src/auto_grocer/word_dictionaries",
     "tests",
 ]
 

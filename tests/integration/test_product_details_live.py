@@ -9,8 +9,8 @@ Run with: pytest tests/integration/ --run-integration
 
 import pytest
 
-from auto_grocier_mcp.tools.product import product_get, product_search
-from auto_grocier_mcp.tools.store import set_default_store_id
+from auto_grocer_mcp.tools.product import product_get, product_search
+from auto_grocer_mcp.tools.store import set_default_store_id
 
 # Known stable product IDs for testing
 OLIVE_OIL_ID = "127074"  # H-E-B Extra Virgin Olive Oil
@@ -24,8 +24,8 @@ HEIGHTS_HEB_ID = "737"
 @pytest.fixture(autouse=True)
 def reset_tool_state():
     """Reset global state before each test to avoid client reuse issues."""
-    from auto_grocier_mcp.tools import product as product_module
-    from auto_grocier_mcp.tools import store as store_module
+    from auto_grocer_mcp.tools import product as product_module
+    from auto_grocer_mcp.tools import store as store_module
 
     # Reset graphql clients to avoid event loop issues
     store_module._default_store_id = None

@@ -1,4 +1,4 @@
-"""Start/stop a nodriver Browser for the auto_grocier prototype.
+"""Start/stop a nodriver Browser for the auto_grocer prototype.
 
 nodriver auto-detects the installed Chrome/Chromium, so there is no chromedriver
 binary and no version pin (the old code forced ``uc.Chrome(version_main=116)``).
@@ -37,7 +37,7 @@ def _make_profile_with_prefs():
 
     Returns the path to the user-data directory.
     """
-    user_data_dir = tempfile.mkdtemp(prefix="auto_grocier_nodriver_")
+    user_data_dir = tempfile.mkdtemp(prefix="auto_grocer_nodriver_")
     default_dir = os.path.join(user_data_dir, "Default")
     os.makedirs(default_dir, exist_ok=True)
 
@@ -68,14 +68,14 @@ async def start_browser(headless: bool = False, extra_args=None):
 
     Environment overrides (used by the Docker image):
         NODRIVER_BROWSER_PATH / CHROME_BIN  - explicit Chrome/Chromium binary.
-        AUTO_GROCIER_NO_SANDBOX=1           - add --no-sandbox (required when
+        AUTO_GROCER_NO_SANDBOX=1           - add --no-sandbox (required when
                                               running as root inside a container).
     """
     args = list(DEFAULT_BROWSER_ARGS)
 
     # Containers run as root, where Chrome's sandbox refuses to start; disable it
     # when explicitly requested.
-    if os.environ.get("AUTO_GROCIER_NO_SANDBOX", "").lower() in ("1", "true", "yes"):
+    if os.environ.get("AUTO_GROCER_NO_SANDBOX", "").lower() in ("1", "true", "yes"):
         args += ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]
 
     if extra_args:

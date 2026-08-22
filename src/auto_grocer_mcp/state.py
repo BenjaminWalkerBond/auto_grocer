@@ -12,7 +12,7 @@ import structlog
 logger = structlog.get_logger()
 
 if TYPE_CHECKING:
-    from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
+    from auto_grocer_mcp.clients.graphql import HEBGraphQLClient
 
 # Request-scoped state using contextvars
 _request_store_id: ContextVar[str | None] = ContextVar("request_store_id", default=None)
@@ -45,7 +45,7 @@ class StateManager:
 
         Thread-safe lazy initialization.
         """
-        from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
+        from auto_grocer_mcp.clients.graphql import HEBGraphQLClient
 
         async with _state_lock:
             if _shared_state["graphql_client"] is None:
@@ -59,7 +59,7 @@ class StateManager:
         Note: Initialization is not fully thread-safe, but acceptable for
         MCP's primarily single-threaded execution model.
         """
-        from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
+        from auto_grocer_mcp.clients.graphql import HEBGraphQLClient
 
         if _shared_state["graphql_client"] is None:
             _shared_state["graphql_client"] = HEBGraphQLClient()

@@ -26,15 +26,15 @@ sudo service postgresql start
 sudo -u postgres psql
 
 # In PostgreSQL prompt, run these commands:
-CREATE DATABASE auto_grocier;
-CREATE USER grocier_user WITH PASSWORD 'your_secure_password';
-GRANT ALL PRIVILEGES ON DATABASE auto_grocier TO grocier_user;
+CREATE DATABASE auto_grocer;
+CREATE USER grocer_user WITH PASSWORD 'your_secure_password';
+GRANT ALL PRIVILEGES ON DATABASE auto_grocer TO grocer_user;
 
 # Grant schema privileges (for PostgreSQL 15+)
-\c auto_grocier
-GRANT ALL ON SCHEMA public TO grocier_user;
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO grocier_user;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO grocier_user;
+\c auto_grocer
+GRANT ALL ON SCHEMA public TO grocer_user;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO grocer_user;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO grocer_user;
 
 # Exit PostgreSQL
 \q
@@ -45,14 +45,14 @@ Update your `config.txt` file:
 ```
 DATABASE_HOST=localhost
 DATABASE_PORT=5432
-DATABASE_NAME=auto_grocier
-DATABASE_USER=grocier_user
+DATABASE_NAME=auto_grocer
+DATABASE_USER=grocer_user
 DATABASE_PASSWORD=your_secure_password
 ```
 
 ### Step 4: Test Connection
 ```bash
-cd /mnt/c/Users/benbo/OneDrive/Desktop/Development/GitHub/Python/auto_grocier
+cd /mnt/c/Users/benbo/OneDrive/Desktop/Development/GitHub/Python/auto_grocer
 uv run python database/test_connection.py
 ```
 
@@ -65,9 +65,9 @@ If you prefer using Docker:
 ```bash
 # Install Docker if not installed
 # Then run PostgreSQL container
-docker run --name auto_grocier_db \
-  -e POSTGRES_DB=auto_grocier \
-  -e POSTGRES_USER=grocier_user \
+docker run --name auto_grocer_db \
+  -e POSTGRES_DB=auto_grocer \
+  -e POSTGRES_USER=grocer_user \
   -e POSTGRES_PASSWORD=your_password \
   -p 5432:5432 \
   -d postgres:15
@@ -104,19 +104,19 @@ sudo service postgresql start
 
 echo "Creating database and user..."
 sudo -u postgres psql <<EOF
-CREATE DATABASE auto_grocier;
-CREATE USER grocier_user WITH PASSWORD 'grocier_password_123';
-GRANT ALL PRIVILEGES ON DATABASE auto_grocier TO grocier_user;
-\c auto_grocier
-GRANT ALL ON SCHEMA public TO grocier_user;
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO grocier_user;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO grocier_user;
+CREATE DATABASE auto_grocer;
+CREATE USER grocer_user WITH PASSWORD 'grocer_password_123';
+GRANT ALL PRIVILEGES ON DATABASE auto_grocer TO grocer_user;
+\c auto_grocer
+GRANT ALL ON SCHEMA public TO grocer_user;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO grocer_user;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO grocer_user;
 EOF
 
 echo "PostgreSQL setup complete!"
 echo ""
 echo "Update your config.txt with:"
-echo "DATABASE_PASSWORD=grocier_password_123"
+echo "DATABASE_PASSWORD=grocer_password_123"
 ```
 
 ---
@@ -138,18 +138,18 @@ sudo service postgresql restart
 sudo netstat -plnt | grep 5432
 
 # Test connection manually
-psql -h localhost -U grocier_user -d auto_grocier
+psql -h localhost -U grocer_user -d auto_grocer
 ```
 
 ### Permission issues?
 ```bash
 # Grant all permissions again
-sudo -u postgres psql -d auto_grocier <<EOF
-GRANT ALL ON SCHEMA public TO grocier_user;
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO grocier_user;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO grocier_user;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO grocier_user;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO grocier_user;
+sudo -u postgres psql -d auto_grocer <<EOF
+GRANT ALL ON SCHEMA public TO grocer_user;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO grocer_user;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO grocer_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO grocer_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO grocer_user;
 EOF
 ```
 
@@ -167,13 +167,13 @@ sudo apt update && sudo apt install -y postgresql postgresql-contrib
 sudo service postgresql start
 
 # 3. Setup database (will prompt for your sudo password)
-sudo -u postgres psql -c "CREATE DATABASE auto_grocier;"
-sudo -u postgres psql -c "CREATE USER grocier_user WITH PASSWORD 'grocier_pass_123';"
-sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE auto_grocier TO grocier_user;"
-sudo -u postgres psql -d auto_grocier -c "GRANT ALL ON SCHEMA public TO grocier_user;"
+sudo -u postgres psql -c "CREATE DATABASE auto_grocer;"
+sudo -u postgres psql -c "CREATE USER grocer_user WITH PASSWORD 'grocer_pass_123';"
+sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE auto_grocer TO grocer_user;"
+sudo -u postgres psql -d auto_grocer -c "GRANT ALL ON SCHEMA public TO grocer_user;"
 
 # 4. Test it
 python database/test_connection.py
 ```
 
-Don't forget to update `DATABASE_PASSWORD=grocier_pass_123` in config.txt!
+Don't forget to update `DATABASE_PASSWORD=grocer_pass_123` in config.txt!

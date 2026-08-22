@@ -19,11 +19,11 @@ def mock_auth_path(tmp_path, monkeypatch):
         return MockSettings()
 
     monkeypatch.setattr(
-        "auto_grocier_mcp.auth.session.get_settings",
+        "auto_grocer_mcp.auth.session.get_settings",
         mock_get_settings,
     )
     monkeypatch.setattr(
-        "auto_grocier_mcp.tools.session.get_settings",
+        "auto_grocer_mcp.tools.session.get_settings",
         mock_get_settings,
     )
 
@@ -212,7 +212,7 @@ def stale_session_cookies():
 
 def test_get_session_status_no_auth_file(mock_auth_path):
     """get_session_status should indicate no auth when file missing."""
-    from auto_grocier_mcp.auth.session import get_session_status
+    from auto_grocer_mcp.auth.session import get_session_status
 
     result = get_session_status()
 
@@ -225,7 +225,7 @@ def test_get_session_status_no_auth_file(mock_auth_path):
 
 def test_get_session_status_valid_session(mock_auth_path, valid_session_cookies):
     """get_session_status should show healthy session with time remaining."""
-    from auto_grocier_mcp.auth.session import get_session_status
+    from auto_grocer_mcp.auth.session import get_session_status
 
     mock_auth_path.write_text(json.dumps(valid_session_cookies))
 
@@ -243,7 +243,7 @@ def test_get_session_status_valid_session(mock_auth_path, valid_session_cookies)
 
 def test_get_session_status_refresh_recommended(mock_auth_path, expiring_soon_session_cookies):
     """get_session_status should recommend refresh when < 4 hours remaining."""
-    from auto_grocier_mcp.auth.session import get_session_status
+    from auto_grocer_mcp.auth.session import get_session_status
 
     mock_auth_path.write_text(json.dumps(expiring_soon_session_cookies))
 
@@ -259,7 +259,7 @@ def test_get_session_status_refresh_recommended(mock_auth_path, expiring_soon_se
 
 def test_get_session_status_expired(mock_auth_path, expired_session_cookies):
     """get_session_status should detect expired session."""
-    from auto_grocier_mcp.auth.session import get_session_status
+    from auto_grocer_mcp.auth.session import get_session_status
 
     mock_auth_path.write_text(json.dumps(expired_session_cookies))
 
@@ -273,7 +273,7 @@ def test_get_session_status_expired(mock_auth_path, expired_session_cookies):
 
 def test_get_session_status_missing_reese84(mock_auth_path):
     """get_session_status should detect missing reese84 token."""
-    from auto_grocier_mcp.auth.session import get_session_status
+    from auto_grocer_mcp.auth.session import get_session_status
 
     # Session without reese84
     cookies = {
@@ -298,7 +298,7 @@ def test_get_session_status_missing_reese84(mock_auth_path):
 
 def test_get_session_status_corrupted_file(mock_auth_path):
     """get_session_status should handle corrupted auth file."""
-    from auto_grocier_mcp.auth.session import get_session_status
+    from auto_grocer_mcp.auth.session import get_session_status
 
     mock_auth_path.write_text("not valid json {{{")
 
@@ -317,7 +317,7 @@ def test_get_session_status_corrupted_file(mock_auth_path):
 @pytest.mark.asyncio
 async def test_session_status_no_auth_file(mock_auth_path):
     """session_status tool should indicate no auth when file missing."""
-    from auto_grocier_mcp.tools.session import session_status
+    from auto_grocer_mcp.tools.session import session_status
 
     result = await session_status()
 
@@ -329,7 +329,7 @@ async def test_session_status_no_auth_file(mock_auth_path):
 @pytest.mark.asyncio
 async def test_session_status_valid_session(mock_auth_path, valid_session_cookies):
     """session_status tool should show healthy session with time remaining."""
-    from auto_grocier_mcp.tools.session import session_status
+    from auto_grocer_mcp.tools.session import session_status
 
     mock_auth_path.write_text(json.dumps(valid_session_cookies))
 
@@ -346,7 +346,7 @@ async def test_session_status_valid_session(mock_auth_path, valid_session_cookie
 @pytest.mark.asyncio
 async def test_session_status_refresh_recommended(mock_auth_path, expiring_soon_session_cookies):
     """session_status tool should recommend refresh when < 4 hours remaining."""
-    from auto_grocier_mcp.tools.session import session_status
+    from auto_grocer_mcp.tools.session import session_status
 
     mock_auth_path.write_text(json.dumps(expiring_soon_session_cookies))
 
@@ -364,7 +364,7 @@ async def test_session_status_refresh_recommended(mock_auth_path, expiring_soon_
 @pytest.mark.asyncio
 async def test_session_refresh_success_via_nodriver(mock_auth_path, monkeypatch):
     """session_refresh should report success when the nodriver login succeeds."""
-    from auto_grocier_mcp.tools import session as session_tools
+    from auto_grocer_mcp.tools import session as session_tools
 
     async def fake_login(env, *, timeout_ms=300000):
         assert env["MODE"] == "nodriver"
@@ -387,7 +387,7 @@ async def test_session_refresh_success_via_nodriver(mock_auth_path, monkeypatch)
 @pytest.mark.asyncio
 async def test_session_refresh_failure_when_login_returns_error(mock_auth_path, monkeypatch):
     """session_refresh should report failure when the login subprocess exits non-zero."""
-    from auto_grocier_mcp.tools import session as session_tools
+    from auto_grocer_mcp.tools import session as session_tools
 
     async def fake_login(env, *, timeout_ms=300000):
         return 1, "boom"
@@ -411,7 +411,7 @@ async def test_session_refresh_failure_when_login_ok_but_not_authenticated(
     mock_auth_path, monkeypatch
 ):
     """A clean exit that still lacks a valid session should be a login failure."""
-    from auto_grocier_mcp.tools import session as session_tools
+    from auto_grocer_mcp.tools import session as session_tools
 
     async def fake_login(env, *, timeout_ms=300000):
         return 0, "no session produced"
@@ -429,7 +429,7 @@ async def test_session_refresh_failure_when_login_ok_but_not_authenticated(
 @pytest.mark.asyncio
 async def test_session_refresh_passes_saved_credentials(mock_auth_path, monkeypatch):
     """Saved credentials should be forwarded to the login subprocess env."""
-    from auto_grocier_mcp.tools import session as session_tools
+    from auto_grocer_mcp.tools import session as session_tools
 
     captured: dict[str, str] = {}
 
@@ -466,7 +466,7 @@ async def test_session_refresh_passes_saved_credentials(mock_auth_path, monkeypa
 
 def test_session_clear_removes_file(mock_auth_path, valid_session_cookies):
     """session_clear should remove auth file."""
-    from auto_grocier_mcp.tools.session import session_clear
+    from auto_grocer_mcp.tools.session import session_clear
 
     mock_auth_path.write_text(json.dumps(valid_session_cookies))
     assert mock_auth_path.exists()
@@ -480,7 +480,7 @@ def test_session_clear_removes_file(mock_auth_path, valid_session_cookies):
 
 def test_session_clear_handles_missing_file(mock_auth_path):
     """session_clear should handle missing file gracefully."""
-    from auto_grocier_mcp.tools.session import session_clear
+    from auto_grocer_mcp.tools.session import session_clear
 
     result = session_clear()
 
@@ -495,7 +495,7 @@ def test_session_clear_handles_missing_file(mock_auth_path):
 
 def test_check_session_freshness_with_valid_localstorage(mock_auth_path, valid_session_cookies):
     """check_session_freshness should check localStorage renewTime."""
-    from auto_grocier_mcp.auth.session import check_session_freshness
+    from auto_grocer_mcp.auth.session import check_session_freshness
 
     mock_auth_path.write_text(json.dumps(valid_session_cookies))
 
@@ -507,7 +507,7 @@ def test_check_session_freshness_with_valid_localstorage(mock_auth_path, valid_s
 
 def test_get_reese84_info_from_localstorage(mock_auth_path):
     """get_reese84_info should extract from localStorage when no cookie."""
-    from auto_grocier_mcp.auth.session import get_reese84_info
+    from auto_grocer_mcp.auth.session import get_reese84_info
 
     future_time = time.time() + 86400
     cookies_with_reese84_in_localstorage = {
@@ -553,7 +553,7 @@ def test_get_reese84_info_from_localstorage(mock_auth_path):
 
 def test_get_reese84_info_from_cookie(mock_auth_path, stale_session_cookies):
     """get_reese84_info should fall back to cookie expires."""
-    from auto_grocier_mcp.auth.session import get_reese84_info
+    from auto_grocer_mcp.auth.session import get_reese84_info
 
     mock_auth_path.write_text(json.dumps(stale_session_cookies))
 
@@ -566,7 +566,7 @@ def test_get_reese84_info_from_cookie(mock_auth_path, stale_session_cookies):
 
 def test_get_reese84_info_missing(mock_auth_path):
     """get_reese84_info should return None when no reese84 present."""
-    from auto_grocier_mcp.auth.session import get_reese84_info
+    from auto_grocer_mcp.auth.session import get_reese84_info
 
     cookies = {
         "cookies": [
@@ -594,7 +594,7 @@ def test_get_reese84_info_missing(mock_auth_path):
 
 def test_is_authenticated_with_valid_session(mock_auth_path, valid_session_cookies):
     """is_authenticated should return True when both cookies and reese84 are valid."""
-    from auto_grocier_mcp.auth.session import is_authenticated
+    from auto_grocer_mcp.auth.session import is_authenticated
 
     mock_auth_path.write_text(json.dumps(valid_session_cookies))
 
@@ -604,13 +604,13 @@ def test_is_authenticated_with_valid_session(mock_auth_path, valid_session_cooki
 def test_is_authenticated_with_expired_reese84(mock_auth_path, expired_session_cookies):
     """is_authenticated should return True on valid cookies even if reese84 expired.
 
-    auto_grocier fork behavior: reese84 is NOT a hard gate. Its localStorage
+    auto_grocer fork behavior: reese84 is NOT a hard gate. Its localStorage
     renewTime is only ~10 min, while the sat/sst session cookies last for weeks
     and are the real limiter. reese84 is auto-refreshed at runtime, so a valid
     cookie session is considered authenticated. (get_session_status still tracks
     reese84 lifecycle for diagnostics — see the divergence test below.)
     """
-    from auto_grocier_mcp.auth.session import is_authenticated
+    from auto_grocer_mcp.auth.session import is_authenticated
 
     mock_auth_path.write_text(json.dumps(expired_session_cookies))
 
@@ -620,10 +620,10 @@ def test_is_authenticated_with_expired_reese84(mock_auth_path, expired_session_c
 def test_is_authenticated_with_missing_reese84(mock_auth_path):
     """is_authenticated should return True on valid cookies with no reese84.
 
-    auto_grocier fork behavior: reese84 absence does not fail authentication;
+    auto_grocer fork behavior: reese84 absence does not fail authentication;
     the sat/DYN_USER_ID session cookies drive validity.
     """
-    from auto_grocier_mcp.auth.session import is_authenticated
+    from auto_grocer_mcp.auth.session import is_authenticated
 
     # Valid cookies but no reese84 in localStorage
     future_time = time.time() + 86400
@@ -653,7 +653,7 @@ def test_is_authenticated_with_missing_reese84(mock_auth_path):
 
 def test_is_authenticated_with_no_auth_file(mock_auth_path):
     """is_authenticated should return False when auth file doesn't exist."""
-    from auto_grocier_mcp.auth.session import is_authenticated
+    from auto_grocer_mcp.auth.session import is_authenticated
 
     # Don't create the auth file
     assert is_authenticated() is False
@@ -661,7 +661,7 @@ def test_is_authenticated_with_no_auth_file(mock_auth_path):
 
 def test_is_authenticated_with_expired_cookies(mock_auth_path):
     """is_authenticated should return False when session cookies are expired."""
-    from auto_grocier_mcp.auth.session import is_authenticated
+    from auto_grocer_mcp.auth.session import is_authenticated
 
     past_time = time.time() - 3600  # 1 hour ago
     expired_cookies = {
@@ -704,7 +704,7 @@ def test_is_authenticated_diverges_from_get_session_status_on_expired_reese84(
     mock_auth_path,
     expired_session_cookies,
 ):
-    """In the auto_grocier fork, the two functions intentionally differ.
+    """In the auto_grocer fork, the two functions intentionally differ.
 
     Upstream tied both to reese84 so they always agreed. Our fork decouples them:
       * is_authenticated() -> "can I make authenticated calls?" -> cookie-based,
@@ -712,7 +712,7 @@ def test_is_authenticated_diverges_from_get_session_status_on_expired_reese84(
       * get_session_status() -> a richer diagnostic that still tracks the reese84
         lifecycle, so it reports authenticated=False when reese84 is expired.
     """
-    from auto_grocier_mcp.auth.session import get_session_status, is_authenticated
+    from auto_grocer_mcp.auth.session import get_session_status, is_authenticated
 
     mock_auth_path.write_text(json.dumps(expired_session_cookies))
 
@@ -730,7 +730,7 @@ def test_is_authenticated_consistency_with_get_session_status_valid(
     valid_session_cookies,
 ):
     """is_authenticated and get_session_status should agree on valid sessions."""
-    from auto_grocier_mcp.auth.session import get_session_status, is_authenticated
+    from auto_grocer_mcp.auth.session import get_session_status, is_authenticated
 
     mock_auth_path.write_text(json.dumps(valid_session_cookies))
 
@@ -758,7 +758,7 @@ class TestSecurityChallengeDetection:
 
     @staticmethod
     def _detect_security_challenge_html(html: str) -> bool:
-        from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
+        from auto_grocer_mcp.clients.graphql import HEBGraphQLClient
 
         return HEBGraphQLClient()._detect_security_challenge(html)
 

@@ -1,13 +1,13 @@
-# auto_grocier — Agent Instructions
+# auto_grocer — Agent Instructions
 
-This repo automates HEB grocery ordering through the `auto-grocier` MCP server,
+This repo automates HEB grocery ordering through the `auto-grocer` MCP server,
 which reuses an exported HEB session and persisted GraphQL hashes.
 
 ## Custom Agent
 
 For **grocery ordering tasks** (adding items, managing cart, checking out), use the
 **Grocery Ordering** agent (`.github/agents/grocery-ordering.agent.md`). It has:
-- Full access to all `auto-grocier` MCP tools
+- Full access to all `auto-grocer` MCP tools
 - Session validation via a `SessionStart` hook
 - Detailed knowledge of the ordering workflow
 - Safety constraints around payment
@@ -17,21 +17,21 @@ For **grocery ordering tasks** (adding items, managing cart, checking out), use 
 Before using any HEB cart / timeslot / checkout / search tool, verify the session
 and recover automatically:
 
-1. Call `mcp_auto-grocier_auth_status`. If `authenticated:false` (or any tool
+1. Call `mcp_auto-grocer_auth_status`. If `authenticated:false` (or any tool
    returns `NOT_AUTHENTICATED`), run the **refresh-heb-login** skill.
 2. If any tool returns `OPERATION_NOT_CAPTURED` or a persisted-query/hash error,
    run the **refresh-graphql-hashes** skill.
-3. Re-run `mcp_auto-grocier_auth_status` and proceed once it returns
+3. Re-run `mcp_auto-grocer_auth_status` and proceed once it returns
    `authenticated:true`.
 
-Both skills run `auto_grocier.session_maintenance.run` inside the Docker container (which writes
-straight into the `auto_grocier_session` volume) and then call
-`mcp_auto-grocier_refresh_session`. Never hammer heb.com — repeated hits trigger
+Both skills run `auto_grocer.session_maintenance.run` inside the Docker container (which writes
+straight into the `auto_grocer_session` volume) and then call
+`mcp_auto-grocer_refresh_session`. Never hammer heb.com — repeated hits trigger
 WAF 401s and email verification.
 
 ### Never truncate session-maintenance output
 
-When a session/hash refresh is needed, **run `auto_grocier.session_maintenance.run` with its full
+When a session/hash refresh is needed, **run `auto_grocer.session_maintenance.run` with its full
 output — never pipe it to `tail`, `head`, or `grep`.** A stale session or stale
 hashes means session maintenance itself is suspect, so truncating the log hides the
 actual failure. Also pass `--env-file .env` to `docker compose`, or interpolation
@@ -39,7 +39,7 @@ fails on `DATABASE_PASSWORD`:
 
 ```bash
 docker compose --env-file .env -f docker/docker-compose.yml run --rm -T \
-  -e MODE=nodriver -e OPERATION=capture_hashes mcp python -m auto_grocier.session_maintenance.run
+  -e MODE=nodriver -e OPERATION=capture_hashes mcp python -m auto_grocer.session_maintenance.run
 ```
 
 Filtering with `tail` is fine for unrelated commands (builds, test suites).

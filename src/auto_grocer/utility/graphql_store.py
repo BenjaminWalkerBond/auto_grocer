@@ -2,7 +2,7 @@
 
 Lets the user find the closest HEB stores to an address and pick one to use as
 the active store for searching/pricing and (when authenticated) for pickup
-fulfillment. Backed by the vendored ``auto_grocier_mcp`` GraphQL client.
+fulfillment. Backed by the vendored ``auto_grocer_mcp`` GraphQL client.
 """
 
 import asyncio
@@ -17,7 +17,7 @@ def _store_sort_key(store):
 
 async def _find_nearest_stores(address, radius_miles, limit):
     """Search for stores near an address and return the closest ``limit``."""
-    from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
+    from auto_grocer_mcp.clients.graphql import HEBGraphQLClient
 
     client = HEBGraphQLClient()
     try:
@@ -30,7 +30,7 @@ async def _find_nearest_stores(address, radius_miles, limit):
 
 async def _select_store(store_id):
     """Set the active pickup store via GraphQL (requires authentication)."""
-    from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
+    from auto_grocer_mcp.clients.graphql import HEBGraphQLClient
 
     client = HEBGraphQLClient()
     try:

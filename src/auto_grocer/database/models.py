@@ -1,5 +1,5 @@
 """
-Database models for the auto_grocier application.
+Database models for the auto_grocer application.
 Defines the schema for ingredients, tags, and recipes.
 """
 from datetime import datetime

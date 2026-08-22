@@ -13,7 +13,7 @@ import json
 import os
 from pathlib import Path
 
-from auto_grocier.utility.graphql_auth import (
+from auto_grocer.utility.graphql_auth import (
     DEFAULT_AUTH_PATH,
     _find_reese84,
     _map_same_site,
@@ -106,7 +106,7 @@ async def export_session_to_authjson(browser, tab, auth_path=None, store_id=None
     if store_id:
         os.environ["HEB_DEFAULT_STORE"] = str(store_id)
     try:
-        from auto_grocier_mcp.utils.config import get_settings
+        from auto_grocer_mcp.utils.config import get_settings
 
         get_settings.cache_clear()
     except Exception:  # noqa: BLE001

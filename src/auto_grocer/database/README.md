@@ -31,9 +31,9 @@ Download and install from [postgresql.org](https://www.postgresql.org/download/w
 sudo -u postgres psql
 
 # In PostgreSQL prompt:
-CREATE DATABASE auto_grocier;
-CREATE USER grocier_user WITH PASSWORD 'your_secure_password';
-GRANT ALL PRIVILEGES ON DATABASE auto_grocier TO grocier_user;
+CREATE DATABASE auto_grocer;
+CREATE USER grocer_user WITH PASSWORD 'your_secure_password';
+GRANT ALL PRIVILEGES ON DATABASE auto_grocer TO grocer_user;
 \q
 ```
 
@@ -46,8 +46,8 @@ Update `.env` with your database credentials:
 ```
 DATABASE_HOST=localhost
 DATABASE_PORT=5432
-DATABASE_NAME=auto_grocier
-DATABASE_USER=grocier_user
+DATABASE_NAME=auto_grocer
+DATABASE_USER=grocer_user
 DATABASE_PASSWORD=your_secure_password
 ```
 
@@ -127,9 +127,9 @@ This will create sample data and test all CRUD operations.
 ### Basic Operations
 
 ```python
-from auto_grocier.database.db_connection import get_db_session
-from auto_grocier.database.ingredient_repository import IngredientRepository
-from auto_grocier.database.recipe_repository import RecipeRepository
+from auto_grocer.database.db_connection import get_db_session
+from auto_grocer.database.ingredient_repository import IngredientRepository
+from auto_grocer.database.recipe_repository import RecipeRepository
 
 # Get a database session
 db = get_db_session()
@@ -164,9 +164,9 @@ db.close()
 ### Integration with Existing Code
 
 ```python
-from auto_grocier.classes.Ingredient import Ingredient as IngredientClass
-from auto_grocier.database.db_connection import get_db_session
-from auto_grocier.database.ingredient_repository import IngredientRepository
+from auto_grocer.classes.Ingredient import Ingredient as IngredientClass
+from auto_grocer.database.db_connection import get_db_session
+from auto_grocer.database.ingredient_repository import IngredientRepository
 
 # Your existing ingredient
 ing = IngredientClass(name="salmon", amount=1.5, unit="lb")
@@ -236,8 +236,8 @@ db.close()
 ### Connection Issues
 
 ```python
-from auto_grocier.database.db_connection import test_connection
-from auto_grocier.database.db_config import DatabaseConfig
+from auto_grocer.database.db_connection import test_connection
+from auto_grocer.database.db_config import DatabaseConfig
 
 # Print configuration
 DatabaseConfig.print_config()
@@ -264,8 +264,8 @@ engine = create_engine(
 sudo -u postgres psql
 
 # Drop and recreate
-DROP DATABASE auto_grocier;
-CREATE DATABASE auto_grocier;
+DROP DATABASE auto_grocer;
+CREATE DATABASE auto_grocer;
 \q
 
 # Re-run setup
@@ -300,12 +300,12 @@ When schema changes are needed:
 
 ### Backup
 ```bash
-pg_dump -U grocier_user -d auto_grocier -F c -f backup.dump
+pg_dump -U grocer_user -d auto_grocer -F c -f backup.dump
 ```
 
 ### Restore
 ```bash
-pg_restore -U grocier_user -d auto_grocier backup.dump
+pg_restore -U grocer_user -d auto_grocer backup.dump
 ```
 
 ---

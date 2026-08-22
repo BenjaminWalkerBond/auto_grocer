@@ -211,7 +211,7 @@ import os
 
 DATABASE_URL = os.getenv(
     'DATABASE_URL', 
-    'postgresql://user:password@localhost:5432/auto_grocier'
+    'postgresql://user:password@localhost:5432/auto_grocer'
 )
 
 engine = create_engine(DATABASE_URL)
@@ -270,7 +270,7 @@ class Tag(Base):
 ### Repository Pattern
 ```python
 # database/ingredient_repository.py
-from auto_grocier.database.models import Ingredient, Tag
+from auto_grocer.database.models import Ingredient, Tag
 from sqlalchemy.orm import Session
 
 class IngredientRepository:
@@ -329,7 +329,7 @@ class IngredientRepository:
 # Database Configuration
 DATABASE_HOST=localhost
 DATABASE_PORT=5432
-DATABASE_NAME=auto_grocier
+DATABASE_NAME=auto_grocer
 DATABASE_USER=postgres
 DATABASE_PASSWORD=your_password
 ```
@@ -354,9 +354,9 @@ sudo apt install postgresql postgresql-contrib
 
 # Create database
 sudo -u postgres psql
-CREATE DATABASE auto_grocier;
-CREATE USER grocier_user WITH PASSWORD 'your_password';
-GRANT ALL PRIVILEGES ON DATABASE auto_grocier TO grocier_user;
+CREATE DATABASE auto_grocer;
+CREATE USER grocer_user WITH PASSWORD 'your_password';
+GRANT ALL PRIVILEGES ON DATABASE auto_grocer TO grocer_user;
 ```
 
 ### Step 2: Create Initial Schema

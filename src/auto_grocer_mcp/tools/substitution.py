@@ -5,13 +5,13 @@ from typing import TYPE_CHECKING, Annotated, Any
 import structlog
 from pydantic import Field
 
-from auto_grocier_mcp.auth.session import ensure_session
-from auto_grocier_mcp.state import StateManager
+from auto_grocer_mcp.auth.session import ensure_session
+from auto_grocer_mcp.state import StateManager
 
 logger = structlog.get_logger()
 
 if TYPE_CHECKING:
-    from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
+    from auto_grocer_mcp.clients.graphql import HEBGraphQLClient
 
 
 def _get_client() -> "HEBGraphQLClient":
@@ -271,7 +271,7 @@ async def find_substitute(
 
     # Import and call Claude evaluation
     try:
-        from auto_grocier.claude import evaluate_substitutes
+        from auto_grocer.claude import evaluate_substitutes
 
         result = evaluate_substitutes(
             original_ingredient=original_ingredient,

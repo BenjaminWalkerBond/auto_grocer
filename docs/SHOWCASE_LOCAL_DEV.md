@@ -1,7 +1,7 @@
 # Showcase — Local Dev in a Real Browser (nodriver mode)
 
 Shot list / outline for recording the **local development mode**, where
-`auto_grocier` drives a **real, visible Chromium window on your own desktop** and
+`auto_grocer` drives a **real, visible Chromium window on your own desktop** and
 shops heb.com end-to-end. This is the "watch the automation work" demo — no
 Docker, no Xvfb, the browser is right there on screen.
 

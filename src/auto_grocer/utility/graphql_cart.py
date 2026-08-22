@@ -1,7 +1,7 @@
-"""GraphQL-based cart orchestration for auto_grocier.
+"""GraphQL-based cart orchestration for auto_grocer.
 
 Performs product search, cart clearing, and add-to-cart operations directly
-against HEB's internal GraphQL API via the vendored ``auto_grocier_mcp``
+against HEB's internal GraphQL API via the vendored ``auto_grocer_mcp``
 client, instead of driving the website with Selenium.
 
 The public entry point is :func:`graphql_cart_sync`, a synchronous wrapper
@@ -262,7 +262,7 @@ async def run_graphql_cart_ops(ingredient_list, store_id, do_clear=True, quantit
         A report dict: {"added": [...], "failed": [...], "cart": <get_cart result>}
     """
     # Imported lazily so the dependency is only required for GraphQL modes.
-    from auto_grocier_mcp.clients.graphql import HEBGraphQLClient
+    from auto_grocer_mcp.clients.graphql import HEBGraphQLClient
 
     client = HEBGraphQLClient()
     added = []

@@ -1,4 +1,4 @@
-# gitleaks configuration for auto_grocier.
+# gitleaks configuration for auto_grocer.
 #
 # Extends gitleaks' built-in default ruleset (Claude/Anthropic keys, generic
 # API keys, passwords, etc.) and adds a narrow allowlist so the secret scanner
@@ -7,7 +7,7 @@
 # Run locally:  gitleaks detect --no-banner --redact
 # The pre-commit hook in .pre-commit-config.yaml wires this into commits.
 
-title = "auto_grocier gitleaks config"
+title = "auto_grocer gitleaks config"
 
 [extend]
 # Inherit all of gitleaks' default rules.

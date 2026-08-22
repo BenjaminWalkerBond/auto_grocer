@@ -1,4 +1,4 @@
-"""Regression tests for the deployed ``auto_grocier.mcp_server`` tools.
+"""Regression tests for the deployed ``auto_grocer.mcp_server`` tools.
 
 These guard against the class of bug where an edit deletes/renames a private
 helper (e.g. ``_ensure_authed``) that the ``@mcp.tool()`` functions call, which
@@ -10,7 +10,7 @@ must resolve.
 
 import pytest
 
-from auto_grocier import mcp_server as m
+from auto_grocer import mcp_server as m
 
 
 def test_auth_helpers_are_defined():

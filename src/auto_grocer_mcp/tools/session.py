@@ -8,14 +8,14 @@ from typing import Any
 
 import structlog
 
-from auto_grocier_mcp.auth.credentials import CredentialError, CredentialStore
-from auto_grocier_mcp.auth.session import (
+from auto_grocer_mcp.auth.credentials import CredentialError, CredentialStore
+from auto_grocer_mcp.auth.session import (
     check_session_freshness,
     get_session_info,
     get_session_status,
     is_authenticated,
 )
-from auto_grocier_mcp.utils.config import get_settings
+from auto_grocer_mcp.utils.config import get_settings
 
 logger = structlog.get_logger()
 
@@ -83,7 +83,7 @@ async def _run_nodriver_login(env: dict[str, str], *, timeout_ms: int = 300000) 
     proc = await asyncio.create_subprocess_exec(
         sys.executable,
         "-m",
-        "auto_grocier.session_maintenance.run",
+        "auto_grocer.session_maintenance.run",
         env=env,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,

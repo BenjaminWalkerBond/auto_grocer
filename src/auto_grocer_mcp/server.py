@@ -1,4 +1,4 @@
-"""Auto Grocier MCP Server - FastMCP entry point."""
+"""Auto Grocer MCP Server - FastMCP entry point."""
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -6,9 +6,9 @@ from contextlib import asynccontextmanager
 import structlog
 from fastmcp import FastMCP
 
-from auto_grocier_mcp.observability.health import health_live, health_ready
-from auto_grocier_mcp.observability.logging import configure_logging
-from auto_grocier_mcp.tools.cart import (
+from auto_grocer_mcp.observability.health import health_live, health_ready
+from auto_grocer_mcp.observability.logging import configure_logging
+from auto_grocer_mcp.tools.cart import (
     cart_add,
     cart_add_many,
     cart_add_with_retry,
@@ -16,15 +16,15 @@ from auto_grocier_mcp.tools.cart import (
     cart_get,
     cart_remove,
 )
-from auto_grocier_mcp.tools.coupon import (
+from auto_grocer_mcp.tools.coupon import (
     coupon_categories,
     coupon_clip,
     coupon_clipped,
     coupon_list,
     coupon_search,
 )
-from auto_grocier_mcp.tools.product import product_get, product_search, product_search_batch
-from auto_grocier_mcp.tools.session import (
+from auto_grocer_mcp.tools.product import product_get, product_search, product_search_batch
+from auto_grocer_mcp.tools.session import (
     session_clear,
     session_clear_credentials,
     session_refresh,
@@ -32,13 +32,13 @@ from auto_grocier_mcp.tools.session import (
     session_save_instructions,
     session_status,
 )
-from auto_grocier_mcp.tools.store import (
+from auto_grocer_mcp.tools.store import (
     store_change,
     store_get_default,
     store_search,
 )
-from auto_grocier_mcp.tools.substitution import find_substitute
-from auto_grocier_mcp.utils.config import get_settings
+from auto_grocer_mcp.tools.substitution import find_substitute
+from auto_grocer_mcp.utils.config import get_settings
 
 # Configure logging before anything else
 configure_logging()
@@ -59,7 +59,7 @@ async def lifespan(app: FastMCP) -> AsyncIterator[None]:
     # Startup: Check and refresh session if needed
     if settings.auto_refresh_on_startup:
         try:
-            from auto_grocier_mcp.auth.session import get_session_status
+            from auto_grocer_mcp.auth.session import get_session_status
 
             status = get_session_status()
             logger.info(
@@ -100,7 +100,7 @@ async def lifespan(app: FastMCP) -> AsyncIterator[None]:
     logger.info("MCP server shutting down")
 
 MCP_INSTRUCTIONS = """
-## Auto Grocier MCP - Session Management
+## Auto Grocer MCP - Session Management
 
 This MCP requires an authenticated HEB.com session for most operations.
 
@@ -159,7 +159,7 @@ When login requires human action (login form, CAPTCHA, 2FA, or a bot/WAF interst
 """
 
 mcp = FastMCP(
-    name="auto-grocier-mcp",
+    name="auto-grocer-mcp",
     version="0.1.0",
     instructions=MCP_INSTRUCTIONS,
     lifespan=lifespan,

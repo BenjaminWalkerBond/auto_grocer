@@ -15,9 +15,9 @@ Usage:
 import requests
 from bs4 import BeautifulSoup
 
-from auto_grocier import mcp_server as M
-from auto_grocier.recipe_grabber import extract_recipe_metadata
-from auto_grocier.utility.youtube import is_youtube_url, parse_ingredients_from_text
+from auto_grocer import mcp_server as M
+from auto_grocer.recipe_grabber import extract_recipe_metadata
+from auto_grocer.utility.youtube import is_youtube_url, parse_ingredients_from_text
 
 _seed = getattr(M.seed_recipes, "fn", M.seed_recipes)
 

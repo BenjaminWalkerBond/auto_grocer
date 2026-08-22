@@ -4,9 +4,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from auto_grocier_mcp.clients.graphql import KNOWN_STORES
-from auto_grocier_mcp.models import GeocodedLocation, SearchAttempt, Store, StoreSearchResult
-from auto_grocier_mcp.state import StateManager
+from auto_grocer_mcp.clients.graphql import KNOWN_STORES
+from auto_grocer_mcp.models import GeocodedLocation, SearchAttempt, Store, StoreSearchResult
+from auto_grocer_mcp.state import StateManager
 
 
 def _make_mock_store_search_result(
@@ -55,11 +55,11 @@ def _make_mock_store_search_result(
 @pytest.mark.asyncio
 async def test_store_search_returns_stores():
     """store_search should return stores from the API."""
-    from auto_grocier_mcp.tools.store import store_search
+    from auto_grocer_mcp.tools.store import store_search
 
     mock_result = _make_mock_store_search_result()
 
-    with patch("auto_grocier_mcp.tools.store._get_client") as mock_get_client:
+    with patch("auto_grocer_mcp.tools.store._get_client") as mock_get_client:
         mock_client = MagicMock()
         mock_client.search_stores = AsyncMock(return_value=mock_result)
         mock_get_client.return_value = mock_client
@@ -75,11 +75,11 @@ async def test_store_search_returns_stores():
 @pytest.mark.asyncio
 async def test_store_search_includes_geocoded_info():
     """store_search should include geocoded location info."""
-    from auto_grocier_mcp.tools.store import store_search
+    from auto_grocer_mcp.tools.store import store_search
 
     mock_result = _make_mock_store_search_result()
 
-    with patch("auto_grocier_mcp.tools.store._get_client") as mock_get_client:
+    with patch("auto_grocer_mcp.tools.store._get_client") as mock_get_client:
         mock_client = MagicMock()
         mock_client.search_stores = AsyncMock(return_value=mock_result)
         mock_get_client.return_value = mock_client
@@ -94,11 +94,11 @@ async def test_store_search_includes_geocoded_info():
 @pytest.mark.asyncio
 async def test_store_search_includes_note_on_success():
     """store_search should include note about store_change on success."""
-    from auto_grocier_mcp.tools.store import store_search
+    from auto_grocer_mcp.tools.store import store_search
 
     mock_result = _make_mock_store_search_result()
 
-    with patch("auto_grocier_mcp.tools.store._get_client") as mock_get_client:
+    with patch("auto_grocer_mcp.tools.store._get_client") as mock_get_client:
         mock_client = MagicMock()
         mock_client.search_stores = AsyncMock(return_value=mock_result)
         mock_get_client.return_value = mock_client
@@ -112,7 +112,7 @@ async def test_store_search_includes_note_on_success():
 @pytest.mark.asyncio
 async def test_store_search_includes_error_on_failure():
     """store_search should include error message when no stores found."""
-    from auto_grocier_mcp.tools.store import store_search
+    from auto_grocer_mcp.tools.store import store_search
 
     mock_result = StoreSearchResult(
         stores=[],
@@ -131,7 +131,7 @@ async def test_store_search_includes_error_on_failure():
         suggestions=["HEB operates primarily in Texas"],
     )
 
-    with patch("auto_grocier_mcp.tools.store._get_client") as mock_get_client:
+    with patch("auto_grocer_mcp.tools.store._get_client") as mock_get_client:
         mock_client = MagicMock()
         mock_client.search_stores = AsyncMock(return_value=mock_result)
         mock_get_client.return_value = mock_client
@@ -148,14 +148,14 @@ async def test_store_search_includes_error_on_failure():
 @pytest.mark.asyncio
 async def test_store_search_includes_attempts():
     """store_search should include search attempts made."""
-    from auto_grocier_mcp.tools.store import store_search
+    from auto_grocer_mcp.tools.store import store_search
 
     mock_result = _make_mock_store_search_result()
     mock_result.attempts = [
         SearchAttempt(query="77007", result="success"),
     ]
 
-    with patch("auto_grocier_mcp.tools.store._get_client") as mock_get_client:
+    with patch("auto_grocer_mcp.tools.store._get_client") as mock_get_client:
         mock_client = MagicMock()
         mock_client.search_stores = AsyncMock(return_value=mock_result)
         mock_get_client.return_value = mock_client
@@ -170,7 +170,7 @@ async def test_store_search_includes_attempts():
 @pytest.mark.asyncio
 async def test_store_search_rounds_distance():
     """store_search should round distance to 2 decimal places."""
-    from auto_grocier_mcp.tools.store import store_search
+    from auto_grocer_mcp.tools.store import store_search
 
     stores = [
         Store(
@@ -184,7 +184,7 @@ async def test_store_search_rounds_distance():
     ]
     mock_result = _make_mock_store_search_result(stores=stores)
 
-    with patch("auto_grocier_mcp.tools.store._get_client") as mock_get_client:
+    with patch("auto_grocer_mcp.tools.store._get_client") as mock_get_client:
         mock_client = MagicMock()
         mock_client.search_stores = AsyncMock(return_value=mock_result)
         mock_get_client.return_value = mock_client
@@ -197,11 +197,11 @@ async def test_store_search_rounds_distance():
 @pytest.mark.asyncio
 async def test_store_search_caches_found_stores():
     """store_search should cache found stores for store_change."""
-    from auto_grocier_mcp.tools.store import store_search
+    from auto_grocer_mcp.tools.store import store_search
 
     mock_result = _make_mock_store_search_result()
 
-    with patch("auto_grocier_mcp.tools.store._get_client") as mock_get_client:
+    with patch("auto_grocer_mcp.tools.store._get_client") as mock_get_client:
         mock_client = MagicMock()
         mock_client.search_stores = AsyncMock(return_value=mock_result)
         mock_get_client.return_value = mock_client
@@ -218,9 +218,9 @@ async def test_store_search_caches_found_stores():
 @pytest.mark.asyncio
 async def test_store_change_sets_local_when_not_authenticated():
     """store_change should set local default when not authenticated."""
-    from auto_grocier_mcp.tools.store import store_change, store_get_default
+    from auto_grocer_mcp.tools.store import store_change, store_get_default
 
-    with patch("auto_grocier_mcp.auth.session.is_authenticated", return_value=False):
+    with patch("auto_grocer_mcp.auth.session.is_authenticated", return_value=False):
         # Use The Heights H-E-B (a known store)
         result = await store_change(store_id="737")
 
@@ -237,7 +237,7 @@ async def test_store_change_sets_local_when_not_authenticated():
 
 def test_store_get_default_none():
     """store_get_default should return None when not set."""
-    from auto_grocier_mcp.tools.store import store_get_default
+    from auto_grocer_mcp.tools.store import store_get_default
 
     # StateManager is reset by conftest fixture
 
@@ -251,7 +251,7 @@ def test_store_get_default_none():
 
 def test_store_get_default_suggests_store():
     """store_get_default should suggest a store when not set."""
-    from auto_grocier_mcp.tools.store import store_get_default
+    from auto_grocer_mcp.tools.store import store_get_default
 
     # StateManager is reset by conftest fixture
 
@@ -265,7 +265,7 @@ def test_store_get_default_suggests_store():
 
 def test_store_get_default_uses_found_stores():
     """store_get_default should use found stores cache."""
-    from auto_grocier_mcp.tools.store import store_get_default
+    from auto_grocer_mcp.tools.store import store_get_default
 
     # Simulate a store found via search (not in KNOWN_STORES)
     StateManager.cache_stores_sync({
@@ -288,9 +288,9 @@ def test_store_get_default_uses_found_stores():
 @pytest.mark.asyncio
 async def test_store_change_strips_whitespace():
     """store_change should strip whitespace from store ID."""
-    from auto_grocier_mcp.tools.store import store_change
+    from auto_grocer_mcp.tools.store import store_change
 
-    with patch("auto_grocier_mcp.auth.session.is_authenticated", return_value=False):
+    with patch("auto_grocer_mcp.auth.session.is_authenticated", return_value=False):
         result = await store_change(store_id="  737  ")
 
         assert result["success"] is True
@@ -299,7 +299,7 @@ async def test_store_change_strips_whitespace():
 
 def test_get_default_store_id_internal():
     """get_default_store_id should return the internal store ID."""
-    from auto_grocier_mcp.tools.store import get_default_store_id, set_default_store_id
+    from auto_grocer_mcp.tools.store import get_default_store_id, set_default_store_id
 
     # Initially None
     assert get_default_store_id() is None
@@ -312,7 +312,7 @@ def test_get_default_store_id_internal():
 @pytest.mark.asyncio
 async def test_store_search_includes_curbside_support():
     """store_search should include supports_curbside in response."""
-    from auto_grocier_mcp.tools.store import store_search
+    from auto_grocer_mcp.tools.store import store_search
 
     stores = [
         Store(
@@ -338,7 +338,7 @@ async def test_store_search_includes_curbside_support():
     ]
     mock_result = _make_mock_store_search_result(stores=stores)
 
-    with patch("auto_grocier_mcp.tools.store._get_client") as mock_get_client:
+    with patch("auto_grocer_mcp.tools.store._get_client") as mock_get_client:
         mock_client = MagicMock()
         mock_client.search_stores = AsyncMock(return_value=mock_result)
         mock_get_client.return_value = mock_client
@@ -357,7 +357,7 @@ async def test_store_search_includes_curbside_support():
 @pytest.mark.asyncio
 async def test_store_change_rejects_ineligible_store():
     """store_change should reject stores that don't support curbside."""
-    from auto_grocier_mcp.tools.store import store_change, store_search
+    from auto_grocer_mcp.tools.store import store_change, store_search
 
     # Set up a store search result with an ineligible store
     stores = [
@@ -378,7 +378,7 @@ async def test_store_change_rejects_ineligible_store():
     ]
     mock_result = _make_mock_store_search_result(stores=stores)
 
-    with patch("auto_grocier_mcp.tools.store._get_client") as mock_get_client:
+    with patch("auto_grocer_mcp.tools.store._get_client") as mock_get_client:
         mock_client = MagicMock()
         mock_client.search_stores = AsyncMock(return_value=mock_result)
         mock_get_client.return_value = mock_client
@@ -387,7 +387,7 @@ async def test_store_change_rejects_ineligible_store():
         await store_search(address="San Antonio, TX 78204")
 
     # Mock authentication (patch where it's used)
-    with patch("auto_grocier_mcp.auth.session.is_authenticated", return_value=True):
+    with patch("auto_grocer_mcp.auth.session.is_authenticated", return_value=True):
         # Try to change to ineligible store
         result = await store_change(store_id="718")
 
@@ -403,7 +403,7 @@ async def test_store_change_rejects_ineligible_store():
 @pytest.mark.asyncio
 async def test_store_change_accepts_eligible_store():
     """store_change should accept stores that support curbside."""
-    from auto_grocier_mcp.tools.store import store_change, store_search
+    from auto_grocer_mcp.tools.store import store_change, store_search
 
     # Set up a store search result with an eligible store
     stores = [
@@ -417,7 +417,7 @@ async def test_store_change_accepts_eligible_store():
     ]
     mock_result = _make_mock_store_search_result(stores=stores)
 
-    with patch("auto_grocier_mcp.tools.store._get_client") as mock_get_client:
+    with patch("auto_grocer_mcp.tools.store._get_client") as mock_get_client:
         mock_client = MagicMock()
         mock_client.search_stores = AsyncMock(return_value=mock_result)
         mock_client.select_store = AsyncMock(return_value={"success": True, "store_id": "699"})
@@ -427,7 +427,7 @@ async def test_store_change_accepts_eligible_store():
         await store_search(address="San Antonio, TX 78204")
 
         # Mock authentication (patch where it's used)
-        with patch("auto_grocier_mcp.auth.session.is_authenticated", return_value=True):
+        with patch("auto_grocer_mcp.auth.session.is_authenticated", return_value=True):
             # Try to change to eligible store
             result = await store_change(store_id="699")
 
@@ -444,9 +444,9 @@ async def test_store_change_accepts_eligible_store():
 @pytest.mark.asyncio
 async def test_store_change_verifies_success():
     """store_change should verify store actually changed via get_cart."""
-    from auto_grocier_mcp.tools.store import store_change
+    from auto_grocer_mcp.tools.store import store_change
 
-    with patch("auto_grocier_mcp.tools.store._get_client") as mock_get_client:
+    with patch("auto_grocer_mcp.tools.store._get_client") as mock_get_client:
         mock_client = MagicMock()
         # Mock select_store to return verified success
         mock_client.select_store = AsyncMock(return_value={
@@ -456,7 +456,7 @@ async def test_store_change_verifies_success():
         })
         mock_get_client.return_value = mock_client
 
-        with patch("auto_grocier_mcp.auth.session.is_authenticated", return_value=True):
+        with patch("auto_grocer_mcp.auth.session.is_authenticated", return_value=True):
             result = await store_change(store_id="465")
 
             # Should call select_store with default ignore_conflicts=False
@@ -471,9 +471,9 @@ async def test_store_change_verifies_success():
 @pytest.mark.asyncio
 async def test_store_change_detects_cart_conflict():
     """store_change should detect and report cart conflicts."""
-    from auto_grocier_mcp.tools.store import store_change
+    from auto_grocer_mcp.tools.store import store_change
 
-    with patch("auto_grocier_mcp.tools.store._get_client") as mock_get_client:
+    with patch("auto_grocer_mcp.tools.store._get_client") as mock_get_client:
         mock_client = MagicMock()
         # Mock select_store to return cart conflict error
         mock_client.select_store = AsyncMock(return_value={
@@ -486,7 +486,7 @@ async def test_store_change_detects_cart_conflict():
         })
         mock_get_client.return_value = mock_client
 
-        with patch("auto_grocier_mcp.auth.session.is_authenticated", return_value=True):
+        with patch("auto_grocer_mcp.auth.session.is_authenticated", return_value=True):
             result = await store_change(store_id="465")
 
             # Should return error with cart conflict code
@@ -501,9 +501,9 @@ async def test_store_change_detects_cart_conflict():
 @pytest.mark.asyncio
 async def test_store_change_passes_ignore_conflicts():
     """store_change should pass ignore_conflicts parameter to API."""
-    from auto_grocier_mcp.tools.store import store_change
+    from auto_grocer_mcp.tools.store import store_change
 
-    with patch("auto_grocier_mcp.tools.store._get_client") as mock_get_client:
+    with patch("auto_grocer_mcp.tools.store._get_client") as mock_get_client:
         mock_client = MagicMock()
         mock_client.select_store = AsyncMock(return_value={
             "success": True,
@@ -512,7 +512,7 @@ async def test_store_change_passes_ignore_conflicts():
         })
         mock_get_client.return_value = mock_client
 
-        with patch("auto_grocier_mcp.auth.session.is_authenticated", return_value=True):
+        with patch("auto_grocer_mcp.auth.session.is_authenticated", return_value=True):
             await store_change(store_id="465", ignore_conflicts=True)
 
             # Should pass ignore_conflicts=True to select_store
@@ -522,9 +522,9 @@ async def test_store_change_passes_ignore_conflicts():
 @pytest.mark.asyncio
 async def test_store_change_unauthenticated_includes_how_to_sync():
     """store_change should guide unauthenticated users to log in."""
-    from auto_grocier_mcp.tools.store import store_change
+    from auto_grocer_mcp.tools.store import store_change
 
-    with patch("auto_grocier_mcp.auth.session.is_authenticated", return_value=False):
+    with patch("auto_grocer_mcp.auth.session.is_authenticated", return_value=False):
         result = await store_change(store_id="737")
 
         assert result["success"] is True
@@ -537,12 +537,12 @@ async def test_store_change_unauthenticated_includes_how_to_sync():
 @pytest.mark.asyncio
 async def test_store_change_does_not_update_cookie_on_failure():
     """store_change should NOT update cookie when verification fails."""
-    from auto_grocier_mcp.tools.store import store_change
+    from auto_grocer_mcp.tools.store import store_change
 
     # Set initial state
     StateManager.set_default_store_id_sync("737")  # Existing store
 
-    with patch("auto_grocier_mcp.tools.store._get_client") as mock_get_client:
+    with patch("auto_grocer_mcp.tools.store._get_client") as mock_get_client:
         mock_client = MagicMock()
         # Mock select_store to return verification failure
         mock_client.select_store = AsyncMock(return_value={
@@ -555,8 +555,8 @@ async def test_store_change_does_not_update_cookie_on_failure():
         mock_get_client.return_value = mock_client
 
         with (
-            patch("auto_grocier_mcp.auth.session.is_authenticated", return_value=True),
-            patch("auto_grocier_mcp.tools.store._update_store_cookie") as mock_update,
+            patch("auto_grocer_mcp.auth.session.is_authenticated", return_value=True),
+            patch("auto_grocer_mcp.tools.store._update_store_cookie") as mock_update,
         ):
             result = await store_change(store_id="465")
 
@@ -573,9 +573,9 @@ async def test_store_change_does_not_update_cookie_on_failure():
 @pytest.mark.asyncio
 async def test_store_change_updates_cookie_on_verified_success():
     """store_change should update cookie only after verified success."""
-    from auto_grocier_mcp.tools.store import store_change
+    from auto_grocer_mcp.tools.store import store_change
 
-    with patch("auto_grocier_mcp.tools.store._get_client") as mock_get_client:
+    with patch("auto_grocer_mcp.tools.store._get_client") as mock_get_client:
         mock_client = MagicMock()
         mock_client.select_store = AsyncMock(return_value={
             "success": True,
@@ -585,8 +585,8 @@ async def test_store_change_updates_cookie_on_verified_success():
         mock_get_client.return_value = mock_client
 
         with (
-            patch("auto_grocier_mcp.auth.session.is_authenticated", return_value=True),
-            patch("auto_grocier_mcp.tools.store._update_store_cookie") as mock_update,
+            patch("auto_grocer_mcp.auth.session.is_authenticated", return_value=True),
+            patch("auto_grocer_mcp.tools.store._update_store_cookie") as mock_update,
         ):
             result = await store_change(store_id="465")
 

@@ -14,8 +14,8 @@ Matching strategy:
 """
 import re
 
-from auto_grocier.classes.Ingredient import Ingredient
-from auto_grocier.classes.IngredientList import IngredientList
+from auto_grocer.classes.Ingredient import Ingredient
+from auto_grocer.classes.IngredientList import IngredientList
 
 
 def _split_request(user_text: str):
@@ -71,7 +71,7 @@ def parse_and_match(user_text: str, recipe_repo):
 
     # Primary: Claude-based matching
     try:
-        from auto_grocier.claude import match_recipes_txt
+        from auto_grocer.claude import match_recipes_txt
 
         result = match_recipes_txt(user_text, catalog)
         matched_ids = [i for i in result.get("matched_ids", []) if i in by_id]

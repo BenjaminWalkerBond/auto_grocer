@@ -13,8 +13,8 @@ logger = structlog.get_logger()
 @pytest.fixture(autouse=True)
 def reset_tool_state():
     """Reset global state before each test."""
-    from auto_grocier_mcp.tools import product as product_module
-    from auto_grocier_mcp.tools import store as store_module
+    from auto_grocer_mcp.tools import product as product_module
+    from auto_grocer_mcp.tools import store as store_module
 
     store_module._default_store_id = None
     store_module._graphql_client = None
@@ -47,7 +47,7 @@ def mock_typeahead_response():
 @respx.mock
 async def test_product_search_with_store_id(mock_typeahead_response):
     """product_search should work with explicit store_id."""
-    from auto_grocier_mcp.tools.product import product_search
+    from auto_grocer_mcp.tools.product import product_search
 
     respx.post("https://www.heb.com/graphql").mock(
         return_value=Response(200, json=mock_typeahead_response)
@@ -66,8 +66,8 @@ async def test_product_search_with_store_id(mock_typeahead_response):
 @respx.mock
 async def test_product_search_uses_default_store(mock_typeahead_response):
     """product_search should use default store when not specified."""
-    from auto_grocier_mcp.tools.product import product_search
-    from auto_grocier_mcp.tools.store import set_default_store_id
+    from auto_grocer_mcp.tools.product import product_search
+    from auto_grocer_mcp.tools.store import set_default_store_id
 
     set_default_store_id("590")
 
@@ -84,7 +84,7 @@ async def test_product_search_uses_default_store(mock_typeahead_response):
 @pytest.mark.asyncio
 async def test_product_search_requires_store():
     """product_search should error when no store available."""
-    from auto_grocier_mcp.tools.product import product_search
+    from auto_grocer_mcp.tools.product import product_search
 
     result = await product_search(query="milk")
 
@@ -96,7 +96,7 @@ async def test_product_search_requires_store():
 @respx.mock
 async def test_product_search_includes_search_url(mock_typeahead_response):
     """product_search should include HEB search URL."""
-    from auto_grocier_mcp.tools.product import product_search
+    from auto_grocer_mcp.tools.product import product_search
 
     respx.post("https://www.heb.com/graphql").mock(
         return_value=Response(200, json=mock_typeahead_response)
@@ -112,7 +112,7 @@ async def test_product_search_includes_search_url(mock_typeahead_response):
 @pytest.mark.asyncio
 async def test_product_search_empty_query():
     """product_search should error on empty query."""
-    from auto_grocier_mcp.tools.product import product_search
+    from auto_grocer_mcp.tools.product import product_search
 
     result = await product_search(query="   ", store_id="737")
 
@@ -124,8 +124,8 @@ async def test_product_search_empty_query():
 @respx.mock
 async def test_product_search_with_known_store(mock_typeahead_response):
     """product_search should work with known store IDs."""
-    from auto_grocier_mcp.tools.product import product_search
-    from auto_grocier_mcp.tools.store import set_default_store_id
+    from auto_grocer_mcp.tools.product import product_search
+    from auto_grocer_mcp.tools.store import set_default_store_id
 
     # Use a known store ID
     set_default_store_id("737")  # The Heights H-E-B
@@ -149,7 +149,7 @@ async def test_product_search_with_known_store(mock_typeahead_response):
 @respx.mock
 async def test_product_search_batch_multiple_queries(mock_typeahead_response):
     """product_search_batch should search for multiple products."""
-    from auto_grocier_mcp.tools.product import product_search_batch
+    from auto_grocer_mcp.tools.product import product_search_batch
 
     respx.post("https://www.heb.com/graphql").mock(
         return_value=Response(200, json=mock_typeahead_response)
@@ -180,7 +180,7 @@ async def test_product_search_batch_multiple_queries(mock_typeahead_response):
 @pytest.mark.asyncio
 async def test_product_search_batch_empty_queries():
     """product_search_batch should error on empty queries list."""
-    from auto_grocier_mcp.tools.product import product_search_batch
+    from auto_grocer_mcp.tools.product import product_search_batch
 
     result = await product_search_batch(queries=[], store_id="737")
 
@@ -191,7 +191,7 @@ async def test_product_search_batch_empty_queries():
 @pytest.mark.asyncio
 async def test_product_search_batch_too_many_queries():
     """product_search_batch should reject more than 20 queries."""
-    from auto_grocier_mcp.tools.product import product_search_batch
+    from auto_grocer_mcp.tools.product import product_search_batch
 
     result = await product_search_batch(
         queries=["item"] * 25,
@@ -205,7 +205,7 @@ async def test_product_search_batch_too_many_queries():
 @pytest.mark.asyncio
 async def test_product_search_batch_requires_store():
     """product_search_batch should error when no store available."""
-    from auto_grocier_mcp.tools.product import product_search_batch
+    from auto_grocer_mcp.tools.product import product_search_batch
 
     result = await product_search_batch(queries=["milk", "eggs"])
 
@@ -217,8 +217,8 @@ async def test_product_search_batch_requires_store():
 @respx.mock
 async def test_product_search_batch_uses_default_store(mock_typeahead_response):
     """product_search_batch should use default store when not specified."""
-    from auto_grocier_mcp.tools.product import product_search_batch
-    from auto_grocier_mcp.tools.store import set_default_store_id
+    from auto_grocer_mcp.tools.product import product_search_batch
+    from auto_grocer_mcp.tools.store import set_default_store_id
 
     set_default_store_id("590")
 
@@ -235,7 +235,7 @@ async def test_product_search_batch_uses_default_store(mock_typeahead_response):
 @respx.mock
 async def test_product_search_batch_handles_partial_failures(mock_typeahead_response):
     """product_search_batch should handle some queries failing."""
-    from auto_grocier_mcp.tools.product import product_search_batch
+    from auto_grocer_mcp.tools.product import product_search_batch
 
     # First call succeeds, second fails, third succeeds
     call_count = [0]
@@ -322,16 +322,16 @@ def mock_product_details_response():
 @pytest.mark.asyncio
 async def test_product_get_valid_product():
     """product_get should return detailed product info for valid ID."""
-    from auto_grocier_mcp.tools.product import product_get
+    from auto_grocer_mcp.tools.product import product_get
 
     with patch(
-        "auto_grocier_mcp.tools.product._get_client"
+        "auto_grocer_mcp.tools.product._get_client"
     ) as mock_get_client:
         mock_client = AsyncMock()
         mock_get_client.return_value = mock_client
 
         # Create a mock ProductDetails object
-        from auto_grocier_mcp.models import ProductDetails
+        from auto_grocer_mcp.models import ProductDetails
         mock_product = ProductDetails(
             product_id="127074",
             sku="4122071073",
@@ -356,7 +356,7 @@ async def test_product_get_valid_product():
 @pytest.mark.asyncio
 async def test_product_get_empty_id():
     """product_get should error on empty product ID."""
-    from auto_grocier_mcp.tools.product import product_get
+    from auto_grocer_mcp.tools.product import product_get
 
     result = await product_get(product_id="", store_id="737")
 
@@ -367,7 +367,7 @@ async def test_product_get_empty_id():
 @pytest.mark.asyncio
 async def test_product_get_whitespace_id():
     """product_get should error on whitespace-only product ID."""
-    from auto_grocier_mcp.tools.product import product_get
+    from auto_grocer_mcp.tools.product import product_get
 
     result = await product_get(product_id="   ", store_id="737")
 
@@ -378,7 +378,7 @@ async def test_product_get_whitespace_id():
 @pytest.mark.asyncio
 async def test_product_get_suggestion_id():
     """product_get should reject suggestion IDs (not real products)."""
-    from auto_grocier_mcp.tools.product import product_get
+    from auto_grocer_mcp.tools.product import product_get
 
     result = await product_get(product_id="suggestion-milk", store_id="737")
 
@@ -390,10 +390,10 @@ async def test_product_get_suggestion_id():
 @pytest.mark.asyncio
 async def test_product_get_not_found():
     """product_get should handle product not found gracefully."""
-    from auto_grocier_mcp.tools.product import product_get
+    from auto_grocer_mcp.tools.product import product_get
 
     with patch(
-        "auto_grocier_mcp.tools.product._get_client"
+        "auto_grocer_mcp.tools.product._get_client"
     ) as mock_get_client:
         mock_client = AsyncMock()
         mock_get_client.return_value = mock_client
@@ -409,18 +409,18 @@ async def test_product_get_not_found():
 @pytest.mark.asyncio
 async def test_product_get_uses_default_store():
     """product_get should use default store when not specified."""
-    from auto_grocier_mcp.tools.product import product_get
-    from auto_grocier_mcp.tools.store import set_default_store_id
+    from auto_grocer_mcp.tools.product import product_get
+    from auto_grocer_mcp.tools.store import set_default_store_id
 
     set_default_store_id("590")
 
     with patch(
-        "auto_grocier_mcp.tools.product._get_client"
+        "auto_grocer_mcp.tools.product._get_client"
     ) as mock_get_client:
         mock_client = AsyncMock()
         mock_get_client.return_value = mock_client
 
-        from auto_grocier_mcp.models import ProductDetails
+        from auto_grocer_mcp.models import ProductDetails
         mock_product = ProductDetails(
             product_id="127074",
             sku="4122071073",
@@ -443,15 +443,15 @@ async def test_product_get_uses_default_store():
 @pytest.mark.asyncio
 async def test_product_get_with_nutrition():
     """product_get should include full nutrition facts when available."""
-    from auto_grocier_mcp.tools.product import product_get
+    from auto_grocer_mcp.tools.product import product_get
 
     with patch(
-        "auto_grocier_mcp.tools.product._get_client"
+        "auto_grocer_mcp.tools.product._get_client"
     ) as mock_get_client:
         mock_client = AsyncMock()
         mock_get_client.return_value = mock_client
 
-        from auto_grocier_mcp.models import ExtendedNutrition, NutrientInfo, ProductDetails
+        from auto_grocer_mcp.models import ExtendedNutrition, NutrientInfo, ProductDetails
 
         nutrition = ExtendedNutrition(
             serving_size="1 Tbsp (15mL)",
@@ -490,10 +490,10 @@ async def test_product_get_with_nutrition():
 @pytest.mark.asyncio
 async def test_product_get_api_error():
     """product_get should handle API errors gracefully."""
-    from auto_grocier_mcp.tools.product import product_get
+    from auto_grocer_mcp.tools.product import product_get
 
     with patch(
-        "auto_grocier_mcp.tools.product._get_client"
+        "auto_grocer_mcp.tools.product._get_client"
     ) as mock_get_client:
         mock_client = AsyncMock()
         mock_get_client.return_value = mock_client

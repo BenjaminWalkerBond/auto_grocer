@@ -1,7 +1,7 @@
 # Status: migrate-to-uv
 
 <!--
-Shared status file for the auto_grocier multi-agent workflow. Single source of
+Shared status file for the auto_grocer multi-agent workflow. Single source of
 truth passed between Orchestrator and the Software Architect / Developer / Tester
 subagents. Subagents run in isolated contexts and cannot see each other, so ALL
 shared state lives here.
@@ -79,12 +79,12 @@ scope_and_approach:
        (`python mcp_server.py`, `python -m session_maintenance.run`) with the repo
        root on sys.path; it is never pip-installed as a wheel today. With a flat
        layout containing many top-level packages (`classes`, `database`,
-       `auto_grocier_mcp`, `session_maintenance`, `utility`) plus root modules,
+       `auto_grocer_mcp`, `session_maintenance`, `utility`) plus root modules,
        forcing setuptools to BUILD/INSTALL the project would trip the
        "Multiple top-level packages discovered in a flat-layout" error. Marking it
        non-package makes `uv sync` install ONLY the dependencies into the
        environment and leaves imports resolving from cwd exactly as they do now —
-       this is also what keeps the vendored `auto_grocier_mcp/` importable and
+       this is also what keeps the vendored `auto_grocer_mcp/` importable and
        un-touched (risk item below).
      - `requires-python = ">=3.12"` stays.
 
@@ -203,7 +203,7 @@ acceptance_criteria:
      `docker compose -f docker/docker-compose.yml run --rm -T mcp` starts
      `mcp_server.py` (server responds over stdio) — runtime behavior identical to
      the pip image.
-  9. Inside the built image, bare `python -c "import auto_grocier_mcp, classes,
+  9. Inside the built image, bare `python -c "import auto_grocer_mcp, classes,
      database, session_maintenance, utility"` succeeds (vendored package still
      importable) and `python -m session_maintenance.run --help`-style invocation
      resolves deps (so the refresh skills keep working unchanged).
@@ -233,7 +233,7 @@ risks_and_dependencies:
     `.vscode/mcp.json`, and the refresh skills. If the Developer instead syncs into
     a project `.venv`, those bare-`python` calls will miss deps — that would be a
     regression. Verify criterion #9 explicitly.
-  - VENDORED PACKAGE: `auto_grocier_mcp/` (fork of texas-grocery-mcp) must remain
+  - VENDORED PACKAGE: `auto_grocer_mcp/` (fork of texas-grocery-mcp) must remain
     importable and NOT be built/installed as part of the project. `[tool.uv]
     package = false` guarantees uv never invokes setuptools discovery, sidestepping
     the flat-layout multiple-top-level-packages failure. If a later maintainer
@@ -275,7 +275,7 @@ approach: >
   Mechanical, dependency-set-preserving migration per the design. Copy runtime
   specifiers verbatim into [project.dependencies] and dev specifiers into
   [dependency-groups].dev. Mark project non-package ([tool.uv] package=false) so
-  uv installs deps only (run-from-source preserved, vendored auto_grocier_mcp
+  uv installs deps only (run-from-source preserved, vendored auto_grocer_mcp
   untouched). Generate uv.lock, sync a project .venv to confirm resolution.
   Delete requirements*.txt and repoint every LIVE reference (Docker/CI/docs).
   Docker installs into system Python (UV_PROJECT_ENVIRONMENT=/usr/local) so bare
@@ -294,7 +294,7 @@ verification:
   - uv run ruff check . → clean.
   - uv run mypy <exact scope> → Success: no issues found.
   - uv run pytest tests/unit → baseline pass/skip counts.
-  - uv run python -c "import mcp_server, session_maintenance.flows, auto_grocier_mcp".
+  - uv run python -c "import mcp_server, session_maintenance.flows, auto_grocer_mcp".
   - git grep for pip/venv/requirements → only historical hits remain.
   - diff [project.dependencies] vs old requirements.txt and dev group vs
     requirements-dev.txt → empty.
@@ -351,7 +351,7 @@ local_verification:
   - uv run pytest tests/unit → 338 passed, 8 skipped in 9.66s (exit 0). Matches
     baseline. (8 skips on Windows: 2 redis-missing health tests + 6 POSIX 0o600
     file-mode tests; these run on Linux CI.)
-  - import check: `import mcp_server, session_maintenance.flows, auto_grocier_mcp`
+  - import check: `import mcp_server, session_maintenance.flows, auto_grocer_mcp`
     → OK (vendored package importable, exit 0)
   - dependency-set diff vs git HEAD requirements files: runtime 34/34 identical,
     dev 5/5 identical (no package added/removed, specifiers unchanged)
@@ -387,7 +387,7 @@ commands:
 
   # STEP 2 — Docker uv path
   - docker compose -f docker/docker-compose.yml build mcp           # criterion 8
-  - docker compose -f docker/docker-compose.yml run --rm -T --entrypoint python mcp -c "import auto_grocier_mcp, classes, database, session_maintenance, utility, mcp_server; print('imports-ok')"  # criterion 9
+  - docker compose -f docker/docker-compose.yml run --rm -T --entrypoint python mcp -c "import auto_grocer_mcp, classes, database, session_maintenance, utility, mcp_server; print('imports-ok')"  # criterion 9
   - docker compose -f docker/docker-compose.yml run --rm -T mcp     # criterion 8 (server starts)
 
   # STEP 3 — CI parity (static review)
@@ -462,11 +462,11 @@ per_criterion:
     confirms pinned `ghcr.io/astral-sh/uv:0.12.2` (digest
     sha256:069a5131…), `COPY --from` that image, and `RUN uv sync --frozen
     --no-dev` (no pip). Server start (non-hanging): `run --rm -T mcp < /dev/null` →
-    exit 0, FastMCP banner + "Starting MCP server 'auto-grocier' with transport
+    exit 0, FastMCP banner + "Starting MCP server 'auto-grocer' with transport
     'stdio'", clean EOF exit, 0 ImportError/ModuleNotFoundError/Traceback.
   9_container_imports: PASS — `run --rm -T --entrypoint python mcp -c "import
-    mcp_server, auto_grocier_mcp, classes, database, session_maintenance, utility;
-    print('imports-ok')"` → printed `imports-ok`, exit 0 (vendored auto_grocier_mcp
+    mcp_server, auto_grocer_mcp, classes, database, session_maintenance, utility;
+    print('imports-ok')"` → printed `imports-ok`, exit 0 (vendored auto_grocer_mcp
     + all first-party pkgs resolve in system Python via
     UV_PROJECT_ENVIRONMENT=/usr/local).
   10_no_dangling_refs: PASS — requirements.txt/requirements-dev.txt deleted; the
@@ -481,7 +481,7 @@ per_criterion:
     docker-build.yml path triggers reference `uv.lock` + `pyproject.toml` (no
     requirements*.txt). Authoritative Linux run: see CI conclusion below.
 ci_result:
-  pr: "#12 — https://github.com/BenjaminWalkerBond/auto_grocier/pull/12 (base dev, head chore/migrate-to-uv @ 880c56e)"
+  pr: "#12 — https://github.com/BenjaminWalkerBond/auto_grocer/pull/12 (base dev, head chore/migrate-to-uv @ 880c56e)"
   run: "31185919217 — completed/success in 32s"
   test_job: PASS — CI/test (3.12) (pull_request) ✓ 19s
   typecheck_job: PASS — CI/typecheck (pull_request) ✓ 28s (mypy hard gate green on Linux)
@@ -499,7 +499,7 @@ failures: none — all 11 criteria PASS locally (Linux) AND both PR CI jobs gree
   `3.10.12`, contradicting `requires-python = ">=3.12"` — design requires fixing it
   to `3.12`. Recommended path: keep setuptools backend but add `[tool.uv] package =
   false` (run-from-source, avoids flat-layout build failure & keeps vendored
-  auto_grocier_mcp importable); static `[project.dependencies]` (verbatim from
+  auto_grocer_mcp importable); static `[project.dependencies]` (verbatim from
   requirements.txt) + `[dependency-groups] dev` (verbatim from requirements-dev.txt);
   commit `uv.lock`; DELETE both requirements files; Docker installs into system
   Python via `UV_PROJECT_ENVIRONMENT=/usr/local` + `uv sync --frozen --no-dev`

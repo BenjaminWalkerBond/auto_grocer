@@ -1,4 +1,4 @@
-"""Async, nodriver-based browser automation for auto_grocier.
+"""Async, nodriver-based browser automation for auto_grocer.
 
 This is the project's browser layer: it drives HEB's site over CDP (no Selenium,
 no chromedriver) to log in, reserve pickup slots, add items, and export the

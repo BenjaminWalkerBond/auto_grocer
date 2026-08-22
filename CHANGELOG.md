@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to auto_grocier are documented in this file.
+All notable changes to auto_grocer are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -20,18 +20,18 @@ Pre-1.0.0 releases may change interfaces between minor versions.
 
 ## [0.1.0] - 2026-07-31
 
-Initial public release. auto_grocier automates H-E-B grocery ordering through an
+Initial public release. auto_grocer automates H-E-B grocery ordering through an
 [MCP](https://modelcontextprotocol.io/) server that replays H-E-B's GraphQL
 persisted-query API using an exported browser session, backed by a PostgreSQL
 recipe database.
 
-> **Disclaimer:** auto_grocier is not affiliated with, endorsed by, or sponsored
+> **Disclaimer:** auto_grocer is not affiliated with, endorsed by, or sponsored
 > by H-E-B, and is provided for personal and educational use only. See the
 > [Disclaimer](README.md#disclaimer) and [Credits](README.md#credits) in the README.
 
 ### Added
 
-- **MCP server** (`mcp_server.py`, `FastMCP(name="auto-grocier")`) exposing H-E-B
+- **MCP server** (`mcp_server.py`, `FastMCP(name="auto-grocer")`) exposing H-E-B
   grocery automation over pure GraphQL — product search, cart management
   (`add_groceries`, `get_cart`, `clear_cart`, `remove_from_cart`), recipe
   ingredient adding (`add_recipe_ingredients`, `find_recipes`), timeslot
@@ -47,8 +47,8 @@ recipe database.
 - **Dockerized stack** (`docker/docker-compose.yml`, `docker/Dockerfile.mcp`) —
   PostgreSQL plus the MCP server with bundled Chromium and Xvfb, so the container
   can refresh its own H-E-B session. Postgres data persists in the
-  `auto_grocier_pgdata` volume; the exported session persists in
-  `auto_grocier_session`.
+  `auto_grocer_pgdata` volume; the exported session persists in
+  `auto_grocer_session`.
 - **Licensing and attribution** — root MIT `LICENSE`, a `NOTICE` file, and README
   Credits crediting the upstream project
   [texas-grocery-mcp](https://github.com/mgwalkerjr95/texas-grocery-mcp) by
@@ -62,10 +62,10 @@ recipe database.
 
 ### Changed
 
-- **Renamed the vendored package** `texas_grocery_mcp` → `auto_grocier_mcp` so the
+- **Renamed the vendored package** `texas_grocery_mcp` → `auto_grocer_mcp` so the
   project no longer ships under the upstream author's project name. The upstream
   MIT license and attribution are preserved (see `NOTICE` and
-  `auto_grocier_mcp/LICENSE`); on-disk runtime names (the `~/.texas-grocery-mcp/`
+  `auto_grocer_mcp/LICENSE`); on-disk runtime names (the `~/.texas-grocery-mcp/`
   session directory, the OS keyring service name, and the Docker volume mounts)
   are intentionally unchanged to avoid orphaning existing sessions.
 - **Cross-platform documentation** — the README Quick Start now creates a fresh
@@ -108,5 +108,5 @@ recipe database.
   trademark notice, a personal/educational-use limitation, and a no-warranty
   statement.
 
-[Unreleased]: https://github.com/BenjaminWalkerBond/auto_grocier/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/BenjaminWalkerBond/auto_grocier/releases/tag/v0.1.0
+[Unreleased]: https://github.com/BenjaminWalkerBond/auto_grocer/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/BenjaminWalkerBond/auto_grocer/releases/tag/v0.1.0

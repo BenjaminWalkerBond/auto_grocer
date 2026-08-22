@@ -4,7 +4,7 @@ import time
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
-from auto_grocier_mcp.reliability.cache import TTLCache
+from auto_grocer_mcp.reliability.cache import TTLCache
 
 
 class TestTTLCache:
@@ -34,7 +34,7 @@ class TestTTLCache:
 
         # Mock time to be 2 hours in the future
         future_time = datetime.now() + timedelta(hours=2)
-        with patch("auto_grocier_mcp.reliability.cache.datetime") as mock_datetime:
+        with patch("auto_grocer_mcp.reliability.cache.datetime") as mock_datetime:
             mock_datetime.now.return_value = future_time
 
             result = cache.get("key1")
@@ -48,7 +48,7 @@ class TestTTLCache:
 
         # Mock time to be 2 hours in the future
         future_time = datetime.now() + timedelta(hours=2)
-        with patch("auto_grocier_mcp.reliability.cache.datetime") as mock_datetime:
+        with patch("auto_grocer_mcp.reliability.cache.datetime") as mock_datetime:
             mock_datetime.now.return_value = future_time
             cache.get("key1")  # This should remove the entry
 
@@ -133,7 +133,7 @@ class TestTTLCache:
 
         # Mock time to be 2 hours in the future
         future_time = datetime.now() + timedelta(hours=2)
-        with patch("auto_grocier_mcp.reliability.cache.datetime") as mock_datetime:
+        with patch("auto_grocer_mcp.reliability.cache.datetime") as mock_datetime:
             mock_datetime.now.return_value = future_time
 
             stats = cache.stats()

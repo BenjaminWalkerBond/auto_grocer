@@ -8,16 +8,16 @@ import sys
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from auto_grocier.database.db_connection import test_connection
-from auto_grocier.database.init_db import init_database
-from auto_grocier.database.seed_tags import seed_tags
+from auto_grocer.database.db_connection import test_connection
+from auto_grocer.database.init_db import init_database
+from auto_grocer.database.seed_tags import seed_tags
 
 
 def setup_database():
     """Complete database setup"""
     print("\n")
     print("╔" + "=" * 58 + "╗")
-    print("║" + " " * 15 + "AUTO GROCIER DATABASE SETUP" + " " * 15 + "║")
+    print("║" + " " * 15 + "AUTO GROCER DATABASE SETUP" + " " * 15 + "║")
     print("╚" + "=" * 58 + "╝")
     print()
 

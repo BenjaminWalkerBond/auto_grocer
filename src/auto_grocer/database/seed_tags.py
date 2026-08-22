@@ -7,8 +7,8 @@ import sys
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from auto_grocier.database.db_connection import get_db_session
-from auto_grocier.database.tag_repository import TagRepository
+from auto_grocer.database.db_connection import get_db_session
+from auto_grocer.database.tag_repository import TagRepository
 
 
 def seed_tags():

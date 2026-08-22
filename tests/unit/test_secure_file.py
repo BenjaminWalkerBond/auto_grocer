@@ -6,7 +6,7 @@ import sys
 
 import pytest
 
-from auto_grocier_mcp.utils.secure_file import (
+from auto_grocer_mcp.utils.secure_file import (
     SECURE_FILE_MODE,
     ensure_secure_permissions,
     write_secure_json,

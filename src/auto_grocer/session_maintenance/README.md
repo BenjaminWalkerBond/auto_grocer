@@ -1,6 +1,6 @@
 # session_maintenance — async browser automation (nodriver)
 
-The browser-automation layer for auto_grocier, built on
+The browser-automation layer for auto_grocer, built on
 [`nodriver`](https://github.com/ultrafunkamsterdam/nodriver) — the maintained,
 CDP-native successor to undetected-chromedriver. It drives HEB's site (no
 Selenium, no chromedriver) to log in, reserve pickup slots, add items, capture
@@ -71,7 +71,7 @@ modes.
 
 - **Headless host:** set `DISPLAY` to an X server (WSLg on Windows, or Xvfb). The
   Docker image runs Chromium under Xvfb automatically.
-- **Docker / root:** set `AUTO_GROCIER_NO_SANDBOX=1` (Chrome's sandbox refuses to
+- **Docker / root:** set `AUTO_GROCER_NO_SANDBOX=1` (Chrome's sandbox refuses to
   run as root) and `NODRIVER_BROWSER_PATH` to the Chromium binary.
 - Self-healing rewrites are saved to `session_maintenance/updated_functions/`
   (gitignored, regenerated at runtime).

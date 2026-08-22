@@ -1,6 +1,6 @@
-# PostgreSQL + MCP server for auto_grocier — portable, no host install required.
+# PostgreSQL + MCP server for auto_grocer — portable, no host install required.
 #
-# Brings up the database the app expects (db auto_grocier, user grocier_user) so
+# Brings up the database the app expects (db auto_grocer, user grocer_user) so
 # the app's .env settings work unchanged, plus the MCP server in its own
 # container. Starting the MCP server auto-starts Postgres first (depends_on +
 # healthcheck).
@@ -22,30 +22,30 @@
 services:
   postgres:
     image: postgres:16
-    container_name: auto_grocier_db
+    container_name: auto_grocer_db
     restart: unless-stopped
     # NOTE: DATABASE_PASSWORD must be present in the compose INTERPOLATION
     # environment (host env, docker/.env, or the repo-root .env when running from
     # the repo root) — this is distinct from the container env_file mounted below.
-    # Postgres bakes POSTGRES_PASSWORD into the auto_grocier_pgdata volume at first
+    # Postgres bakes POSTGRES_PASSWORD into the auto_grocer_pgdata volume at first
     # init, so a volume created under an earlier password keeps THAT password. To
     # adopt a new one, either set DATABASE_PASSWORD to the previously-baked value,
     # or recreate the volume with `docker compose -f docker/docker-compose.yml
     # down -v` (which wipes local DB data — re-seed afterward).
     environment:
-      POSTGRES_USER: ${DATABASE_USER:-grocier_user}
+      POSTGRES_USER: ${DATABASE_USER:-grocer_user}
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set — see .env.example}
-      POSTGRES_DB: ${DATABASE_NAME:-auto_grocier}
+      POSTGRES_DB: ${DATABASE_NAME:-auto_grocer}
     ports:
       - "${DATABASE_PORT:-5432}:5432"
     volumes:
-      - auto_grocier_pgdata:/var/lib/postgresql/data
+      - auto_grocer_pgdata:/var/lib/postgresql/data
       # Migrations run once, in order (001, 002, 003), when the data volume is
       # first created. Mounted read-only straight from the repo so there is no
       # duplicated SQL to keep in sync.
-      - ../src/auto_grocier/database/migrations:/docker-entrypoint-initdb.d:ro
+      - ../src/auto_grocer/database/migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER:-grocier_user} -d ${DATABASE_NAME:-auto_grocier}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER:-grocer_user} -d ${DATABASE_NAME:-auto_grocer}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -54,8 +54,8 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.mcp
-    image: auto_grocier_mcp
-    container_name: auto_grocier_mcp
+    image: auto_grocer_mcp
+    container_name: auto_grocer_mcp
     # Starting the MCP server brings Postgres up first and waits for it healthy.
     depends_on:
       postgres:
@@ -67,10 +67,10 @@ services:
     environment:
       # Reach Postgres over the compose network (service name "postgres"),
       # overriding the .env DATABASE_HOST (localhost) without editing it.
-      DATABASE_URL: postgresql://${DATABASE_USER:-grocier_user}:${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set — see .env.example}@postgres:5432/${DATABASE_NAME:-auto_grocier}
+      DATABASE_URL: postgresql://${DATABASE_USER:-grocer_user}:${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set — see .env.example}@postgres:5432/${DATABASE_NAME:-auto_grocer}
       # In-container login uses the nodriver (Xvfb) flow with no Chrome sandbox.
-      AUTO_GROCIER_NO_SANDBOX: "1"
-      AUTO_GROCIER_AUTO_LOGIN: "1"
+      AUTO_GROCER_NO_SANDBOX: "1"
+      AUTO_GROCER_AUTO_LOGIN: "1"
       NODRIVER_BROWSER_PATH: /usr/bin/chromium
       DISPLAY: ":99"
     volumes:
@@ -82,7 +82,7 @@ services:
       # (COPY . .) and the server runs with `--rm`, so without this bind mount
       # those rewrites would vanish when the container exits. Mounting the host
       # directory makes them land in the working tree for review + commit.
-      - ../src/auto_grocier/session_maintenance/updated_functions:/app/src/auto_grocier/session_maintenance/updated_functions
+      - ../src/auto_grocer/session_maintenance/updated_functions:/app/src/auto_grocer/session_maintenance/updated_functions
       # Debug snapshots (screenshots / HTML / error JSON) from the nodriver
       # login + self-healing flows land in /app/debug_logs. Without this bind
       # mount they vanish when the --rm container exits, leaving no visibility
@@ -90,7 +90,7 @@ services:
       - ../debug_logs:/app/debug_logs
       # Persisted HEB session (auth.json + persisted_queries.json). Survives
       # restarts so the container doesn't re-login every time.
-      - auto_grocier_session:/root/.texas-grocery-mcp
+      - auto_grocer_session:/root/.texas-grocery-mcp
     # MCP stdio server: keep stdin open and don't allocate a TTY.
     stdin_open: true
     tty: false
@@ -98,7 +98,7 @@ services:
     # `docker compose run --rm mcp`.
 
 volumes:
-  auto_grocier_pgdata:
-    name: auto_grocier_pgdata
-  auto_grocier_session:
-    name: auto_grocier_session
+  auto_grocer_pgdata:
+    name: auto_grocer_pgdata
+  auto_grocer_session:
+    name: auto_grocer_session
