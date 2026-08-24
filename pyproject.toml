@@ -53,6 +53,14 @@ dependencies = [
     "yarl>=1.9.4",
 ]
 
+[project.optional-dependencies]
+# Exploratory only: the patchright stealth spike (spikes/patchright/). Install
+# with `uv sync --extra spike` then `uv run patchright install chromium`. Kept
+# out of the core deps so the shipped MCP server / nodriver path never pull it.
+spike = [
+    "patchright>=1.52",
+]
+
 [project.scripts]
 # Installed console entry points (created by `uv sync` / pip install).
 auto-grocer-mcp = "auto_grocer.mcp_server:main"

@@ -97,6 +97,100 @@ services:
     # No restart policy: this is launched on-demand by the MCP client via
     # `docker compose run --rm mcp`.
 
+  # --- MCP server using the PATCHRIGHT login engine (A/B test inside Claude) ---
+  # Identical to `mcp` but refreshes the HEB session via the patchright spike
+  # instead of nodriver (AUTO_GROCER_LOGIN_ENGINE=patchright). patchright is an
+  # optional extra: it's pip-installed into the image's system Python at startup
+  # and driven against the same system Chromium under Xvfb. Register Claude
+  # against this service to test the new auth method end-to-end:
+  #   MCP_SERVICE=mcp-patchright ./scripts/add-to-claude.sh
+  # Hash capture still uses nodriver; only the login engine changes here.
+  mcp-patchright:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.mcp
+    image: auto_grocer_mcp
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - ../.env
+    environment:
+      DATABASE_URL: postgresql://${DATABASE_USER:-grocer_user}:${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set — see .env.example}@postgres:5432/${DATABASE_NAME:-auto_grocer}
+      AUTO_GROCER_NO_SANDBOX: "1"
+      AUTO_GROCER_AUTO_LOGIN: "1"
+      AUTO_GROCER_LOGIN_ENGINE: patchright
+      NODRIVER_BROWSER_PATH: /usr/bin/chromium
+      DISPLAY: ":99"
+      UV_LINK_MODE: copy
+    volumes:
+      - ../.env:/app/.env:ro
+      # Live spike + src so the patchright login engine resolves without a rebuild.
+      - ../spikes:/app/spikes:ro
+      - ../src:/app/src:ro
+      - ../src/auto_grocer/session_maintenance/updated_functions:/app/src/auto_grocer/session_maintenance/updated_functions
+      - ../debug_logs:/app/debug_logs
+      - auto_grocer_session:/root/.texas-grocery-mcp
+    stdin_open: true
+    tty: false
+    # Install patchright (optional extra), then exec the stdio MCP server. The
+    # server's auto-login runs the patchright cold login when a refresh is needed.
+    # pip output is redirected so stdout stays clean for the JSON-RPC channel.
+    command:
+      - bash
+      - -lc
+      - >-
+        uv pip install --system 'patchright>=1.52' >/tmp/patchright_install.log 2>&1
+        && exec python -m auto_grocer.mcp_server
+
+  # --- Patchright stealth spike (exploratory; not part of the shipped stack) ---
+  # Benchmarks whether patchright clears HEB's Imperva WAF on a headed-under-Xvfb
+  # cold login, reusing the SAME image (system Chromium + Xvfb). patchright is an
+  # optional extra, so it's pip-installed into the image's system Python at run
+  # time (kept out of the core image). Non-destructive by default: writes to a
+  # spike-suffixed auth.json and never overwrites the production session/hashes.
+  #
+  # Run (from the repo root; --env-file .env is required for interpolation):
+  #   docker compose --env-file .env -f docker/docker-compose.yml run --rm spike
+  #   # override args:
+  #   docker compose --env-file .env -f docker/docker-compose.yml run --rm spike \
+  #     python -m spikes.patchright.run_spike --runs 3 --capture --delay 90
+  spike:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.mcp
+    image: auto_grocer_mcp
+    env_file:
+      - ../.env
+    environment:
+      AUTO_GROCER_NO_SANDBOX: "1"
+      NODRIVER_BROWSER_PATH: /usr/bin/chromium
+      DISPLAY: ":99"
+      UV_LINK_MODE: copy
+    volumes:
+      - ../.env:/app/.env:ro
+      # Bind-mount the spike source so it runs without rebuilding the image.
+      - ../spikes:/app/spikes:ro
+      # Bind-mount live src so the spike uses current first-party code (the image
+      # is an editable install pointing at /app/src) without a full rebuild.
+      - ../src:/app/src:ro
+      # Persist the spike's auth_patchright_spike.json alongside the real session
+      # (same volume) so results survive the --rm container without clobbering
+      # the production auth.json.
+      - auto_grocer_session:/root/.texas-grocery-mcp
+      - ../debug_logs:/app/debug_logs
+    stdin_open: true
+    tty: false
+    # Install the optional patchright extra at runtime, then run the spike
+    # against a spike-only auth.json (production auth.json is left untouched).
+    command:
+      - bash
+      - -lc
+      - >-
+        uv pip install --system 'patchright>=1.52' >/tmp/patchright_install.log 2>&1
+        && python -m spikes.patchright.run_spike --runs 5 --capture --delay 90
+        --auth-out /root/.texas-grocery-mcp/auth_patchright_spike.json
+
 volumes:
   auto_grocer_pgdata:
     name: auto_grocer_pgdata

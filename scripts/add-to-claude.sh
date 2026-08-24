@@ -37,18 +37,49 @@ if [[ ! -f "$compose_path" ]]; then
   exit 1
 fi
 
-# Resolve the Claude Desktop config path per-OS (override with $1).
+# Which compose service Claude launches (default: mcp). Set
+# MCP_SERVICE=mcp-patchright to test the experimental patchright login engine.
+mcp_service="${MCP_SERVICE:-mcp}"
+
+# Detect WSL so we register the *Windows* Claude Desktop (not the Linux config)
+# and hand Docker Desktop a Windows-style compose path it understands.
+is_wsl=0
+if grep -qiE '(microsoft|wsl)' /proc/version 2>/dev/null; then
+  is_wsl=1
+fi
+
+# Compose path exactly as Claude/Docker will consume it (forward slashes). On
+# WSL that means the Windows drive path (C:/...), not /mnt/c/...
+if [[ "$is_wsl" -eq 1 ]] && command -v wslpath >/dev/null 2>&1; then
+  compose_path_json="$(wslpath -w "$compose_path" | sed 's#\\#/#g')"
+  env_path_json="$(wslpath -w "$repo_root/.env" | sed 's#\\#/#g')"
+else
+  compose_path_json="$compose_path"
+  env_path_json="$repo_root/.env"
+fi
+
+# Resolve the Claude Desktop config path (override with $1).
 if [[ -n "${1:-}" ]]; then
   config_path="$1"
+elif [[ "$is_wsl" -eq 1 ]]; then
+  # WSL: write to the Windows Claude Desktop config under %APPDATA%.
+  win_appdata="$(cmd.exe /c 'echo %APPDATA%' 2>/dev/null | tr -d '\r')"
+  if [[ -n "$win_appdata" ]] && command -v wslpath >/dev/null 2>&1; then
+    config_path="$(wslpath -u "$win_appdata")/Claude/claude_desktop_config.json"
+  else
+    config_path="${XDG_CONFIG_HOME:-$HOME/.config}/Claude/claude_desktop_config.json"
+  fi
 elif [[ "$(uname)" == "Darwin" ]]; then
   config_path="$HOME/Library/Application Support/Claude/claude_desktop_config.json"
 else
-  # Linux / WSL
+  # Linux
   config_path="${XDG_CONFIG_HOME:-$HOME/.config}/Claude/claude_desktop_config.json"
 fi
 
 echo "Repo root:      $repo_root"
-echo "Compose file:   $compose_path"
+echo "Compose file:   $compose_path_json"
+echo "Env file:       $env_path_json"
+echo "MCP service:    $mcp_service"
 echo "Claude config:  $config_path"
 echo ""
 
@@ -70,13 +101,15 @@ fi
 
 # Merge the auto-grocer entry into mcpServers, preserving everything else.
 echo "$base" | jq \
-  --arg compose "$compose_path" \
+  --arg compose "$compose_path_json" \
+  --arg envfile "$env_path_json" \
+  --arg service "$mcp_service" \
   '.mcpServers = (.mcpServers // {}) |
    .mcpServers["auto-grocer"] = {
      "command": "docker",
-     "args": ["compose", "-f", $compose, "run", "--rm", "-T", "mcp"]
+     "args": ["compose", "--env-file", $envfile, "-f", $compose, "run", "--rm", "-T", $service]
    }' > "$config_path"
 
 echo ""
-echo "Added 'auto-grocer' to Claude Desktop config."
+echo "Added 'auto-grocer' (service: $mcp_service) to Claude Desktop config."
 echo "Restart Claude Desktop, then ask it to call auth_status to verify."

@@ -59,8 +59,18 @@ class GraphQLHashCapturer:
             if not post_data:
                 return
 
-            for name, sha, variables in _parse_operation_samples(post_data):
-                self.operations[name] = {"hash": sha, "variables": variables}
+            for name, sha, variables, query in _parse_operation_samples(post_data):
+                existing = self.operations.get(name) or {}
+                # Preserve a previously-captured full query if this request is a
+                # hash-only re-send (APQ cache hit): HEB only includes the query
+                # text on the registration MISS, so never overwrite it with None.
+                if query is None:
+                    query = existing.get("query")
+                self.operations[name] = {
+                    "hash": sha,
+                    "variables": variables,
+                    "query": query,
+                }
         except Exception:  # noqa: BLE001 - never let a handler crash the flow
             return
 

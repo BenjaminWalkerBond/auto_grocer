@@ -72,7 +72,7 @@ from auto_grocer.utility.graphql_checkout import (
     list_timeslots_sync,
     reserve_timeslot_sync,
 )
-from auto_grocer.utility.graphql_store import select_store
+from auto_grocer.utility.graphql_store import cache_stores, get_cached_store, select_store
 
 # Route all structlog/stdlib logging to stderr so the stdio JSON-RPC channel on
 # stdout stays clean. The vendored auto_grocer_mcp client logs via structlog;
@@ -116,6 +116,17 @@ _AUTO_LOGIN = os.environ.get("AUTO_GROCER_AUTO_LOGIN", "1").lower() in (
 _AUTO_CAPTURE_HASHES = os.environ.get("AUTO_GROCER_AUTO_CAPTURE_HASHES", "1").lower() in (
     "1", "true", "yes",
 )
+
+# Which browser engine the auto-login uses to refresh the HEB session:
+#   "nodriver"   (default) - the in-tree async CDP flow (login_export).
+#   "patchright" - the experimental patched-Playwright spike (spikes/patchright),
+#                  for A/B testing WAF pass-rate in the real MCP flow. Requires
+#                  patchright installed + the spikes/ tree present (see the
+#                  docker-compose "mcp-patchright" service). Hash capture is
+#                  unaffected and still uses nodriver.
+_LOGIN_ENGINE = (
+    os.environ.get("AUTO_GROCER_LOGIN_ENGINE", "nodriver") or "nodriver"
+).strip().lower()
 
 # How long (seconds) to allow the browser login-and-export to run before giving
 # up. The flow logs in, may handle email verification, and exports auth.json.
@@ -244,13 +255,21 @@ def _auto_authenticate(force: bool = False) -> dict:
 
         env = dict(os.environ)
         env.setdefault("DISPLAY", ":0")  # X server (WSLg on host, Xvfb in Docker)
-        env["MODE"] = "nodriver"
-        env["OPERATION"] = "login_export"
-        cmd = [python_exe, "-u", "-m", "auto_grocer.session_maintenance.run"]
+        if _LOGIN_ENGINE == "patchright":
+            # Experimental engine: one patchright cold login that writes the real
+            # auth.json (spikes.patchright.run_spike --runs 1). Lets us A/B test
+            # patchright's Imperva pass-rate through the live MCP auto-login.
+            cmd = [python_exe, "-u", "-m", "spikes.patchright.run_spike", "--runs", "1"]
+            engine_label = "patchright"
+        else:
+            env["MODE"] = "nodriver"
+            env["OPERATION"] = "login_export"
+            cmd = [python_exe, "-u", "-m", "auto_grocer.session_maintenance.run"]
+            engine_label = "nodriver"
 
         print(
-            "[auto-grocer] No valid session - running nodriver login "
-            "(login_export) to refresh auth.json (this can take a minute)...",
+            f"[auto-grocer] No valid session - running {engine_label} login "
+            "to refresh auth.json (this can take a minute)...",
             file=sys.stderr,
         )
         try:
@@ -655,6 +674,9 @@ def _search_stores_sync(address: str, radius_miles: int) -> dict:
             result = await client.search_stores(
                 address=address, radius_miles=int(radius_miles)
             )
+            # Cache found stores so set_store can enrich its response with a
+            # store's name/address without another network round-trip.
+            cache_stores(getattr(result, "stores", None) or [])
             return result.model_dump()
         finally:
             await client.close()
@@ -1310,8 +1332,50 @@ def set_store(store_id: str) -> dict:
     """
     if not _ensure_authed():
         return _NOT_AUTHED
-    result = asyncio.run(select_store(str(store_id)))
-    return {"store_id": str(store_id), "result": result}
+
+    store_id = str(store_id).strip()
+
+    # Enrich the response with a name/address if this store was seen via a
+    # prior search_stores call (mirrors texas-grocery-mcp's store_change,
+    # which reports the same in both its error and success payloads).
+    cached = get_cached_store(store_id)
+    store_name = getattr(cached, "name", None) if cached is not None else None
+    store_address = getattr(cached, "address", None) if cached is not None else None
+
+    # select_store (auto_grocer.utility.graphql_store) is already a SYNC wrapper
+    # that runs its own event loop internally and returns a plain dict/model —
+    # do NOT wrap it in asyncio.run() again (see comment history / repo memory:
+    # double-wrapping raises "a coroutine was expected, got {...}" on every call).
+    result = select_store(store_id)
+
+    if isinstance(result, dict) and result.get("error"):
+        error_response = {
+            "error": True,
+            "code": result.get("code", "STORE_CHANGE_FAILED"),
+            "message": result.get("message", "Failed to change store"),
+            "store_id": store_id,
+            "store_name": store_name,
+        }
+        for key in ("expected_store", "actual_store", "suggestion"):
+            if result.get(key):
+                error_response[key] = result[key]
+        if result.get("code") == "CART_CONFLICT":
+            error_response["help"] = (
+                "Your cart has items that may be unavailable or priced "
+                "differently at the new store. Options: (1) call set_store "
+                "again once the underlying client supports ignore_conflicts, "
+                "(2) clear your cart first, or (3) keep your current store."
+            )
+        return error_response
+
+    return {
+        "success": True,
+        "store_id": store_id,
+        "store_name": store_name,
+        "store_address": store_address,
+        "message": f"Store changed to {store_name or store_id}",
+        "verified": result.get("verified", False) if isinstance(result, dict) else False,
+    }
 
 
 @mcp.tool()

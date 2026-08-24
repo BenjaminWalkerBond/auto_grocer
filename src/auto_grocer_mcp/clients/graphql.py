@@ -115,9 +115,74 @@ def _load_persisted_query_overrides() -> None:
 _load_persisted_query_overrides()
 
 
+# ---------------------------------------------------------------------------
+# Full GraphQL query documents (Apollo APQ registration)
+# ---------------------------------------------------------------------------
+# HEB uses Apollo Automatic Persisted Queries: a sha256 hash only resolves while
+# the server has the matching query registered in its shared APQ cache. High-
+# traffic operations (product/store search) stay resident, but low-traffic ones
+# (notably ``SelectPickupFulfillment``, the store-change mutation) get evicted,
+# after which HEB returns ``PersistedQueryNotFound`` for EVERY hash value -- so
+# capturing a "fresh" hash never helps. The fix is standard APQ recovery: resend
+# the request with the full ``query`` text, which re-registers it and executes.
+#
+# The capture flow now records the full query text (sniffed on the browser's APQ
+# registration MISS) into ``captured_operations.json``; this loads those docs so
+# the client can perform the registration round-trip itself.
+PERSISTED_QUERY_DOCUMENTS: dict[str, str] = {}
+
+# Operations for which an automatic browser hash-refresh cannot help: the failure
+# is APQ registration (evicted query), not a rotated hash. For these we fail fast
+# with clear guidance instead of launching a doomed multi-minute browser capture.
+_APQ_ONLY_OPERATIONS = {"SelectPickupFulfillment"}
+
+
+def _load_persisted_query_documents() -> None:
+    """Load captured full-query documents for APQ registration.
+
+    Reads ``captured_operations.json`` (same directory as the hash overrides)
+    and populates ``PERSISTED_QUERY_DOCUMENTS`` with every operation that has a
+    non-empty ``query`` string.
+
+    Override file location (first match wins):
+      1. ``GRAPHQL_OPERATIONS_PATH`` environment variable
+      2. ``~/.texas-grocery-mcp/captured_operations.json``
+    """
+    import json
+    import os
+    from pathlib import Path
+
+    candidate = os.environ.get("GRAPHQL_OPERATIONS_PATH")
+    path = Path(candidate).expanduser() if candidate else (
+        Path("~/.texas-grocery-mcp/captured_operations.json").expanduser()
+    )
+
+    if not path.exists():
+        return
+
+    try:
+        with open(path, encoding="utf-8") as f:
+            operations = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return
+
+    if isinstance(operations, dict):
+        for name, entry in operations.items():
+            if not isinstance(name, str) or not isinstance(entry, dict):
+                continue
+            query = entry.get("query")
+            if isinstance(query, str) and query.strip():
+                PERSISTED_QUERY_DOCUMENTS[name] = query
+
+
+# Apply any captured query documents at import time.
+_load_persisted_query_documents()
+
+
 def reload_persisted_query_overrides() -> None:
     """Public helper to re-apply hash overrides after they are updated."""
     _load_persisted_query_overrides()
+    _load_persisted_query_documents()
 
 
 # ---------------------------------------------------------------------------
@@ -468,6 +533,7 @@ class HEBGraphQLClient:
             client = await self._get_client()
 
             refreshed = False
+            apq_tried = False
             while True:
                 payload = {
                     "operationName": operation_name,
@@ -479,6 +545,10 @@ class HEBGraphQLClient:
                         }
                     },
                 }
+                # APQ registration round-trip: include the full query text so HEB
+                # re-registers + executes an operation evicted from its APQ cache.
+                if apq_tried and operation_name in PERSISTED_QUERY_DOCUMENTS:
+                    payload["query"] = PERSISTED_QUERY_DOCUMENTS[operation_name]
 
                 try:
                     response = await client.post(self.base_url, json=payload)
@@ -505,8 +575,25 @@ class HEBGraphQLClient:
                     return {}
 
                 except PersistedQueryNotFoundError as e:
-                    # HEB rotated its hashes. Try a non-blocking refresh; only a
-                    # fresh-within-cooldown result retries this same call.
+                    # 1) APQ full-query fallback (no browser): resend WITH the
+                    #    captured query document to register + execute.
+                    if not apq_tried and operation_name in PERSISTED_QUERY_DOCUMENTS:
+                        apq_tried = True
+                        logger.info(
+                            "Retrying with full query (APQ registration)",
+                            operation=operation_name,
+                        )
+                        continue
+                    # 2) Operations a browser hash-refresh cannot fix: fail fast.
+                    if operation_name in _APQ_ONLY_OPERATIONS:
+                        raise PersistedQueryNotFoundError(
+                            f"'{operation_name}' could not be resolved. Its full query "
+                            "document has not been captured yet, so an automatic hash "
+                            "refresh cannot help (the query is evicted from HEB's APQ "
+                            "cache). Run the capture_hashes tool once - it now records "
+                            "the query document - then retry."
+                        ) from e
+                    # 3) Rotated-hash path: non-blocking background hash refresh.
                     status = None if refreshed else await _attempt_hash_refresh(operation_name)
                     if status == "retry":
                         refreshed = True
@@ -2062,6 +2149,7 @@ class HEBGraphQLClient:
             raise ValueError(f"Unknown operation: {operation_name}")
 
         refreshed = False
+        apq_tried = False
         while True:
             payload = {
                 "operationName": operation_name,
@@ -2073,6 +2161,10 @@ class HEBGraphQLClient:
                     }
                 },
             }
+            # APQ registration round-trip: include the full query text so HEB
+            # re-registers + executes an operation it evicted from its APQ cache.
+            if apq_tried and operation_name in PERSISTED_QUERY_DOCUMENTS:
+                payload["query"] = PERSISTED_QUERY_DOCUMENTS[operation_name]
 
             try:
                 response = await client.post(
@@ -2101,8 +2193,26 @@ class HEBGraphQLClient:
                 return {}
 
             except PersistedQueryNotFoundError as e:
-                # HEB rotated its hashes. Try a non-blocking refresh; only a
-                # fresh-within-cooldown result retries this same call.
+                # 1) APQ full-query fallback (no browser needed): resend WITH the
+                #    captured query document to register it, then execute.
+                if not apq_tried and operation_name in PERSISTED_QUERY_DOCUMENTS:
+                    apq_tried = True
+                    logger.info(
+                        "Retrying with full query (APQ registration)",
+                        operation=operation_name,
+                    )
+                    continue
+                # 2) Operations a browser hash-refresh cannot fix: fail fast with
+                #    guidance instead of launching a doomed multi-minute capture.
+                if operation_name in _APQ_ONLY_OPERATIONS:
+                    raise PersistedQueryNotFoundError(
+                        f"'{operation_name}' could not be resolved. Its full query "
+                        "document has not been captured yet, so an automatic hash "
+                        "refresh cannot help (the query is evicted from HEB's APQ "
+                        "cache). Run the capture_hashes tool once - it now records "
+                        "the query document - then retry."
+                    ) from e
+                # 3) Rotated-hash path: non-blocking background hash refresh.
                 status = None if refreshed else await _attempt_hash_refresh(operation_name)
                 if status == "retry":
                     refreshed = True

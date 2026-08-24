@@ -68,13 +68,15 @@ def _parse_operation(post_data):
 
 
 def _parse_operation_samples(post_data):
-    """Extract (operationName, sha256Hash, variables) from a GraphQL request body.
+    """Extract (operationName, sha256Hash, variables, query) from a request body.
 
-    Like :func:`_parse_operation` but also captures the request ``variables`` so
-    we learn the payload shape of operations the GraphQL client doesn't
-    implement yet (timeslot reservation, checkout). Returns a list of
-    (name, hash, variables) tuples for every operation carrying a persisted
-    query hash.
+    Like :func:`_parse_operation` but also captures the request ``variables`` and
+    the full ``query`` text when present. HEB's Apollo client sends the full
+    query only on an APQ cache MISS (the registration round-trip); capturing it
+    lets the GraphQL client re-register low-traffic operations (e.g.
+    ``SelectPickupFulfillment``) that HEB evicts from its shared APQ cache.
+    Returns a list of (name, hash, variables, query|None) tuples for every
+    operation carrying a persisted query hash.
     """
     try:
         payload = json.loads(post_data)
@@ -94,7 +96,9 @@ def _parse_operation_samples(post_data):
             variables = op.get("variables")
             if not isinstance(variables, dict):
                 variables = {}
-            found.append((str(name), str(sha), variables))
+            query = op.get("query")
+            query = query if isinstance(query, str) and query.strip() else None
+            found.append((str(name), str(sha), variables, query))
     return found
 
 

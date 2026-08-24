@@ -56,6 +56,38 @@ def _cdp_same_site(value):
     }.get(str(value).strip().lower())
 
 
+def _playwright_cookie_to_cdp_param(cookie, cdp_network):
+    """Convert a Playwright-format cookie dict into a CDP ``CookieParam``.
+
+    Returns ``None`` for cookies lacking a name. The ``expires`` field MUST be
+    wrapped in ``cdp_network.TimeSinceEpoch`` (a ``float`` subclass exposing
+    ``to_json``) — passing a bare Python ``float`` makes CDP serialization raise
+    ``'float' object has no attribute 'to_json'`` when the cookie is set. This
+    is the same class of bug already fixed once in
+    ``auto_grocer_mcp.clients.nodriver_search._cookie_to_cdp_param``; kept here
+    as its own small, unit-tested function so it can't regress independently.
+    """
+    name = cookie.get("name")
+    if not name:
+        return None
+
+    expires = cookie.get("expires", -1)
+    expires_val = (
+        cdp_network.TimeSinceEpoch(float(expires)) if expires not in (None, -1) else None
+    )
+
+    return cdp_network.CookieParam(
+        name=name,
+        value=cookie.get("value", "") or "",
+        domain=cookie.get("domain") or None,
+        path=cookie.get("path", "/") or "/",
+        secure=bool(cookie.get("secure", False)),
+        http_only=bool(cookie.get("httpOnly", False)),
+        same_site=_cdp_same_site(cookie.get("sameSite")),
+        expires=expires_val,
+    )
+
+
 async def load_session_into_browser(browser, auth_path=None):
     """Seed a fresh nodriver browser with cookies from an exported ``auth.json``.
 
@@ -87,22 +119,9 @@ async def load_session_into_browser(browser, auth_path=None):
 
     params = []
     for c in state.get("cookies", []) or []:
-        name = c.get("name")
-        if not name:
-            continue
-        expires = c.get("expires", -1)
-        params.append(
-            cdp.network.CookieParam(
-                name=name,
-                value=c.get("value", "") or "",
-                domain=c.get("domain") or None,
-                path=c.get("path", "/") or "/",
-                secure=bool(c.get("secure", False)),
-                http_only=bool(c.get("httpOnly", False)),
-                same_site=_cdp_same_site(c.get("sameSite")),
-                expires=float(expires) if expires not in (None, -1) else None,
-            )
-        )
+        param = _playwright_cookie_to_cdp_param(c, cdp.network)
+        if param is not None:
+            params.append(param)
 
     if not params:
         print("    ⚠️  auth.json has no cookies to seed.")

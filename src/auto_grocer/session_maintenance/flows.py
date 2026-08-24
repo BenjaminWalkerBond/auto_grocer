@@ -605,8 +605,14 @@ async def change_store_via_ui(tab, search_text):
 
     opener, used = await select_first_of(
         tab,
-        ['[data-qe-id="headerFulfillmentButton"]', '[data-qe-id="fulfillmentSelector"]'],
-        timeout=5,
+        [
+            # Current HEB header fulfillment control (verified 2026-08 from a live
+            # DOM snapshot). Shows e.g. "Delivery to 109 Park Ln" / "Pickup ...".
+            '[data-testid="bottom-bar-fulfillment"]',
+            '[data-qe-id="headerFulfillmentButton"]',
+            '[data-qe-id="fulfillmentSelector"]',
+        ],
+        timeout=8,
     )
     opened = False
     if opener is not None:
@@ -615,6 +621,8 @@ async def change_store_via_ui(tab, search_text):
         print(f"    ✓ Opened selector via {used}")
     else:
         for xp in [
+            '//button[@data-testid="bottom-bar-fulfillment"]',
+            '//button[contains(., "Delivery to") or contains(., "Pickup") or contains(., "Curbside")]',
             '//button[contains(., "Curbside") or contains(., "Pickup") or contains(., "store")]',
             '//button[contains(@aria-label, "store") or contains(@aria-label, "fulfillment")]',
         ]:
@@ -625,6 +633,34 @@ async def change_store_via_ui(tab, search_text):
     if not opened:
         raise Exception("Could not find the store/fulfillment selector button.")
     await random_time()
+
+    # The fulfillment modal ("Choose how to shop") is a tablist with three tabs:
+    #   #tab-EXPLORE_MY_STORE (In-store) | #tab-PICKUP (Curbside) | #tab-DELIVERY
+    # In delivery mode the DELIVERY panel is selected by default and has NO store
+    # search input (only a saved-address list), which is why the old flow failed
+    # with "Could not find a dedicated store-search input". Click the Pickup tab
+    # first so its panel (with the store search) renders and selecting a store
+    # fires SelectPickupFulfillment (the mutation set_store uses). Verified from a
+    # live modal DOM snapshot (2026-08).
+    switched = False
+    pickup_tab = await select_one(tab, "#tab-PICKUP", timeout=3)
+    if pickup_tab is None:
+        pickup_tab = await select_one(tab, '[aria-controls="tabpanel-PICKUP"]', timeout=2)
+    if pickup_tab is not None:
+        await js_click(tab, pickup_tab)
+        switched = True
+        print("    ✓ Switched to Pickup (Curbside) tab")
+    else:
+        for xp in [
+            '//*[@role="tab"][contains(., "Curbside") or contains(., "Pickup")]',
+        ]:
+            if await _click_first_xpath(tab, xp):
+                switched = True
+                print(f"    ✓ Switched to Pickup tab via {xp}")
+                break
+    if switched:
+        await random_time()
+
 
     # Optional "change store" affordance.
     for xp in [

@@ -7,6 +7,32 @@ fulfillment. Backed by the vendored ``auto_grocer_mcp`` GraphQL client.
 
 import asyncio
 import re
+import threading
+
+# Process-local cache of stores seen via search_stores, keyed by store_id.
+# Mirrors texas-grocery-mcp's StateManager.cache_stores_sync/get_cached_store:
+# lets set_store enrich error/success messages with a store's name/address
+# without a second network round-trip, and is intentionally best-effort/
+# in-memory only (lost on restart; repopulated by the next search).
+_STORE_CACHE_LOCK = threading.Lock()
+_STORE_CACHE: dict[str, object] = {}
+
+
+def cache_stores(stores):
+    """Cache a list of store objects/dicts (from a search_stores result) by id."""
+    with _STORE_CACHE_LOCK:
+        for store in stores or []:
+            store_id = str(
+                store.get("store_id") if isinstance(store, dict) else getattr(store, "store_id", "")
+            )
+            if store_id:
+                _STORE_CACHE[store_id] = store
+
+
+def get_cached_store(store_id):
+    """Return the cached store object/dict for ``store_id``, or None."""
+    with _STORE_CACHE_LOCK:
+        return _STORE_CACHE.get(str(store_id))
 
 
 def _store_sort_key(store):
@@ -23,6 +49,7 @@ async def _find_nearest_stores(address, radius_miles, limit):
     try:
         result = await client.search_stores(address=address, radius_miles=radius_miles)
         stores = sorted(getattr(result, "stores", []) or [], key=_store_sort_key)
+        cache_stores(stores)
         return stores[:limit], getattr(result, "error", None)
     finally:
         await client.close()

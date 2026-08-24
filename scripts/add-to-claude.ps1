@@ -21,7 +21,11 @@
 [CmdletBinding()]
 param(
     # Override the Claude Desktop config path if you use a non-standard location.
-    [string]$ConfigPath = (Join-Path $env:APPDATA 'Claude\claude_desktop_config.json')
+    [string]$ConfigPath = (Join-Path $env:APPDATA 'Claude\claude_desktop_config.json'),
+
+    # Which compose service Claude launches. Use 'mcp-patchright' to test the
+    # experimental patchright login engine end-to-end inside Claude.
+    [string]$Service = 'mcp'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -37,8 +41,16 @@ if (-not (Test-Path $composePath)) {
 # Claude Desktop needs forward slashes in JSON, even on Windows.
 $composePathJson = ($composePath -replace '\\', '/')
 
+# Compose interpolates ${DATABASE_PASSWORD} etc. from a .env in its working
+# directory — but Claude launches docker from an arbitrary CWD, so pass the
+# repo-root .env explicitly via --env-file (forward slashes for the JSON).
+$envPath = Join-Path $repoRoot '.env'
+$envPathJson = ($envPath -replace '\\', '/')
+
 Write-Host "Repo root:      $repoRoot"
 Write-Host "Compose file:   $composePathJson"
+Write-Host "Env file:       $envPathJson"
+Write-Host "MCP service:    $Service"
 Write-Host "Claude config:  $ConfigPath"
 Write-Host ""
 
@@ -75,8 +87,9 @@ $entry = [PSCustomObject]@{
     command = 'docker'
     args    = @(
         'compose',
+        '--env-file', $envPathJson,
         '-f', $composePathJson,
-        'run', '--rm', '-T', 'mcp'
+        'run', '--rm', '-T', $Service
     )
 }
 
@@ -86,5 +99,5 @@ $config.mcpServers | Add-Member -NotePropertyName 'auto-grocer' -NotePropertyVal
 $config | ConvertTo-Json -Depth 10 | Set-Content -Path $ConfigPath -Encoding UTF8
 
 Write-Host ""
-Write-Host "Added 'auto-grocer' to Claude Desktop config." -ForegroundColor Green
+Write-Host "Added 'auto-grocer' (service: $Service) to Claude Desktop config." -ForegroundColor Green
 Write-Host "Restart Claude Desktop, then ask it to call auth_status to verify."

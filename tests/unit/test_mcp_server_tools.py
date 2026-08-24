@@ -32,6 +32,7 @@ _AUTH_GATED_TOOLS = [
     ("add_groceries", (["whole milk"],)),
     ("add_products_by_id", (["1234"],)),
     ("search_products", ("whole milk",)),
+    ("set_store", ("14",)),
     ("get_cart", ()),
     ("clear_cart", ()),
     ("get_product_details", ("1234",)),
@@ -70,3 +71,78 @@ def test_capture_hashes_tool_reports_status(monkeypatch):
     assert result["hashes_ok"] is True
     assert result["store_id"] == "243"
     assert result["capture"] == {"ok": True, "hashes_ok": True}
+
+
+def test_set_store_does_not_double_wrap_asyncio_run(monkeypatch):
+    """Regression: set_store must call the sync `select_store` helper directly.
+
+    `select_store` (auto_grocer.utility.graphql_store) already runs its own
+    event loop internally and returns a plain dict — it is NOT an async
+    function. Wrapping its call in `asyncio.run(select_store(...))` evaluates
+    select_store() eagerly (synchronously) first, then hands asyncio.run() its
+    already-resolved dict return value instead of a coroutine, which raises
+    `ValueError: a coroutine was expected, got {...}` on every call regardless
+    of whether the store change succeeded or failed. This was observed live
+    (see debug_logs / MCP server logs) as `Error calling tool 'set_store'`.
+    """
+    monkeypatch.setattr(m, "_is_authed", lambda: True)
+    monkeypatch.setattr(m, "get_cached_store", lambda store_id: None)
+    monkeypatch.setattr(
+        m, "select_store", lambda store_id: {"error": True, "code": "STORE_CHANGE_FAILED"}
+    )
+
+    # Must not raise ValueError("a coroutine was expected, got {...}").
+    result = m.set_store("14")
+
+    assert result["error"] is True
+    assert result["code"] == "STORE_CHANGE_FAILED"
+    assert result["store_id"] == "14"
+
+
+def test_set_store_enriches_error_with_cached_store_name(monkeypatch):
+    """set_store should include a cached store's name/address on failure too
+    (mirrors texas-grocery-mcp's store_change error payload shape)."""
+    monkeypatch.setattr(m, "_is_authed", lambda: True)
+
+    class _FakeStore:
+        name = "Kyle H-E-B"
+        address = "100 Main St, Kyle, TX"
+
+    monkeypatch.setattr(m, "get_cached_store", lambda store_id: _FakeStore())
+    monkeypatch.setattr(
+        m,
+        "select_store",
+        lambda store_id: {
+            "error": True,
+            "code": "CART_CONFLICT",
+            "message": "conflict",
+            "expected_store": store_id,
+            "actual_store": "243",
+        },
+    )
+
+    result = m.set_store("14")
+
+    assert result["store_name"] == "Kyle H-E-B"
+    assert result["actual_store"] == "243"
+    assert "help" in result  # CART_CONFLICT-specific guidance
+
+
+def test_set_store_success_reports_verified_and_cached_name(monkeypatch):
+    """set_store should report success/verified and a cached store name."""
+    monkeypatch.setattr(m, "_is_authed", lambda: True)
+
+    class _FakeStore:
+        name = "Kyle H-E-B"
+        address = "100 Main St, Kyle, TX"
+
+    monkeypatch.setattr(m, "get_cached_store", lambda store_id: _FakeStore())
+    monkeypatch.setattr(
+        m, "select_store", lambda store_id: {"success": True, "store_id": store_id, "verified": True}
+    )
+
+    result = m.set_store("14")
+
+    assert result["success"] is True
+    assert result["store_name"] == "Kyle H-E-B"
+    assert result["verified"] is True

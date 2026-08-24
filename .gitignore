@@ -39,6 +39,10 @@ pre_process/
 # keep the directory present in a fresh clone via a tracked .gitkeep.
 debug_logs/*
 !debug_logs/.gitkeep
+# In-container debug dumps (Docker capture/login runs). Never commit these.
+debug_logs_container/
+# Ad-hoc full-output run logs (see AGENTS.md: redirect-and-read instead of tail).
+capture_run*.log
 
 # --- Docker / local DB artifacts ---
 *.dump

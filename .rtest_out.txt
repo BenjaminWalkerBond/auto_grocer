@@ -1,5 +1,0 @@
-valid   -> {'present': True, 'valid': True, 'reason': 'ok', 'expires_at': 1787374795.058}
-expired -> {'present': True, 'valid': False, 'reason': 'expired', 'expires_at': 1787367595.058}
-opaque  -> {'present': True, 'valid': False, 'reason': 'not_json', 'expires_at': None}
-missing -> {'present': False, 'valid': False, 'reason': 'missing', 'expires_at': None}
-noexp   -> {'present': True, 'valid': True, 'reason': 'no_expiry', 'expires_at': None}
