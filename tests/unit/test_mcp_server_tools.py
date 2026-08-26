@@ -60,17 +60,25 @@ def test_auth_gated_tool_returns_not_authenticated(tool_name, args, monkeypatch)
 
 def test_capture_hashes_tool_reports_status(monkeypatch):
     """The capture_hashes tool wires the helper result + live probes together."""
-    monkeypatch.setattr(m, "_capture_hashes", lambda: {"ok": True, "hashes_ok": True})
+    m._reset_capture_job()
+    monkeypatch.setattr(
+        m, "_capture_hashes", lambda target_operation="": {"ok": True, "hashes_ok": True}
+    )
     monkeypatch.setattr(m, "_is_authed", lambda: True)
     monkeypatch.setattr(m, "_hashes_ok", lambda: True)
     monkeypatch.setattr(m, "_store_id", lambda override="": "243")
 
-    result = m.capture_hashes()
+    try:
+        result = m.capture_hashes(wait_seconds=10)
 
-    assert result["authenticated"] is True
-    assert result["hashes_ok"] is True
-    assert result["store_id"] == "243"
-    assert result["capture"] == {"ok": True, "hashes_ok": True}
+        assert result["authenticated"] is True
+        assert result["hashes_ok"] is True
+        assert result["store_id"] == "243"
+        # The helper's payload is merged into the job status envelope.
+        assert result["capture"]["status"] == "completed"
+        assert result["capture"]["ok"] is True
+    finally:
+        m._reset_capture_job()
 
 
 def test_set_store_does_not_double_wrap_asyncio_run(monkeypatch):
@@ -146,3 +154,153 @@ def test_set_store_success_reports_verified_and_cached_name(monkeypatch):
     assert result["success"] is True
     assert result["store_name"] == "Kyle H-E-B"
     assert result["verified"] is True
+
+# ---------------------------------------------------------------------------
+# capture_hashes must never block past the MCP client's cancel deadline
+# ---------------------------------------------------------------------------
+# The browser hash-capture flow takes minutes (_CAPTURE_HASHES_TIMEOUT is 600s),
+# but MCP clients cancel a tool call after ~240s. In production every
+# capture_hashes call was cancelled at exactly 4 minutes, so the tool could
+# never report a result. It now runs the capture on a background thread and
+# returns a bounded-wait status that later calls can poll.
+
+
+def test_capture_hashes_returns_running_status_when_slow(monkeypatch):
+    """A capture that outlives the wait budget returns status 'running'."""
+    import threading
+
+    release = threading.Event()
+
+    def _slow_capture(target_operation: str = ""):
+        release.wait(timeout=30)
+        return {"ok": True}
+
+    m._reset_capture_job()
+    monkeypatch.setattr(m, "_capture_hashes", _slow_capture)
+    monkeypatch.setattr(m, "_is_authed", lambda: True)
+    monkeypatch.setattr(m, "_hashes_ok", lambda: False)
+    monkeypatch.setattr(m, "_store_id", lambda override="": "243")
+
+    try:
+        result = m.capture_hashes(wait_seconds=0.2)
+        assert result["capture"]["status"] == "running"
+        assert result["capture"]["started"] is True
+    finally:
+        release.set()
+        m._reset_capture_job()
+
+
+def test_capture_hashes_second_call_joins_running_job(monkeypatch):
+    """A concurrent call must join the in-flight capture, not launch another."""
+    import threading
+
+    release = threading.Event()
+    starts: list[str] = []
+
+    def _slow_capture(target_operation: str = ""):
+        starts.append(target_operation)
+        release.wait(timeout=30)
+        return {"ok": True}
+
+    m._reset_capture_job()
+    monkeypatch.setattr(m, "_capture_hashes", _slow_capture)
+    monkeypatch.setattr(m, "_is_authed", lambda: True)
+    monkeypatch.setattr(m, "_hashes_ok", lambda: False)
+    monkeypatch.setattr(m, "_store_id", lambda override="": "243")
+
+    try:
+        first = m.capture_hashes(wait_seconds=0.2)
+        second = m.capture_hashes(wait_seconds=0.2)
+
+        assert first["capture"]["status"] == "running"
+        assert second["capture"]["status"] == "running"
+        assert second["capture"]["started"] is False
+        assert len(starts) == 1, "a second browser capture was launched"
+    finally:
+        release.set()
+        m._reset_capture_job()
+
+
+def test_capture_hashes_reports_completed_result(monkeypatch):
+    """When the capture finishes within the budget the real result is returned."""
+    m._reset_capture_job()
+    monkeypatch.setattr(m, "_capture_hashes", lambda target_operation="": {"ok": True})
+    monkeypatch.setattr(m, "_is_authed", lambda: True)
+    monkeypatch.setattr(m, "_hashes_ok", lambda: True)
+    monkeypatch.setattr(m, "_store_id", lambda override="": "243")
+
+    try:
+        result = m.capture_hashes(wait_seconds=10)
+
+        assert result["capture"]["status"] == "completed"
+        assert result["capture"]["ok"] is True
+        assert result["authenticated"] is True
+        assert result["hashes_ok"] is True
+    finally:
+        m._reset_capture_job()
+
+
+def test_capture_hashes_default_wait_is_under_client_timeout():
+    """The default wait must leave headroom before the ~240s client cancel."""
+    assert 0 < m._CAPTURE_WAIT_SECONDS <= 180
+
+
+# ---------------------------------------------------------------------------
+# Honest reporting: never claim success on a failed call
+# ---------------------------------------------------------------------------
+# The mirror image of the false WAF alarm. When HEB's WAF returns an HTML
+# challenge page, /graphql responses stop being JSON and every cart call fails
+# with "Expecting value: line 1 column 1 (char 0)". Observed in production:
+#   clear_cart -> {"status": "cleared", "cart": {"error": true, ...}}
+#   get_cart   -> raised an unhandled traceback out of the tool
+# A tool that reports "cleared" when nothing was cleared is worse than one that
+# cries wolf, because the caller proceeds on a false premise.
+
+
+def test_clear_cart_reports_failure_when_backend_errors(monkeypatch):
+    """clear_cart must not claim 'cleared' when the underlying call failed."""
+    monkeypatch.setattr(m, "_is_authed", lambda: True)
+    monkeypatch.setattr(m, "_store_id", lambda override="": "243")
+    monkeypatch.setattr(
+        m,
+        "graphql_cart_sync",
+        lambda *a, **k: {
+            "cart": {"error": True, "message": "Expecting value: line 1 column 1 (char 0)"}
+        },
+    )
+
+    result = m.clear_cart()
+
+    assert result.get("error") is True, f"reported success on a failure: {result}"
+    assert result.get("status") != "cleared"
+    assert "Expecting value" in str(result.get("message"))
+
+
+def test_clear_cart_reports_success_when_backend_succeeds(monkeypatch):
+    """The happy path still reports 'cleared'."""
+    monkeypatch.setattr(m, "_is_authed", lambda: True)
+    monkeypatch.setattr(m, "_store_id", lambda override="": "243")
+    monkeypatch.setattr(
+        m, "graphql_cart_sync", lambda *a, **k: {"cart": {"cartV2": {"items": []}}}
+    )
+
+    result = m.clear_cart()
+
+    assert result.get("status") == "cleared"
+    assert not result.get("error")
+
+
+def test_get_cart_returns_structured_error_instead_of_raising(monkeypatch):
+    """A non-JSON WAF response must surface as an error dict, not a traceback."""
+    def _boom():
+        raise ValueError("Expecting value: line 1 column 1 (char 0)")
+
+    monkeypatch.setattr(m, "_is_authed", lambda: True)
+    monkeypatch.setattr(m, "_graphql_get_cart_sync", _boom)
+
+    result = m.get_cart()
+
+    assert isinstance(result, dict)
+    assert result.get("error") is True
+    assert result.get("code") == "CART_FETCH_FAILED"
+    assert "Expecting value" in str(result.get("message"))

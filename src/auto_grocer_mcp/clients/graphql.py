@@ -1127,10 +1127,20 @@ class HEBGraphQLClient:
         if not was_authenticated:
             return "No authentication cookies available"
         if security_challenge:
+            # Only blame the browser fallback once it has actually run and come
+            # back empty. Called before that, the honest answer is just "the
+            # SSR route was challenged" — the browser route may still succeed,
+            # and claiming otherwise triggers pointless session refreshes.
+            browser_ran = any(a.method == "nodriver_browser" for a in attempts)
+            if not browser_ran:
+                return (
+                    "Security challenge (WAF/captcha) blocked the SSR route; "
+                    "retrying via the in-process browser"
+                )
             return (
-                "Security challenge (WAF/captcha) blocked API requests, and the "
-                "in-process browser fallback returned no results. Use the "
-                "session_refresh tool to refresh the session."
+                "Security challenge (WAF/captcha) blocked the SSR route and the "
+                "in-process browser fallback returned no results. Refresh the "
+                "session if this persists."
             )
         if all(a.result == "empty" for a in attempts if a.method in ("ssr", "typeahead_as_ssr")):
             return "All SSR queries returned empty results - product may not exist"
@@ -1222,14 +1232,17 @@ class HEBGraphQLClient:
                             method="ssr",
                             result="security_challenge",
                         ))
-                        logger.error(
-                            (
-                                "Security challenge detected - stopping search attempts, "
-                                "session refresh required"
-                            ),
+                        # NOT an error: the WAF challenges the SSR *navigation*
+                        # route, so we simply switch to the browser route
+                        # below, which normally succeeds. Logging this at
+                        # error level (and telling the caller to refresh the
+                        # session) produced false alarms that pushed agents
+                        # into needless session/hash refresh storms.
+                        logger.info(
+                            "SSR route challenged; switching to browser search route",
                             query=variation,
                         )
-                        # Fail-fast: don't waste more queries, session needs refresh
+                        # Don't waste more httpx queries on a challenged route.
                         break
 
                     if products:
@@ -1337,24 +1350,15 @@ class HEBGraphQLClient:
                 except Exception as e:
                     logger.debug("Typeahead-guided search failed", error=str(e))
 
-        # Fallback to typeahead suggestions only
-        fallback_reason = self._determine_fallback_reason(
-            was_authenticated=auth_client is not None,
-            security_challenge=security_challenge_detected,
-            attempts=attempts,
-        )
-
-        logger.info(
-            "Product search using typeahead fallback",
-            query=query,
-            store_id=store_id,
-            fallback_reason=fallback_reason,
-            security_challenge=security_challenge_detected,
-        )
-
         # Browser fallback: when the WAF blocked the httpx SSR search, drive an
         # in-process nodriver browser (which solves the JS challenge) to fetch
         # the search-results page. Cart operations still use /graphql.
+        #
+        # This runs BEFORE any fallback verdict is computed or logged. Deciding
+        # (and announcing) "the browser fallback returned no results, refresh
+        # your session" up here — while the browser then went on to return 20
+        # products — was a pure false alarm that drove agents into needless
+        # session/hash refresh loops.
         if security_challenge_detected:
             try:
                 browser_products = await self._search_products_nodriver(
@@ -1393,6 +1397,22 @@ class HEBGraphQLClient:
                 method="nodriver_browser",
                 result="empty",
             ))
+
+        # Every real search route has now been tried and failed, so the verdict
+        # below describes the actual outcome rather than a prediction.
+        fallback_reason = self._determine_fallback_reason(
+            was_authenticated=auth_client is not None,
+            security_challenge=security_challenge_detected,
+            attempts=attempts,
+        )
+
+        logger.info(
+            "Product search using typeahead fallback",
+            query=query,
+            store_id=store_id,
+            fallback_reason=fallback_reason,
+            security_challenge=security_challenge_detected,
+        )
 
         try:
             suggestions = await self.get_typeahead(query)

@@ -1,5 +1,7 @@
+import logging
 import os
-import sys
+
+logger = logging.getLogger(__name__)
 
 
 class IngredientList:
@@ -13,18 +15,20 @@ class IngredientList:
         # get the parent directory of the current file
         parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+        loaded = 0
         for path in os.scandir(os.path.join(parent_dir, "word_dictionaries")):
-            # print(path)
             if path.is_file() and path.name.endswith(".txt"):
                 tag = os.path.splitext(path.name)[0]
-                print("Creating tags from dictionary from: " + path.name, file=sys.stderr)
+                # Debug, not info: an IngredientList is built on every
+                # add_groceries call, so this used to print a dozen lines into
+                # the MCP client log per request.
+                logger.debug("Loading tag dictionary", extra={"dictionary": path.name})
                 with open(path.path) as f:
                     for line in f:
-                        # print("line is: "+line.strip()+"\n")
                         self.tags_dict[line.strip()] = tag
+                loaded += 1
 
-        #  initialize each dictionary with their respective word files
-        print("Initialized all tag dictionaries \n", file=sys.stderr)
+        logger.debug("Initialized tag dictionaries", extra={"count": loaded})
 
         self.tags_dict["eggs"] = "eggs"
         self.tags_dict["milk"] = "milk"

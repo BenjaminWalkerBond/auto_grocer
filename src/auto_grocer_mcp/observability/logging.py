@@ -1,6 +1,7 @@
 """Structured JSON logging configuration."""
 
 import logging
+import os
 import sys
 from collections.abc import MutableMapping
 from typing import Any
@@ -9,6 +10,33 @@ import structlog
 from structlog.types import Processor
 
 from auto_grocer_mcp.utils.config import get_settings
+
+# Vendored libraries that log per-operation chatter at INFO. On an MCP stdio
+# server every one of these lands in the client's log, where it drowns the
+# messages that actually explain a failure:
+#   * httpx / httpcore   - one "HTTP Request: POST .../graphql 200 OK" per call
+#   * mcp.server.lowlevel - one "Processing request of type XRequest" per request
+#   * nodriver / uc       - a ~20-line Chromium argv dump per browser launch
+#   * websockets          - CDP frame chatter
+# They are pinned to WARNING so real problems still surface. Set
+# AUTO_GROCER_VERBOSE_LOGS=1 to get the full detail back while debugging.
+_NOISY_LIBRARY_LOGGERS = (
+    "httpx",
+    "httpcore",
+    "mcp.server.lowlevel.server",
+    "nodriver",
+    "uc",
+    "websockets",
+)
+
+
+def _verbose_logs_enabled() -> bool:
+    """Return True when the operator asked for full third-party log detail."""
+    return os.environ.get("AUTO_GROCER_VERBOSE_LOGS", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
 
 
 def add_timestamp(
@@ -71,6 +99,12 @@ def configure_logging(log_level: str | None = None) -> None:
     root_logger.handlers.clear()
     root_logger.addHandler(handler)
     root_logger.setLevel(getattr(logging, level.upper()))
+
+    # Keep the stderr stream readable: pin chatty vendored loggers to WARNING
+    # unless the operator explicitly asked for the detail.
+    library_level = logging.NOTSET if _verbose_logs_enabled() else logging.WARNING
+    for name in _NOISY_LIBRARY_LOGGERS:
+        logging.getLogger(name).setLevel(library_level)
 
 
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:

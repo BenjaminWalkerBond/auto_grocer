@@ -448,3 +448,113 @@ def test_product_search_attempt_model():
         error_detail="Connection timeout",
     )
     assert attempt_with_error.error_detail == "Connection timeout"
+
+
+# ---------------------------------------------------------------------------
+# False WAF alarms
+# ---------------------------------------------------------------------------
+# A challenged SSR route is an EXPECTED, handled condition: the client simply
+# switches to the nodriver browser route, which normally succeeds. Production
+# logs showed the alarming verdict being computed and logged BEFORE the browser
+# fallback ran ("the in-process browser fallback returned no results. Use the
+# session_refresh tool...") and then the fallback returning 20 products. Those
+# false alarms pushed the agent into needless session/hash refresh storms.
+
+
+def test_fallback_reason_does_not_presume_browser_failed_before_it_runs():
+    """The challenge reason must not claim the browser fallback already failed."""
+    from auto_grocer_mcp.clients.graphql import HEBGraphQLClient
+    from auto_grocer_mcp.models import ProductSearchAttempt
+
+    client = HEBGraphQLClient()
+    attempts = [
+        ProductSearchAttempt(query="eggs", method="ssr", result="security_challenge"),
+    ]
+
+    reason = client._determine_fallback_reason(
+        was_authenticated=True,
+        security_challenge=True,
+        attempts=attempts,
+    )
+
+    # No nodriver_browser attempt was recorded, so the reason must not assert
+    # that the browser returned nothing, nor demand a session refresh.
+    assert "returned no results" not in reason.lower()
+    assert "session_refresh" not in reason.lower()
+
+
+def test_fallback_reason_reports_browser_failure_only_after_it_ran():
+    """Once the browser attempt is recorded empty, the reason may say so."""
+    from auto_grocer_mcp.clients.graphql import HEBGraphQLClient
+    from auto_grocer_mcp.models import ProductSearchAttempt
+
+    client = HEBGraphQLClient()
+    attempts = [
+        ProductSearchAttempt(query="eggs", method="ssr", result="security_challenge"),
+        ProductSearchAttempt(query="eggs", method="nodriver_browser", result="empty"),
+    ]
+
+    reason = client._determine_fallback_reason(
+        was_authenticated=True,
+        security_challenge=True,
+        attempts=attempts,
+    )
+
+    assert "browser" in reason.lower()
+    assert "no results" in reason.lower()
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_challenged_but_successful_search_reports_no_failure(
+    mock_typeahead_response, mock_security_challenge_html, monkeypatch, caplog
+):
+    """A challenge cleared by the browser must not log errors or a fallback_reason."""
+    import logging
+
+    from auto_grocer_mcp.clients.graphql import HEBGraphQLClient
+    from auto_grocer_mcp.models import Product
+    from auto_grocer_mcp.tools.product import product_search
+
+    monkeypatch.setattr(
+        "auto_grocer_mcp.clients.graphql.is_authenticated", lambda: True
+    )
+    monkeypatch.setattr(
+        "auto_grocer_mcp.clients.graphql.get_httpx_cookies",
+        lambda: {"sat": "test-token"},
+    )
+    respx.get("https://www.heb.com/search").mock(
+        return_value=Response(200, text=mock_security_challenge_html)
+    )
+    respx.post("https://www.heb.com/graphql").mock(
+        return_value=Response(200, json=mock_typeahead_response)
+    )
+
+    async def fake_nodriver(self, query, store_id, limit=20):
+        return [
+            Product(
+                sku="123456",
+                name="Large Eggs 12ct",
+                price=3.99,
+                available=True,
+                brand=None,
+                size=None,
+                price_per_unit=None,
+                image_url=None,
+                aisle=None,
+                on_sale=False,
+                original_price=None,
+            )
+        ]
+
+    monkeypatch.setattr(HEBGraphQLClient, "_search_products_nodriver", fake_nodriver)
+
+    with caplog.at_level(logging.WARNING):
+        result = await product_search(query="eggs", store_id="737")
+
+    assert result["count"] >= 1
+    # The search SUCCEEDED, so it must not advertise a failure reason.
+    assert not result.get("fallback_reason")
+    # A handled route switch is not an error.
+    errors = [r for r in caplog.records if r.levelno >= logging.ERROR]
+    assert not errors, f"unexpected error logs on a successful search: {errors}"

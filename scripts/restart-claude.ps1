@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Kills and relaunches Claude Desktop, for quickly testing MCP config changes.
 

@@ -58,6 +58,7 @@ import os
 import subprocess
 import sys
 import threading
+import time
 from collections.abc import Callable
 
 from fastmcp import FastMCP
@@ -136,6 +137,14 @@ _AUTO_LOGIN_TIMEOUT = int(os.environ.get("AUTO_GROCER_AUTO_LOGIN_TIMEOUT", "300"
 # exercises the site (search/cart/timeslot/checkout) to sniff the rotating
 # persisted-query hashes, so it takes longer than a plain login_export.
 _CAPTURE_HASHES_TIMEOUT = int(os.environ.get("AUTO_GROCER_CAPTURE_TIMEOUT", "600"))
+
+# How long (seconds) the capture_hashes TOOL will block waiting for that flow
+# before returning a "running" status the caller can poll. MCP clients cancel a
+# tool call after roughly 240s, so a tool that waited the full
+# _CAPTURE_HASHES_TIMEOUT could never report a result — in production every
+# capture_hashes call was cancelled at exactly 4 minutes. Keep this comfortably
+# below the client deadline; the capture itself keeps running in the background.
+_CAPTURE_WAIT_SECONDS = float(os.environ.get("AUTO_GROCER_CAPTURE_WAIT", "120"))
 
 # Serialize auto-login so concurrent tool calls don't launch multiple browsers.
 _AUTO_LOGIN_LOCK = threading.Lock()
@@ -384,6 +393,105 @@ def _capture_hashes(target_operation: str = "") -> dict:
         }
 
 
+# ---------------------------------------------------------------------------
+# Background capture_hashes job
+# ---------------------------------------------------------------------------
+# _capture_hashes drives a real browser and routinely runs for several minutes,
+# but MCP clients cancel a tool call after roughly 240s. Running it inline meant
+# the tool was always cancelled before it could report anything, and the user
+# had no way to learn whether the capture eventually succeeded. Instead we run
+# at most ONE capture at a time on a background thread; callers wait a bounded
+# time for it and otherwise get a "running" status they can poll by calling the
+# tool again.
+
+_CAPTURE_JOB_LOCK = threading.Lock()
+
+
+class _CaptureJob:
+    """A single in-flight (or finished) browser hash-capture run."""
+
+    def __init__(self, target_operation: str) -> None:
+        self.target_operation = target_operation
+        self.started_at = time.monotonic()
+        self.done = threading.Event()
+        self.result: dict | None = None
+        # True only for the caller that actually launched this job, so a
+        # second caller can tell it joined an existing run.
+        self.started = False
+
+    def _work(self) -> None:
+        try:
+            self.result = _capture_hashes(target_operation=self.target_operation)
+        except Exception as exc:  # noqa: BLE001 - surface, never crash the thread
+            self.result = {"ok": False, "detail": f"capture_hashes raised: {exc}"}
+        finally:
+            self.done.set()
+
+    def result_or_wait(self, timeout: float) -> dict | None:
+        """Block up to ``timeout`` seconds; return the result or ``None``."""
+        self.done.wait(timeout=max(0.0, float(timeout)))
+        return self.result
+
+    def status(self, timeout: float) -> dict:
+        """Wait up to ``timeout`` and describe the job for a tool response."""
+        result = self.result_or_wait(timeout)
+        elapsed = round(time.monotonic() - self.started_at, 1)
+        if result is None:
+            return {
+                "status": "running",
+                "started": self.started,
+                "target_operation": self.target_operation or None,
+                "elapsed_seconds": elapsed,
+                "message": (
+                    "The browser hash capture is still running in the "
+                    "background. Call capture_hashes again in a minute or two "
+                    "to get the outcome; it will join this same run instead of "
+                    "starting another browser."
+                ),
+            }
+        return {
+            "status": "completed",
+            "started": self.started,
+            "target_operation": self.target_operation or None,
+            "elapsed_seconds": elapsed,
+            **result,
+        }
+
+
+_capture_job: _CaptureJob | None = None
+
+
+def _reset_capture_job() -> None:
+    """Forget any finished/aborted capture job (used by tests and refresh)."""
+    global _capture_job
+    with _CAPTURE_JOB_LOCK:
+        _capture_job = None
+
+
+def _run_capture_job(target_operation: str = "") -> _CaptureJob:
+    """Return the in-flight capture job, launching one if none is running.
+
+    Never launches a second browser while one capture is active — concurrent
+    callers (the tool and the GraphQL client's stale-hash hook) join the same
+    run.
+    """
+    global _capture_job
+    with _CAPTURE_JOB_LOCK:
+        job = _capture_job
+        if job is not None and not job.done.is_set():
+            job.started = False
+            return job
+
+        job = _CaptureJob(target_operation)
+        job.started = True
+        _capture_job = job
+
+    threading.Thread(
+        target=job._work, name="capture-hashes", daemon=True
+    ).start()
+    return job
+
+
 def _auto_capture_hashes_callback(operation_name: str) -> bool:
     """Re-capture rotated GraphQL hashes for the client's auto-recovery hook.
 
@@ -395,10 +503,12 @@ def _auto_capture_hashes_callback(operation_name: str) -> bool:
     if not _AUTO_CAPTURE_HASHES:
         return False
     try:
-        result = _capture_hashes(target_operation=operation_name)
+        result = _run_capture_job(target_operation=operation_name).result_or_wait(
+            _CAPTURE_HASHES_TIMEOUT
+        )
     except Exception:  # noqa: BLE001 - recovery is best-effort
         return False
-    return bool(result.get("ok"))
+    return bool((result or {}).get("ok"))
 
 
 # Wire the client's stale-hash auto-recovery to the browser capture flow so any
@@ -748,7 +858,7 @@ def login(force: bool = False) -> dict:
 
 
 @mcp.tool()
-def capture_hashes() -> dict:
+def capture_hashes(wait_seconds: float = 0) -> dict:
     """Refresh HEB's rotating GraphQL persisted-query hashes (fixes hashes_ok: false).
 
     Runs the nodriver capture_hashes browser flow: it logs in and exercises the
@@ -759,15 +869,28 @@ def capture_hashes() -> dict:
     checkout tools fail with OPERATION_NOT_CAPTURED or persisted-query/hash
     errors while the session is otherwise authenticated. This is the ONLY tool
     that regenerates hashes — login/refresh_session only refresh session cookies.
-    Drives a real browser under Xvfb in Docker and can take a few minutes; no
-    order is ever placed.
+    No order is ever placed.
+
+    The capture drives a real browser under Xvfb and usually takes several
+    minutes — longer than an MCP client will keep a tool call open. It therefore
+    runs in the BACKGROUND: this returns after at most ``wait_seconds`` with
+    ``capture.status`` of either "completed" (with the outcome) or "running".
+    On "running", simply call this tool again later — it joins the same run
+    rather than launching a second browser.
+
+    Args:
+        wait_seconds: How long to block waiting for the capture. Defaults to
+            AUTO_GROCER_CAPTURE_WAIT (120s), kept below the client's cancel
+            deadline.
     """
-    result = _capture_hashes()
+    budget = float(wait_seconds) if wait_seconds and wait_seconds > 0 else _CAPTURE_WAIT_SECONDS
+    capture = _run_capture_job().status(budget)
+    authed = _is_authed()
     return {
-        "authenticated": _is_authed(),
+        "authenticated": authed,
         "store_id": _store_id(),
-        "hashes_ok": _hashes_ok() if _is_authed() else False,
-        "capture": result,
+        "hashes_ok": _hashes_ok() if authed else False,
+        "capture": capture,
     }
 
 
@@ -1293,7 +1416,17 @@ def get_cart() -> dict:
     """Return the current cart contents (items, quantities, totals) via GraphQL."""
     if not _ensure_authed():
         return _NOT_AUTHED
-    return _graphql_get_cart_sync()
+    # A WAF challenge makes /graphql return HTML, so the JSON decode blows up.
+    # Surface that as a structured error instead of letting a raw traceback
+    # escape the tool (which tells the caller nothing actionable).
+    try:
+        return _graphql_get_cart_sync()
+    except Exception as e:  # noqa: BLE001 - report, never raise out of a tool
+        return {
+            "error": True,
+            "code": "CART_FETCH_FAILED",
+            "message": f"Could not read the cart: {e}",
+        }
 
 
 @mcp.tool()
@@ -1301,8 +1434,26 @@ def clear_cart() -> dict:
     """Empty all items from the cart via GraphQL."""
     if not _ensure_authed():
         return _NOT_AUTHED
-    report = graphql_cart_sync(IngredientList(), _store_id(), do_clear=True)
-    return {"status": "cleared", "cart": report.get("cart")}
+    try:
+        report = graphql_cart_sync(IngredientList(), _store_id(), do_clear=True)
+    except Exception as e:  # noqa: BLE001 - report, never raise out of a tool
+        return {
+            "error": True,
+            "code": "CART_CLEAR_FAILED",
+            "message": f"Could not clear the cart: {e}",
+        }
+
+    cart = report.get("cart")
+    # Never report "cleared" on a failed call: the caller would go on to add
+    # items believing it started from an empty cart.
+    if isinstance(cart, dict) and cart.get("error"):
+        return {
+            "error": True,
+            "code": "CART_CLEAR_FAILED",
+            "message": f"Could not clear the cart: {cart.get('message')}",
+            "cart": cart,
+        }
+    return {"status": "cleared", "cart": cart}
 
 
 @mcp.tool()
@@ -1504,7 +1655,16 @@ def place_order() -> dict:
 
 
 def main() -> None:
-    mcp.run()
+    # Keep the stdio server's stderr free of decoration: the ASCII banner and
+    # the "Update available" panel are noise in an MCP client log, and the
+    # update check fires a PyPI request on every single server start.
+    try:
+        from fastmcp.settings import settings as _fastmcp_settings
+
+        _fastmcp_settings.check_for_updates = "off"
+    except Exception:  # noqa: BLE001 - never let cosmetics break startup
+        pass
+    mcp.run(show_banner=False)
 
 
 if __name__ == "__main__":
