@@ -5,7 +5,7 @@ import sys
 class IngredientList:
 
     tags_dict: dict[str, str] = {}
-    tags= ["cheese","fish","fruit","meat","oil","pasta","spice","tree_nut","vegetable","wine"]
+    tags= ["cheese","fat","fish","fruit","meat","oil","pasta","spice","tree_nut","vegetable","wine"]
     tags_constant = {"eggs","milk","none"}
 
     def init_dicts(self):

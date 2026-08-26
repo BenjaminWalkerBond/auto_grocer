@@ -42,7 +42,7 @@ database/
 
 **4 Tables Created:**
 
-1. **tags** - Category tags (cheese, fish, fruit, meat, oil, pasta, spice, tree_nut, vegetable, wine)
+1. **tags** - Category tags (cheese, fat, fish, fruit, meat, oil, pasta, spice, tree_nut, vegetable, wine)
 2. **recipes** - Recipe metadata (URL, title, source)
 3. **ingredients** - Individual ingredients (name, amount, unit)
 4. **ingredient_tags** - Junction table for many-to-many relationship

@@ -26,10 +26,11 @@ def seed_tags():
         # Define predefined tags (from IngredientList.tags)
         predefined_tags = [
             ("cheese", "Cheese and dairy products"),
+            ("fat", "Solid fats such as butter, ghee, margarine, and lard"),
             ("fish", "Fish and seafood"),
             ("fruit", "Fruits"),
             ("meat", "Meat products"),
-            ("oil", "Oils and fats"),
+            ("oil", "Liquid cooking oils"),
             ("pasta", "Pasta and noodles"),
             ("spice", "Spices and seasonings"),
             ("tree_nut", "Tree nuts"),
