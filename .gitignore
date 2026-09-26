@@ -1,8 +1,57 @@
-config.txt
-output.txt
-__pycache__
-.vscode
-recognized-kernel-66-66.txt
-*.log
+# --- Secrets / config ---
+.env
+!.env.example
+
+# --- Multi-agent workflow transient state ---
+.github/agents/handoffs/.subagent_start
+
+# --- Virtual environments ---
 venv/
+.venv/
+.venv-win/
+env/
+ENV/
+
+# --- Python caches / build artifacts ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Editor / IDE ---
+.vscode/
+
+# --- Logs / scratch output ---
+*.log
+output.txt
+recognized-kernel-66-66.txt
+test_win.log
 pre_process/
+
+# --- Debug logs from driver_logger ---
+# Ignore all runtime debug dumps (HTML/PNG/JSON can contain account PII), but
+# keep the directory present in a fresh clone via a tracked .gitkeep.
+debug_logs/*
+!debug_logs/.gitkeep
+# In-container debug dumps (Docker capture/login runs). Never commit these.
+debug_logs_container/
+# Ad-hoc full-output run logs (see AGENTS.md: redirect-and-read instead of tail).
+capture_run*.log
+
+# --- Docker / local DB artifacts ---
+*.dump
+*.sql.bak
+
+# --- Exported HEB session (machine-local) ---
+.texas-grocery-mcp/
+
+# --- OS files ---
+.DS_Store
+Thumbs.db
+desktop.ini

@@ -1,0 +1,147 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+# Provenance: the vendored `auto_grocer_mcp/` package (formerly imported as
+# `texas_grocery_mcp`) is derived from and "modified from the original"
+# texas-grocery-mcp by Michael Walker
+# (https://github.com/mgwalkerjr95/texas-grocery-mcp), used under the MIT
+# License. See the root NOTICE file and auto_grocer_mcp/LICENSE for details.
+
+[project]
+name = "auto-grocer"
+version = "0.1.0"
+description = "HEB grocery automation MCP server with recipe database and GraphQL cart control."
+requires-python = ">=3.12"
+# Runtime dependencies are the single source of truth here (resolved and
+# hash-pinned in uv.lock). Development/test-only tooling lives in the
+# [dependency-groups] dev group below. Edit deps in exactly these two places.
+dependencies = [
+    "aiohttp>=3.9.5",
+    "aiosignal==1.3.1",
+    "anthropic>=0.75.0",
+    "async-timeout==4.0.3",
+    "attrs==23.1.0",
+    "beautifulsoup4==4.12.2",
+    "certifi==2023.7.22",
+    "charset-normalizer==3.2.0",
+    "exceptiongroup>=1.2.2",
+    "frozenlist>=1.4.1",
+    "h11==0.14.0",
+    "idna==3.4",
+    "imap-tools>=1.5.0",
+    "multidict>=6.0.5",
+    "psycopg2-binary>=2.9.9",
+    "python-dotenv>=1.0.0",
+    "requests==2.31.0",
+    "sniffio==1.3.0",
+    "httpx>=0.27.0",
+    "pydantic>=2.7.0",
+    "pydantic-settings>=2.2.0",
+    "structlog>=24.1.0",
+    "tenacity>=8.2.0",
+    "keyring>=25.0.0",
+    "cryptography>=42.0.0",
+    "fastmcp>=2.0.0",
+    "soupsieve==2.5",
+    "sqlalchemy>=2.0.0",
+    "tqdm==4.66.1",
+    "nodriver>=0.50.3",
+    "mss>=9.0.1",
+    "urllib3==2.0.4",
+    "websockets>=14.0",
+    "yarl>=1.9.4",
+]
+
+[project.optional-dependencies]
+# Exploratory only: the patchright stealth spike (spikes/patchright/). Install
+# with `uv sync --extra spike` then `uv run patchright install chromium`. Kept
+# out of the core deps so the shipped MCP server / nodriver path never pull it.
+spike = [
+    "patchright>=1.52",
+]
+
+[project.scripts]
+# Installed console entry points (created by `uv sync` / pip install).
+auto-grocer-mcp = "auto_grocer.mcp_server:main"
+auto-grocer = "auto_grocer.session_maintenance.run:cli"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "respx>=0.21.0",
+    "ruff>=0.6.0",
+    "mypy>=1.11.0",
+]
+
+[tool.uv]
+# Installable src-layout package: `uv sync` builds and installs `auto_grocer`
+# (and the vendored `auto_grocer_mcp`) editable into the environment, so the
+# console scripts and `python -m auto_grocer.*` resolve without sys.path hacks.
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+# Ship the tag word-lists that IngredientList loads at runtime.
+"auto_grocer" = ["word_dictionaries/*.txt"]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+# Let plain `async def test_*` run without decorating each one, while the copied
+# @pytest.mark.asyncio decorators keep working too.
+asyncio_mode = "auto"
+addopts = "-ra"
+markers = [
+    "integration: real API access; skipped unless --run-integration is passed",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+# Focus linting on our own code; the vendored auto_grocer_mcp library is a
+# third-party fork we keep as-is. session_maintenance/updated_functions holds
+# GENERATED self-healing fragments ("review before applying") that are spliced
+# as text into session_maintenance/flows.py — they reference names that resolve
+# only in that target module, so they are excluded like other generated output.
+extend-exclude = [
+    "src/auto_grocer_mcp",
+    "debug_logs",
+    "src/auto_grocer/word_dictionaries",
+    "src/auto_grocer/session_maintenance/updated_functions",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# Deferred to a post-release cleanup cycle: F841 (unused locals, some are
+# intentional debugging holds) and E722 (bare except) in the untested
+# session_maintenance/ + utility/ trees. Fixing them by hand pre-release is
+# unguarded (no test coverage). Tracked as tech debt.
+"src/auto_grocer/session_maintenance/**" = ["F841", "E722"]
+"src/auto_grocer/utility/**" = ["F841", "E722"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+# Type-checking is advisory this cycle (the CI job is continue-on-error). The
+# vendored fork, generated output, data dirs, and the test suite are out of
+# scope for first-party type coverage.
+exclude = [
+    "src/auto_grocer_mcp",
+    "debug_logs",
+    "src/auto_grocer/word_dictionaries",
+    "tests",
+]
+
+# nodriver ships py.typed, so mypy would otherwise follow imports into its
+# auto-generated CDP source. One of those files (nodriver/cdp/network.py) is not
+# valid UTF-8, which makes mypy abort with "Cannot decode file" before it can
+# check any first-party code. Skip following into it; it's a third-party dep.
+[[tool.mypy.overrides]]
+module = "nodriver.*"
+follow_imports = "skip"

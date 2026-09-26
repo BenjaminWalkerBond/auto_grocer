@@ -1,0 +1,372 @@
+"""In-process nodriver browser search fallback.
+
+HEB's Incapsula WAF challenges browser-navigation routes (``/``, ``/search``,
+``/_next/data/...``) with a reese84 JavaScript challenge that a plain ``httpx``
+client cannot solve. The ``/graphql`` POST API is *not* challenged, but HEB
+exposes product search only through those server-rendered navigation routes.
+
+When the httpx SSR search is blocked, this module drives a persistent,
+in-process ``nodriver`` Chrome (which solves the JS challenge in-container under
+Xvfb) to fetch the search-results page and returns its HTML. The GraphQL
+client's existing ``__NEXT_DATA__`` parser then extracts products, so the browser
+is only responsible for *fetching* the page — cart operations still go over
+``/graphql``.
+
+A single browser is launched lazily and reused (warm) across searches, guarded
+by an ``asyncio`` lock, with a short-TTL cache keyed on ``(store_id, query)``.
+
+**Event-loop affinity.** Every MCP tool is a synchronous ``def`` that calls
+``asyncio.run(...)``, so each tool call runs on a *brand new* event loop. An
+``asyncio.Lock`` and a live CDP websocket are both bound to the loop that
+created them, so the process-wide singleton must detect a loop change and
+rebind: reusing them across loops previously raised ``<asyncio.locks.Lock ...>
+is bound to a different event loop`` and then hung forever awaiting a socket
+owned by a closed loop.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import re
+import time
+from typing import TYPE_CHECKING, Any
+from urllib.parse import quote_plus
+
+import structlog
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    import nodriver
+
+logger = structlog.get_logger()
+
+_SEARCH_URL = "https://www.heb.com/search?q={query}"
+# The server-rendered results page always embeds this script tag; a challenge
+# interstitial never does. Polling for it is how we know the page resolved.
+_NEXT_DATA_MARKER = 'id="__NEXT_DATA__"'
+# Full ``__NEXT_DATA__`` script capture. We wait for the *closing* ``</script>``
+# (and valid JSON) before returning, because ``get_content()`` can observe the
+# page mid-render — the opening tag appears while the script body is still
+# streaming, which yields a truncated, unparseable JSON blob.
+_NEXT_DATA_RE = re.compile(
+    r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>',
+    re.DOTALL,
+)
+# How long to wait for the browser to clear the challenge and render results.
+_RENDER_TIMEOUT_SECONDS = 30.0
+_POLL_INTERVAL_SECONDS = 1.0
+# Default cache lifetime for a (store, query) HTML result.
+_DEFAULT_CACHE_TTL_SECONDS = 120.0
+# Hard ceiling on one ``search_html`` call (launch + cookie inject + render).
+# MCP clients cancel a tool call after a few minutes, so the fallback must
+# always fail fast rather than block the whole request.
+_SEARCH_TIMEOUT_SECONDS = 60.0
+# Ceiling on acquiring the shared-browser lock. Without it, a search queued
+# behind a wedged predecessor inherits its hang.
+_LOCK_TIMEOUT_SECONDS = 45.0
+
+
+class NodriverSearchError(Exception):
+    """Raised when the nodriver browser search fails irrecoverably."""
+
+
+def _cookie_to_cdp_param(cookie: dict[str, Any], cdp_network: Any) -> Any | None:
+    """Convert a Playwright-format cookie dict into a CDP ``CookieParam``.
+
+    Returns ``None`` for cookies lacking a usable name/value. The ``expires``
+    field must be wrapped in ``TimeSinceEpoch`` (a ``float`` subclass exposing
+    ``to_json``); passing a bare ``float`` makes CDP serialization raise
+    ``'float' object has no attribute 'to_json'`` when the cookie is set.
+    """
+    name = cookie.get("name")
+    value = cookie.get("value")
+    if not name or value is None:
+        return None
+
+    kwargs: dict[str, Any] = {
+        "name": str(name),
+        "value": str(value),
+        "domain": cookie.get("domain") or ".heb.com",
+        "path": cookie.get("path") or "/",
+        "secure": bool(cookie.get("secure", True)),
+        "http_only": bool(cookie.get("httpOnly", False)),
+    }
+    try:
+        expires_f = float(cookie.get("expires", -1))
+    except (TypeError, ValueError):
+        expires_f = -1.0
+    if expires_f and expires_f > 0:
+        kwargs["expires"] = cdp_network.TimeSinceEpoch(expires_f)
+
+    return cdp_network.CookieParam(**kwargs)
+
+
+def _terminate_browser_process(browser: Any) -> None:
+    """Kill a browser's OS process without scheduling any async I/O.
+
+    ``nodriver.Browser.stop()`` starts with
+    ``asyncio.get_event_loop().create_task(self.aclose())``. That is fine while
+    the browser's websocket belongs to the running loop, but for a browser
+    adopted by a *previous* loop the task raises ``got Future ... attached to a
+    different loop`` and, since nothing awaits it, asyncio reports it through
+    the "Task exception was never retrieved" ERROR handler. Routine relaunches
+    then look like failures. Terminating the process directly reclaims the
+    browser with no cross-loop traffic at all.
+    """
+    process = getattr(browser, "_process", None)
+    if process is None:
+        return
+    for attempt in ("terminate", "kill"):
+        method = getattr(process, attempt, None)
+        if method is None:
+            continue
+        try:
+            method()
+            return
+        except Exception:  # noqa: BLE001 - fall through to the next strategy
+            continue
+
+
+def _next_data_is_complete(html: str) -> bool:
+    """Return ``True`` once the page's ``__NEXT_DATA__`` JSON is fully rendered.
+
+    ``get_content()`` can observe the DOM while the ``__NEXT_DATA__`` script is
+    still streaming: the opening tag is present but the JSON body is truncated,
+    which later raises ``json.JSONDecodeError`` ("Unterminated string"). We only
+    treat the page as ready when the closing ``</script>`` is present *and* the
+    captured payload parses as JSON.
+    """
+    if not html or _NEXT_DATA_MARKER not in html:
+        return False
+    match = _NEXT_DATA_RE.search(html)
+    if not match:
+        return False
+    try:
+        json.loads(match.group(1))
+    except json.JSONDecodeError:
+        return False
+    return True
+
+
+class NodriverSearchClient:
+    """Persistent in-process nodriver browser used as a search fallback.
+
+    The browser is launched on first use and reused for subsequent searches.
+    Authenticated HEB cookies from the exported session are injected so the
+    server renders store-context pricing.
+    """
+
+    def __init__(self, *, cache_ttl: float = _DEFAULT_CACHE_TTL_SECONDS) -> None:
+        self._browser: nodriver.Browser | None = None
+        self._lock: asyncio.Lock | None = None
+        # The event loop that owns ``_lock`` / ``_browser``. Both are unusable
+        # from any other loop. Loop *objects* are stored (not ``id()``), because
+        # a closed loop is collectable and CPython readily hands its address to
+        # the next loop, which would silently defeat the check.
+        self._lock_loop: asyncio.AbstractEventLoop | None = None
+        self._browser_loop: asyncio.AbstractEventLoop | None = None
+        self._cache: dict[str, tuple[float, str]] = {}
+        self._cache_ttl = cache_ttl
+
+    # ------------------------------------------------------------------
+    # Event-loop affinity
+    # ------------------------------------------------------------------
+    def _lock_for_loop(self) -> asyncio.Lock:
+        """Return a lock owned by the *currently running* event loop.
+
+        ``asyncio.Lock`` binds to the loop it is first awaited on. Each MCP
+        tool call runs under its own ``asyncio.run``, so a cached lock from an
+        earlier call raises "is bound to a different event loop". Rebinding is
+        safe because a closed loop can hold no live waiters.
+        """
+        loop = asyncio.get_running_loop()
+        if self._lock is None or self._lock_loop is not loop:
+            self._lock = asyncio.Lock()
+            self._lock_loop = loop
+        return self._lock
+
+    def _adopt_browser(self, browser: Any) -> None:
+        """Record ``browser`` as owned by the currently running event loop."""
+        self._browser = browser
+        self._browser_loop = asyncio.get_running_loop()
+
+    def _reusable_browser(self) -> Any | None:
+        """Return the warm browser, or ``None`` if it belongs to a dead loop.
+
+        A ``nodriver.Browser`` owns a CDP websocket bound to its creating loop.
+        Awaiting it from a different loop hangs indefinitely instead of raising,
+        which is what wedged production tool calls until the client cancelled
+        them. Detecting the loop change and discarding the browser turns that
+        hang into a cheap relaunch.
+        """
+        browser = self._browser
+        if browser is None:
+            return None
+        if self._browser_loop is asyncio.get_running_loop():
+            return browser
+
+        logger.info("Discarding nodriver browser bound to a previous event loop")
+        self._browser = None
+        self._browser_loop = None
+        # Deliberately NOT browser.stop(): it would schedule aclose() on this
+        # loop for a websocket owned by the dead one, which asyncio surfaces as
+        # a spurious ERROR. Reclaim the process directly instead.
+        _terminate_browser_process(browser)
+        return None
+
+    # ------------------------------------------------------------------
+    # Browser lifecycle
+    # ------------------------------------------------------------------
+    async def _ensure_browser(self) -> nodriver.Browser:
+        """Launch the browser once (warm) and inject session cookies."""
+        existing = self._reusable_browser()
+        if existing is not None:
+            return existing
+
+        # Reuse the maintained nodriver launcher (Xvfb / --no-sandbox aware).
+        from auto_grocer.session_maintenance.browser import start_browser
+
+        logger.info("Launching in-process nodriver browser for search fallback")
+        browser = await start_browser(headless=False)
+        self._adopt_browser(browser)
+        try:
+            await self._inject_session_cookies(browser)
+        except Exception as exc:  # noqa: BLE001 - cookie injection is best-effort
+            logger.warning("Failed to inject session cookies into browser", error=str(exc))
+        return browser
+
+    async def _inject_session_cookies(self, browser: nodriver.Browser) -> None:
+        """Load the exported HEB session cookies into the browser.
+
+        Converts the Playwright-format cookies persisted in ``auth.json`` into
+        CDP ``CookieParam`` objects so the rendered page carries the same
+        authenticated session the httpx client uses.
+        """
+        from auto_grocer_mcp.auth.session import get_cookies
+
+        cookies = get_cookies()
+        if not cookies:
+            logger.debug("No session cookies to inject into browser")
+            return
+
+        import nodriver.cdp.network as cdp_network
+
+        params: list[Any] = []
+        for cookie in cookies:
+            param = _cookie_to_cdp_param(cookie, cdp_network)
+            if param is not None:
+                params.append(param)
+
+        if params:
+            await browser.cookies.set_all(params)
+            logger.debug("Injected session cookies into browser", count=len(params))
+
+    async def close(self) -> None:
+        """Stop the browser, ignoring shutdown errors."""
+        browser = self._browser
+        self._browser = None
+        self._browser_loop = None
+        if browser is None:
+            return
+        try:
+            browser.stop()
+        except Exception:  # noqa: BLE001 - best-effort shutdown
+            pass
+
+    # ------------------------------------------------------------------
+    # Search
+    # ------------------------------------------------------------------
+    async def search_html(self, query: str, store_id: str) -> str | None:
+        """Return the search-results page HTML for ``query`` (or ``None``).
+
+        Results are cached for a short TTL keyed on ``(store_id, query)`` to
+        avoid re-driving the browser for repeated searches within a session.
+        """
+        key = f"{store_id}::{query.strip().lower()}"
+
+        cached = self._cache.get(key)
+        if cached and (time.monotonic() - cached[0]) < self._cache_ttl:
+            logger.debug("nodriver search cache hit", query=query, store_id=store_id)
+            return cached[1]
+
+        # Serialize browser access: a single Chrome tab drives all searches.
+        # Both the lock wait and the browser work are bounded so a wedged
+        # browser can never hold an MCP tool call open until the client
+        # cancels it.
+        lock = self._lock_for_loop()
+        try:
+            await asyncio.wait_for(lock.acquire(), timeout=_LOCK_TIMEOUT_SECONDS)
+        except TimeoutError:
+            logger.warning(
+                "Timed out waiting for the nodriver search lock",
+                query=query,
+                timeout=_LOCK_TIMEOUT_SECONDS,
+            )
+            return None
+
+        try:
+            cached = self._cache.get(key)
+            if cached and (time.monotonic() - cached[0]) < self._cache_ttl:
+                return cached[1]
+
+            try:
+                html = await asyncio.wait_for(
+                    self._fetch_search_html(query), timeout=_SEARCH_TIMEOUT_SECONDS
+                )
+            except TimeoutError:
+                logger.warning(
+                    "nodriver search exceeded its hard timeout; discarding browser",
+                    query=query,
+                    timeout=_SEARCH_TIMEOUT_SECONDS,
+                )
+                # The browser is likely wedged; drop it so the next search
+                # starts from a clean process instead of inheriting the hang.
+                await self.close()
+                return None
+
+            if html:
+                self._cache[key] = (time.monotonic(), html)
+            return html
+        finally:
+            lock.release()
+
+    async def _fetch_search_html(self, query: str) -> str | None:
+        """Navigate to the search page and return HTML once it renders."""
+        browser = await self._ensure_browser()
+        url = _SEARCH_URL.format(query=quote_plus(query))
+
+        logger.info("nodriver browser search", url=url)
+        tab = await browser.get(url)
+
+        deadline = time.monotonic() + _RENDER_TIMEOUT_SECONDS
+        html = ""
+        while time.monotonic() < deadline:
+            try:
+                html = await tab.get_content() or ""
+            except Exception:  # noqa: BLE001 - transient during navigation/challenge
+                html = ""
+            if _next_data_is_complete(html):
+                logger.info("nodriver search rendered results", query=query)
+                return html
+            await tab.sleep(_POLL_INTERVAL_SECONDS)
+
+        # Timed out: the challenge never cleared, or the __NEXT_DATA__ script
+        # never finished streaming (only its opening tag was ever observed).
+        logger.warning(
+            "nodriver search timed out waiting for results",
+            query=query,
+            response_length=len(html),
+            saw_next_data_marker=_NEXT_DATA_MARKER in html,
+        )
+        return html or None
+
+
+_client: NodriverSearchClient | None = None
+
+
+def get_nodriver_search_client() -> NodriverSearchClient:
+    """Return the process-wide nodriver search client (lazily created)."""
+    global _client
+    if _client is None:
+        _client = NodriverSearchClient()
+    return _client

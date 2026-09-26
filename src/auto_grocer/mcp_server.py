@@ -1,0 +1,1728 @@
+"""
+auto_grocer MCP server (standalone, GraphQL-only).
+
+Exposes the project's grocery automation to an MCP client (e.g. VS Code Copilot
+Chat) so you can drive the whole flow conversationally:
+
+    "what's my login status" -> auth_status
+    "add penne, spinach"     -> add_groceries           (GraphQL search + add)
+    "I want palak paneer"    -> add_recipe_ingredients   (DB matcher + GraphQL)
+    "show my saved recipes"  -> query_recipes            (DB browse/search)
+    "list all my recipes"    -> list_all_recipes         (DB paginated, 10/page)
+    "add these recipes ..."  -> seed_recipes             (DB insert one recipe)
+    "nutrition for X"        -> get_product_details      (GraphQL, ingredients/nutrition)
+    "find HEB near Austin"   -> search_stores            (GraphQL, geocoded)
+    "coupons for cereal"     -> list_coupons             (GraphQL)
+    "clip that coupon"       -> clip_coupon              (GraphQL)
+    "what's in my cart"      -> get_cart                 (GraphQL)
+    "empty my cart"          -> clear_cart               (GraphQL)
+    "remove the cat food"    -> remove_from_cart         (GraphQL)
+    "set store 737"          -> set_store                (GraphQL)
+    "show pickup slots"      -> list_timeslots           (GraphQL)
+    "reserve slot X"         -> reserve_timeslot         (GraphQL)
+    "check out"              -> checkout                 (GraphQL, review only)
+    "place my order"         -> place_order              (GraphQL, charges - guarded)
+
+ARCHITECTURE
+------------
+This server is PURE GraphQL and contains NO browser automation. It talks to
+HEB's internal GraphQL API through the vendored ``auto_grocer_mcp`` client,
+reusing an authenticated session previously exported to
+``~/.texas-grocery-mcp/auth.json``.
+
+Producing/refreshing that session, and refreshing HEB's rotating persisted-query
+hashes (including the timeslot/checkout operations), is the job of a SEPARATE
+maintenance workflow driven by nodriver (async CDP browser, runs under Xvfb in
+Docker):
+
+    MODE=nodriver OPERATION=capture_hashes python -m auto_grocer.session_maintenance.run
+
+That workflow logs in, exercises the site, and writes:
+  * ~/.texas-grocery-mcp/auth.json                (session for this server)
+  * ~/.texas-grocery-mcp/persisted_queries.json   (current operation hashes)
+  * ~/.texas-grocery-mcp/captured_operations.json (timeslot/checkout payloads)
+
+If a tool reports NOT_AUTHENTICATED or OPERATION_NOT_CAPTURED, re-run that
+maintenance workflow, then call refresh_session here. The ``capture_hashes`` tool
+runs this same OPERATION=capture_hashes flow on demand (the only path that clears
+``hashes_ok: false``). When AUTO_GROCER_AUTO_LOGIN
+is enabled (default), authenticated tools refresh an expired session
+automatically by running the nodriver login_export operation; the ``login`` tool
+triggers the same flow on demand.
+
+Run standalone:
+    python mcp_server.py
+"""
+import asyncio
+import os
+import subprocess
+import sys
+import threading
+import time
+from collections.abc import Callable
+
+from fastmcp import FastMCP
+
+from auto_grocer.classes.Ingredient import Ingredient
+from auto_grocer.classes.IngredientList import IngredientList
+from auto_grocer.claude import get_setting
+from auto_grocer.recipe_grabber import clean_ingredient
+from auto_grocer.utility.graphql_cart import graphql_cart_sync
+from auto_grocer.utility.graphql_checkout import (
+    checkout_sync,
+    list_timeslots_sync,
+    reserve_timeslot_sync,
+)
+from auto_grocer.utility.graphql_store import cache_stores, get_cached_store, select_store
+
+# Route all structlog/stdlib logging to stderr so the stdio JSON-RPC channel on
+# stdout stays clean. The vendored auto_grocer_mcp client logs via structlog;
+# without this, structlog uses its UNCONFIGURED default (a PrintLogger writing to
+# stdout), which corrupts the MCP protocol and shows up in the client as
+# "Failed to parse message" warnings. configure_logging() sends everything to
+# stderr at INFO (suppressing the client's debug lines). Never let logging setup
+# break server startup.
+try:
+    from auto_grocer_mcp.observability.logging import configure_logging as _configure_logging
+
+    _configure_logging()
+except Exception:  # noqa: BLE001
+    pass
+
+# This module lives at <repo>/src/auto_grocer/mcp_server.py, so the repo root
+# (which holds .env, venv/, and the docker/ tree) is three levels up.
+_PROJECT_ROOT = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+)
+
+# Set to True to permit the place_order tool to actually submit a paid order.
+# Left False by default so checkout can never charge accidentally.
+_ALLOW_PLACE_ORDER = os.environ.get("AUTO_GROCER_ALLOW_PLACE_ORDER", "").lower() in (
+    "1", "true", "yes",
+)
+
+# When True (default), authenticated tools will automatically run the browser
+# login-and-export workflow if no valid session is available, instead of just
+# returning NOT_AUTHENTICATED. Set AUTO_GROCER_AUTO_LOGIN=0 to disable and use
+# the manual workflow (run the script yourself, then call refresh_session).
+_AUTO_LOGIN = os.environ.get("AUTO_GROCER_AUTO_LOGIN", "1").lower() in (
+    "1", "true", "yes",
+)
+
+# When True (default), a stale/rotated GraphQL persisted-query hash detected on
+# any operation will automatically trigger the browser capture_hashes workflow
+# and retry, instead of surfacing the failure. Set
+# AUTO_GROCER_AUTO_CAPTURE_HASHES=0 to disable and use the manual workflow (run
+# the capture_hashes tool/skill yourself).
+_AUTO_CAPTURE_HASHES = os.environ.get("AUTO_GROCER_AUTO_CAPTURE_HASHES", "1").lower() in (
+    "1", "true", "yes",
+)
+
+# Which browser engine the auto-login uses to refresh the HEB session:
+#   "nodriver"   (default) - the in-tree async CDP flow (login_export).
+#   "patchright" - the experimental patched-Playwright spike (spikes/patchright),
+#                  for A/B testing WAF pass-rate in the real MCP flow. Requires
+#                  patchright installed + the spikes/ tree present (see the
+#                  docker-compose "mcp-patchright" service). Hash capture is
+#                  unaffected and still uses nodriver.
+_LOGIN_ENGINE = (
+    os.environ.get("AUTO_GROCER_LOGIN_ENGINE", "nodriver") or "nodriver"
+).strip().lower()
+
+# How long (seconds) to allow the browser login-and-export to run before giving
+# up. The flow logs in, may handle email verification, and exports auth.json.
+_AUTO_LOGIN_TIMEOUT = int(os.environ.get("AUTO_GROCER_AUTO_LOGIN_TIMEOUT", "300"))
+
+# How long (seconds) to allow the hash-capture flow to run. It logs in AND
+# exercises the site (search/cart/timeslot/checkout) to sniff the rotating
+# persisted-query hashes, so it takes longer than a plain login_export.
+_CAPTURE_HASHES_TIMEOUT = int(os.environ.get("AUTO_GROCER_CAPTURE_TIMEOUT", "600"))
+
+# How long (seconds) the capture_hashes TOOL will block waiting for that flow
+# before returning a "running" status the caller can poll. MCP clients cancel a
+# tool call after roughly 240s, so a tool that waited the full
+# _CAPTURE_HASHES_TIMEOUT could never report a result — in production every
+# capture_hashes call was cancelled at exactly 4 minutes. Keep this comfortably
+# below the client deadline; the capture itself keeps running in the background.
+_CAPTURE_WAIT_SECONDS = float(os.environ.get("AUTO_GROCER_CAPTURE_WAIT", "120"))
+
+# Serialize auto-login so concurrent tool calls don't launch multiple browsers.
+_AUTO_LOGIN_LOCK = threading.Lock()
+
+_NOT_AUTHED = {
+    "error": True,
+    "code": "NOT_AUTHENTICATED",
+    "message": (
+        "No valid HEB session and automatic login is disabled or failed. "
+        "Enable auto-login (AUTO_GROCER_AUTO_LOGIN=1), call the login tool, or "
+        "refresh the session manually (MODE=nodriver OPERATION=login_export "
+        "python -m auto_grocer.session_maintenance.run), then call refresh_session."
+    ),
+}
+
+
+def _store_id(override: str = "") -> str:
+    """Resolve the store id: explicit override > STORE_ID env (.env) > default."""
+    if override:
+        return str(override).strip()
+    return (get_setting("STORE_ID", "737") or "737").strip() or "737"
+
+
+def _is_authed() -> bool:
+    """Return True if a valid exported HEB session is available for GraphQL."""
+    try:
+        from auto_grocer_mcp.auth.session import is_authenticated
+        return bool(is_authenticated())
+    except Exception:
+        return False
+
+
+def _session_expiry() -> dict:
+    """Inspect auth.json cookies to report the real session lifespan.
+
+    The limiter is the session cookies (sat/sst) — not the short-lived reese84
+    renewTime. Returns the soonest relevant expiry and days remaining.
+    """
+    import json
+    import time
+    from datetime import datetime, timezone
+    try:
+        from auto_grocer_mcp.utils.config import get_settings
+        path = get_settings().auth_state_path
+        with open(path) as f:
+            state = json.load(f)
+    except Exception:
+        return {"session_expires": None, "days_left": None}
+
+    now = time.time()
+    soonest = None
+    for c in state.get("cookies", []):
+        if "heb.com" not in c.get("domain", ""):
+            continue
+        if c.get("name") not in ("sat", "sst"):
+            continue
+        exp = c.get("expires", -1)
+        if exp and exp != -1 and (soonest is None or exp < soonest):
+            soonest = exp
+    if not soonest:
+        return {"session_expires": None, "days_left": None}
+    return {
+        "session_expires": datetime.fromtimestamp(soonest, timezone.utc).isoformat(),
+        "days_left": round((soonest - now) / 86400, 1),
+    }
+
+
+def _hashes_ok() -> bool:
+    """Live probe: confirm the GraphQL persisted-query hashes still work.
+
+    Hashes have no timestamp; they only break when HEB rotates them. A cheap
+    authenticated call surfaces a stale hash, so checking that is the reliable
+    signal for whether re-auth/hash-refresh is needed.
+    """
+    try:
+        cart = _graphql_get_cart_sync()
+    except Exception:
+        return False
+    return isinstance(cart, dict) and not cart.get("error")
+
+
+
+def _reload_session_caches() -> None:
+    """Drop cached settings/hashes so the next check re-reads auth.json."""
+    try:
+        from auto_grocer_mcp.utils.config import get_settings
+        get_settings.cache_clear()
+    except Exception:
+        pass
+    try:
+        from auto_grocer_mcp.clients.graphql import reload_persisted_query_overrides
+        reload_persisted_query_overrides()
+    except Exception:
+        pass
+
+
+def _auto_authenticate(force: bool = False) -> dict:
+    """Run the browser login-and-export workflow to refresh the HEB session.
+
+    Logs in with the configured credentials (handling email verification) via the
+    async nodriver flow (``session_maintenance.run`` with MODE=nodriver
+    OPERATION=login_export) and re-exports ~/.texas-grocery-mcp/auth.json. The
+    browser is driven over CDP and runs under Xvfb inside the Docker image. Blocks
+    until it finishes (up to _AUTO_LOGIN_TIMEOUT seconds). Serialized so only one
+    login runs at a time. When ``force`` is False and a valid session already
+    exists, returns early without opening a browser. Returns a dict describing the
+    outcome.
+    """
+    with _AUTO_LOGIN_LOCK:
+        # Another thread may have authenticated while we waited for the lock.
+        if not force and _is_authed():
+            return {"ok": True, "skipped": "already authenticated"}
+
+        # Prefer the project venv interpreter so dependencies resolve.
+        venv_python = os.path.join(_PROJECT_ROOT, "venv", "bin", "python")
+        python_exe = venv_python if os.path.exists(venv_python) else sys.executable
+
+        env = dict(os.environ)
+        env.setdefault("DISPLAY", ":0")  # X server (WSLg on host, Xvfb in Docker)
+        if _LOGIN_ENGINE == "patchright":
+            # Experimental engine: one patchright cold login that writes the real
+            # auth.json (spikes.patchright.run_spike --runs 1). Lets us A/B test
+            # patchright's Imperva pass-rate through the live MCP auto-login.
+            cmd = [python_exe, "-u", "-m", "spikes.patchright.run_spike", "--runs", "1"]
+            engine_label = "patchright"
+        else:
+            env["MODE"] = "nodriver"
+            env["OPERATION"] = "login_export"
+            cmd = [python_exe, "-u", "-m", "auto_grocer.session_maintenance.run"]
+            engine_label = "nodriver"
+
+        print(
+            f"[auto-grocer] No valid session - running {engine_label} login "
+            "to refresh auth.json (this can take a minute)...",
+            file=sys.stderr,
+        )
+        try:
+            proc = subprocess.run(
+                cmd,
+                cwd=_PROJECT_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=_AUTO_LOGIN_TIMEOUT,
+            )
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "detail": f"login timed out after {_AUTO_LOGIN_TIMEOUT}s"}
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "detail": f"failed to run login: {e}"}
+
+        # Re-read the freshly exported session.
+        _reload_session_caches()
+        ok = _is_authed()
+        if not ok:
+            print(
+                "[auto-grocer] Auto-login finished but session still invalid. "
+                f"(returncode={proc.returncode})",
+                file=sys.stderr,
+            )
+        return {
+            "ok": ok,
+            "returncode": proc.returncode,
+            "stdout_tail": (proc.stdout or "")[-600:],
+            "stderr_tail": (proc.stderr or "")[-600:],
+        }
+
+
+def _capture_hashes(target_operation: str = "") -> dict:
+    """Run the nodriver capture_hashes workflow to refresh persisted-query hashes.
+
+    Logs in and exercises the HEB site (search/cart/timeslot/checkout) via the
+    async nodriver flow (``auto_grocer.session_maintenance.run`` with
+    MODE=nodriver OPERATION=capture_hashes), sniffing HEB's rotating
+    persisted-query hashes over CDP under Xvfb inside the Docker image. It
+    rewrites all three session files:
+      * ~/.texas-grocery-mcp/auth.json                (session cookies)
+      * ~/.texas-grocery-mcp/persisted_queries.json   (operation hashes)
+      * ~/.texas-grocery-mcp/captured_operations.json (timeslot/checkout payloads)
+
+    This is the only path that can clear ``hashes_ok: false`` — a plain
+    login_export refreshes cookies but NOT the hashes. Blocks until it finishes
+    (up to _CAPTURE_HASHES_TIMEOUT seconds) and reuses _AUTO_LOGIN_LOCK so it
+    never runs concurrently with a login. Returns a dict describing the outcome.
+
+    Args:
+        target_operation: When set, only exercises the minimal browser flow
+            needed to trigger this one GraphQL operation (e.g.
+            "SelectPickupFulfillment" -> just the store-change flow) instead of
+            walking every flow. Much faster for the common case of a single
+            stale operation. Unrecognized/empty values fall back to the full
+            walk (see auto_grocer.session_maintenance.run).
+    """
+    with _AUTO_LOGIN_LOCK:
+        # Prefer the project venv interpreter so dependencies resolve.
+        venv_python = os.path.join(_PROJECT_ROOT, "venv", "bin", "python")
+        python_exe = venv_python if os.path.exists(venv_python) else sys.executable
+
+        env = dict(os.environ)
+        env.setdefault("DISPLAY", ":0")  # X server (WSLg on host, Xvfb in Docker)
+        env["MODE"] = "nodriver"
+        env["OPERATION"] = "capture_hashes"
+        if target_operation:
+            env["CAPTURE_TARGET_OPERATION"] = target_operation
+        cmd = [python_exe, "-u", "-m", "auto_grocer.session_maintenance.run"]
+
+        print(
+            "[auto-grocer] Running nodriver capture_hashes"
+            + (f" (targeted: {target_operation})" if target_operation else "")
+            + " to refresh the persisted-query hashes (this can take a "
+            "few minutes)...",
+            file=sys.stderr,
+        )
+        try:
+            proc = subprocess.run(
+                cmd,
+                cwd=_PROJECT_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=_CAPTURE_HASHES_TIMEOUT,
+            )
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "detail": f"capture_hashes timed out after {_CAPTURE_HASHES_TIMEOUT}s"}
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "detail": f"failed to run capture_hashes: {e}"}
+
+        # Re-read the freshly exported session + hashes.
+        _reload_session_caches()
+        authed = _is_authed()
+        hashes_ok = _hashes_ok() if authed else False
+        ok = authed and hashes_ok
+        if not ok:
+            print(
+                "[auto-grocer] capture_hashes finished but session/hashes still "
+                f"invalid (returncode={proc.returncode}, authenticated={authed}, "
+                f"hashes_ok={hashes_ok}).",
+                file=sys.stderr,
+            )
+        return {
+            "ok": ok,
+            "authenticated": authed,
+            "hashes_ok": hashes_ok,
+            "returncode": proc.returncode,
+            "stdout_tail": (proc.stdout or "")[-600:],
+            "stderr_tail": (proc.stderr or "")[-600:],
+        }
+
+
+# ---------------------------------------------------------------------------
+# Background capture_hashes job
+# ---------------------------------------------------------------------------
+# _capture_hashes drives a real browser and routinely runs for several minutes,
+# but MCP clients cancel a tool call after roughly 240s. Running it inline meant
+# the tool was always cancelled before it could report anything, and the user
+# had no way to learn whether the capture eventually succeeded. Instead we run
+# at most ONE capture at a time on a background thread; callers wait a bounded
+# time for it and otherwise get a "running" status they can poll by calling the
+# tool again.
+
+_CAPTURE_JOB_LOCK = threading.Lock()
+
+
+class _CaptureJob:
+    """A single in-flight (or finished) browser hash-capture run."""
+
+    def __init__(self, target_operation: str) -> None:
+        self.target_operation = target_operation
+        self.started_at = time.monotonic()
+        self.done = threading.Event()
+        self.result: dict | None = None
+        # True only for the caller that actually launched this job, so a
+        # second caller can tell it joined an existing run.
+        self.started = False
+
+    def _work(self) -> None:
+        try:
+            self.result = _capture_hashes(target_operation=self.target_operation)
+        except Exception as exc:  # noqa: BLE001 - surface, never crash the thread
+            self.result = {"ok": False, "detail": f"capture_hashes raised: {exc}"}
+        finally:
+            self.done.set()
+
+    def result_or_wait(self, timeout: float) -> dict | None:
+        """Block up to ``timeout`` seconds; return the result or ``None``."""
+        self.done.wait(timeout=max(0.0, float(timeout)))
+        return self.result
+
+    def status(self, timeout: float) -> dict:
+        """Wait up to ``timeout`` and describe the job for a tool response."""
+        result = self.result_or_wait(timeout)
+        elapsed = round(time.monotonic() - self.started_at, 1)
+        if result is None:
+            return {
+                "status": "running",
+                "started": self.started,
+                "target_operation": self.target_operation or None,
+                "elapsed_seconds": elapsed,
+                "message": (
+                    "The browser hash capture is still running in the "
+                    "background. Call capture_hashes again in a minute or two "
+                    "to get the outcome; it will join this same run instead of "
+                    "starting another browser."
+                ),
+            }
+        return {
+            "status": "completed",
+            "started": self.started,
+            "target_operation": self.target_operation or None,
+            "elapsed_seconds": elapsed,
+            **result,
+        }
+
+
+_capture_job: _CaptureJob | None = None
+
+
+def _reset_capture_job() -> None:
+    """Forget any finished/aborted capture job (used by tests and refresh)."""
+    global _capture_job
+    with _CAPTURE_JOB_LOCK:
+        _capture_job = None
+
+
+def _run_capture_job(target_operation: str = "") -> _CaptureJob:
+    """Return the in-flight capture job, launching one if none is running.
+
+    Never launches a second browser while one capture is active — concurrent
+    callers (the tool and the GraphQL client's stale-hash hook) join the same
+    run.
+    """
+    global _capture_job
+    with _CAPTURE_JOB_LOCK:
+        job = _capture_job
+        if job is not None and not job.done.is_set():
+            job.started = False
+            return job
+
+        job = _CaptureJob(target_operation)
+        job.started = True
+        _capture_job = job
+
+    threading.Thread(
+        target=job._work, name="capture-hashes", daemon=True
+    ).start()
+    return job
+
+
+def _auto_capture_hashes_callback(operation_name: str) -> bool:
+    """Re-capture rotated GraphQL hashes for the client's auto-recovery hook.
+
+    Invoked on a background thread (never awaited) by the GraphQL client when
+    it detects a stale persisted-query hash on ``operation_name``. Runs the
+    targeted browser capture_hashes flow for just that operation and returns
+    True when fresh hashes were captured. Honors AUTO_GROCER_AUTO_CAPTURE_HASHES.
+    """
+    if not _AUTO_CAPTURE_HASHES:
+        return False
+    try:
+        result = _run_capture_job(target_operation=operation_name).result_or_wait(
+            _CAPTURE_HASHES_TIMEOUT
+        )
+    except Exception:  # noqa: BLE001 - recovery is best-effort
+        return False
+    return bool((result or {}).get("ok"))
+
+
+# Wire the client's stale-hash auto-recovery to the browser capture flow so any
+# operation that hits a rotated hash transparently re-captures and retries.
+if _AUTO_CAPTURE_HASHES:
+    try:
+        from auto_grocer_mcp.clients.graphql import register_hash_refresh_callback
+
+        register_hash_refresh_callback(_auto_capture_hashes_callback)
+    except Exception:  # noqa: BLE001 - never let hook wiring break startup
+        pass
+
+
+def _ensure_authed() -> bool:
+    """Ensure a valid HEB session exists, auto-running login if needed.
+
+    Returns True if authenticated (possibly after a successful auto-login).
+    Honors AUTO_GROCER_AUTO_LOGIN; when disabled, behaves like _is_authed().
+    """
+    if _is_authed():
+        return True
+    if not _AUTO_LOGIN:
+        return False
+    _auto_authenticate()
+    return _is_authed()
+
+
+def _ingredient_list_from_items(items):
+    """Build an IngredientList from a list of free-form item strings."""
+    IL = IngredientList()
+    for raw in items:
+        name, amount, unit = clean_ingredient(raw)
+        IL.add_ingredient(Ingredient(name, amount, unit))
+    return IL
+
+
+def _summarize(report: dict) -> dict:
+    """Trim a graphql_cart_sync report to a chat-friendly summary."""
+    added = [
+        {
+            "ingredient": a.get("ingredient"),
+            "product": a.get("product"),
+            "price": a.get("price"),
+            "size": a.get("size"),
+            "quantity": a.get("quantity", 1),
+        }
+        for a in report.get("added", [])
+    ]
+    failed = [
+        {"ingredient": f.get("ingredient"), "status": f.get("status"), "detail": f.get("detail")}
+        for f in report.get("failed", [])
+    ]
+    return {
+        "added": added,
+        "failed": failed,
+        "added_count": len(added),
+        "failed_count": len(failed),
+    }
+
+
+def _graphql_get_cart_sync() -> dict:
+    async def _run():
+        from auto_grocer_mcp.clients.graphql import HEBGraphQLClient
+        client = HEBGraphQLClient()
+        try:
+            return await client.get_cart()
+        finally:
+            await client.close()
+    return asyncio.run(_run())
+
+
+def _remove_from_cart_sync(matchers: list[str]) -> dict:
+    """Remove cart items matching any of the given identifiers.
+
+    Each matcher is compared (case-insensitive) against the item's product id,
+    sku id, or a substring of the product name. Matching items are removed by
+    setting their quantity to 0.
+    """
+    from auto_grocer.utility.graphql_cart import _extract_sku
+
+    needles = [m.strip().lower() for m in matchers if m and m.strip()]
+
+    async def _run():
+        from auto_grocer_mcp.clients.graphql import HEBGraphQLClient
+        client = HEBGraphQLClient()
+        removed = []
+        not_found = []
+        try:
+            cart = await client.get_cart()
+            cart_data = (cart or {}).get("cartV2", {}) or {}
+            items = cart_data.get("items", []) or []
+            matched_indexes = set()
+            for needle in needles:
+                hit = False
+                for idx, item in enumerate(items):
+                    product = item.get("product", {}) or {}
+                    product_id = str(product.get("id") or "")
+                    sku_id = _extract_sku(item) or product_id
+                    name = str(
+                        product.get("displayName")
+                        or product.get("decodedDisplayName")
+                        or product.get("fullDisplayName")
+                        or product.get("name")
+                        or ""
+                    ).lower()
+                    if needle in (product_id.lower(), str(sku_id).lower()) or needle in name:
+                        if idx in matched_indexes:
+                            continue
+                        result = await client.add_to_cart(
+                            product_id=product_id, sku_id=str(sku_id), quantity=0
+                        )
+                        if isinstance(result, dict) and result.get("error"):
+                            continue
+                        matched_indexes.add(idx)
+                        removed.append({"name": product.get("displayName") or product.get("name"), "product_id": product_id})
+                        hit = True
+                if not hit:
+                    not_found.append(needle)
+            return {"removed": removed, "removed_count": len(removed), "not_found": not_found}
+        finally:
+            await client.close()
+
+    return asyncio.run(_run())
+
+
+def _add_by_id_sync(entries: list[dict]) -> dict:
+    """Add specific products to the cart by product id + sku (no search step).
+
+    Each entry is a dict with: product_id (str), sku (str), quantity (int,
+    default 1), and an optional name (str) used only for the response. Entries
+    missing a product_id or sku are reported as failures.
+    """
+    async def _run():
+        from auto_grocer_mcp.clients.graphql import HEBGraphQLClient
+        client = HEBGraphQLClient()
+        added = []
+        failed = []
+        try:
+            for entry in entries:
+                product_id = str(entry.get("product_id") or "").strip()
+                sku = str(entry.get("sku") or "").strip()
+                name = entry.get("name") or product_id
+                try:
+                    qty = int(entry.get("quantity", 1))
+                except (TypeError, ValueError):
+                    qty = 1
+                if qty < 1:
+                    qty = 1
+                if not product_id or not sku:
+                    failed.append(
+                        {
+                            "product_id": product_id,
+                            "name": name,
+                            "status": "missing_product_id_or_sku",
+                        }
+                    )
+                    continue
+                result = await client.add_to_cart(
+                    product_id=product_id, sku_id=sku, quantity=qty
+                )
+                if isinstance(result, dict) and result.get("error"):
+                    failed.append(
+                        {
+                            "product_id": product_id,
+                            "name": name,
+                            "status": result.get("code") or "error",
+                            "detail": result.get("message"),
+                        }
+                    )
+                    continue
+                added.append(
+                    {
+                        "product_id": product_id,
+                        "sku": sku,
+                        "name": name,
+                        "quantity": qty,
+                    }
+                )
+            return {
+                "added": added,
+                "failed": failed,
+                "added_count": len(added),
+                "failed_count": len(failed),
+            }
+        finally:
+            await client.close()
+
+    return asyncio.run(_run())
+
+
+def _search_products_sync(query: str, store_id: str, limit: int) -> list:
+    async def _run():
+        from auto_grocer_mcp.clients.graphql import HEBGraphQLClient
+        client = HEBGraphQLClient()
+        try:
+            result = await client.search_products(
+                query=query, store_id=str(store_id), limit=limit
+            )
+            products = getattr(result, "products", []) or []
+            return [
+                {
+                    "name": getattr(p, "name", None),
+                    "price": getattr(p, "price", None),
+                    "available": getattr(p, "available", None),
+                    "product_id": getattr(p, "product_id", None),
+                    "sku": getattr(p, "sku", None),
+                }
+                for p in products
+            ]
+        finally:
+            await client.close()
+    return asyncio.run(_run())
+
+
+def _product_details_sync(product_id: str, store_id: str) -> dict | None:
+    async def _run():
+        from auto_grocer_mcp.clients.graphql import HEBGraphQLClient
+        client = HEBGraphQLClient()
+        try:
+            details = await client.get_product_details(
+                str(product_id), str(store_id) or None
+            )
+            return details.model_dump() if details is not None else None
+        finally:
+            await client.close()
+    return asyncio.run(_run())
+
+
+def _get_coupons_sync(search: str, category_id: int, limit: int) -> dict:
+    async def _run():
+        from auto_grocer_mcp.clients.graphql import HEBGraphQLClient
+        client = HEBGraphQLClient()
+        try:
+            result = await client.get_coupons(
+                category_id=int(category_id) or None,
+                search_query=search.strip() or None,
+                limit=int(limit),
+            )
+            return result.model_dump()
+        finally:
+            await client.close()
+    return asyncio.run(_run())
+
+
+def _clipped_coupons_sync(limit: int) -> dict:
+    async def _run():
+        from auto_grocer_mcp.clients.graphql import HEBGraphQLClient
+        client = HEBGraphQLClient()
+        try:
+            result = await client.get_clipped_coupons(limit=int(limit))
+            return result.model_dump()
+        finally:
+            await client.close()
+    return asyncio.run(_run())
+
+
+def _clip_coupon_sync(coupon_id: int) -> dict:
+    async def _run():
+        from auto_grocer_mcp.clients.graphql import HEBGraphQLClient
+        client = HEBGraphQLClient()
+        try:
+            return await client.clip_coupon(int(coupon_id))
+        finally:
+            await client.close()
+    return asyncio.run(_run())
+
+
+def _search_stores_sync(address: str, radius_miles: int) -> dict:
+    async def _run():
+        from auto_grocer_mcp.clients.graphql import HEBGraphQLClient
+        client = HEBGraphQLClient()
+        try:
+            result = await client.search_stores(
+                address=address, radius_miles=int(radius_miles)
+            )
+            # Cache found stores so set_store can enrich its response with a
+            # store's name/address without another network round-trip.
+            cache_stores(getattr(result, "stores", None) or [])
+            return result.model_dump()
+        finally:
+            await client.close()
+    return asyncio.run(_run())
+
+
+# ---------------------------------------------------------------------------
+# MCP server + tools
+# ---------------------------------------------------------------------------
+mcp = FastMCP(
+    name="auto-grocer",
+    instructions=(
+        "Drive HEB grocery automation over GraphQL. This server reuses an "
+        "exported HEB session. If no valid session exists, authenticated tools "
+        "automatically run a browser login to refresh it (set "
+        "AUTO_GROCER_AUTO_LOGIN=0 to disable and use refresh_session manually). "
+        "Typical order: add_groceries / add_recipe_ingredients -> get_cart -> "
+        "list_timeslots -> reserve_timeslot -> checkout (review only). "
+        "place_order is guarded and will charge."
+    ),
+)
+
+
+@mcp.tool()
+def auth_status() -> dict:
+    """Report whether a valid HEB session is available and the active store. Reads the exported session file; does not open a browser.
+
+    Session validity is driven by the sat/sst cookies (the real limiter), not the
+    short-lived reese84 token. hashes_ok is a live probe confirming the GraphQL
+    persisted-query hashes still work; if False, refresh the hashes/re-auth.
+    """
+    authed = _is_authed()
+    status = {
+        "authenticated": authed,
+        "store_id": _store_id(),
+        "place_order_enabled": _ALLOW_PLACE_ORDER,
+        "hashes_ok": _hashes_ok() if authed else False,
+    }
+    status.update(_session_expiry())
+    return status
+
+
+
+@mcp.tool()
+def refresh_session() -> dict:
+    """Reload the exported session and the latest persisted-query hashes after running the maintenance workflow. Call this if tools start reporting NOT_AUTHENTICATED or OPERATION_NOT_CAPTURED."""
+    _reload_session_caches()
+    return {"authenticated": _is_authed(), "store_id": _store_id()}
+
+
+@mcp.tool()
+def login(force: bool = False) -> dict:
+    """Log in to HEB and export a fresh session (auth.json), then reload it.
+
+    Runs the nodriver login-and-export browser flow (handling email verification)
+    and refreshes ~/.texas-grocery-mcp/auth.json. This is the programmatic
+    equivalent of the refresh-heb-login skill; no order is ever placed.
+
+    Args:
+        force: When True, re-run the browser login even if the current session is
+            still valid. When False (default), skip if already authenticated.
+    """
+    result = _auto_authenticate(force=force)
+    return {
+        "authenticated": _is_authed(),
+        "store_id": _store_id(),
+        "login": result,
+    }
+
+
+@mcp.tool()
+def capture_hashes(wait_seconds: float = 0) -> dict:
+    """Refresh HEB's rotating GraphQL persisted-query hashes (fixes hashes_ok: false).
+
+    Runs the nodriver capture_hashes browser flow: it logs in and exercises the
+    HEB site to re-sniff the current persisted-query hashes, rewriting auth.json,
+    persisted_queries.json, and captured_operations.json, then reloads them here.
+
+    Use this when auth_status reports hashes_ok: false, or when search/add/
+    checkout tools fail with OPERATION_NOT_CAPTURED or persisted-query/hash
+    errors while the session is otherwise authenticated. This is the ONLY tool
+    that regenerates hashes — login/refresh_session only refresh session cookies.
+    No order is ever placed.
+
+    The capture drives a real browser under Xvfb and usually takes several
+    minutes — longer than an MCP client will keep a tool call open. It therefore
+    runs in the BACKGROUND: this returns after at most ``wait_seconds`` with
+    ``capture.status`` of either "completed" (with the outcome) or "running".
+    On "running", simply call this tool again later — it joins the same run
+    rather than launching a second browser.
+
+    Args:
+        wait_seconds: How long to block waiting for the capture. Defaults to
+            AUTO_GROCER_CAPTURE_WAIT (120s), kept below the client's cancel
+            deadline.
+    """
+    budget = float(wait_seconds) if wait_seconds and wait_seconds > 0 else _CAPTURE_WAIT_SECONDS
+    capture = _run_capture_job().status(budget)
+    authed = _is_authed()
+    return {
+        "authenticated": authed,
+        "store_id": _store_id(),
+        "hashes_ok": _hashes_ok() if authed else False,
+        "capture": capture,
+    }
+
+
+@mcp.tool()
+def search_products(query: str, limit: int = 10, store_id: str = "") -> dict:
+    """
+    Search HEB products via GraphQL without adding anything to the cart.
+
+    Args:
+        query: Search term, e.g. "organic spinach" or "chicken breast".
+        limit: Maximum number of results to return.
+        store_id: Optional HEB store id. Defaults to STORE_ID in .env.
+    """
+    if not _ensure_authed():
+        return _NOT_AUTHED
+    products = _search_products_sync(query, _store_id(store_id), limit)
+    return {"query": query, "count": len(products), "products": products}
+
+
+@mcp.tool()
+def get_product_details(product_id: str, store_id: str = "") -> dict:
+    """
+    Get comprehensive details for a single HEB product via GraphQL: ingredients,
+    nutrition facts, allergen/safety warnings, dietary attributes (gluten-free,
+    organic, vegan, kosher, ...), package size, and store location.
+
+    Use search_products first to get a product_id. Results are cached ~24h.
+
+    Args:
+        product_id: The product id (e.g. "127074"), from a search result.
+        store_id: Optional HEB store id. Defaults to STORE_ID in .env.
+    """
+    if not _ensure_authed():
+        return _NOT_AUTHED
+    details = _product_details_sync(product_id, _store_id(store_id))
+    if details is None:
+        return {
+            "error": True,
+            "code": "PRODUCT_NOT_FOUND",
+            "message": f"No product details found for id {product_id}.",
+        }
+    return details
+
+
+@mcp.tool()
+def add_groceries(items: list[str], clear_first: bool = False, quantity: int = 1) -> dict:
+    """
+    Search HEB for each item and add the best match to the cart via GraphQL (fast).
+
+    USE THIS ONLY FOR STANDALONE ITEMS the user actually named ("basmati rice",
+    "2 lb chicken breast", "milk").
+
+    DO NOT USE THIS FOR A NAMED DISH. If the user asks for a recipe/dish by name
+    ("palak paneer", "dal makhani"), you MUST call `find_recipes` /
+    `add_recipe_ingredients` first — those read the user's saved recipe from the
+    database. Never write out a dish's ingredient list from your own knowledge and
+    pass it here; if the dish is not in the database, say so and offer to seed it
+    rather than inventing ingredients.
+
+    Each item is a free-form string: a bare name ("spinach") or a name with a
+    measured amount ("16 oz spinach", "2 lb chicken breast", "1 cup heavy cream").
+    Produce (fruit/vegetables) is automatically searched as organic.
+
+    HOW QUANTITY IS DECIDED
+    -----------------------
+    1. MEASURED amounts (weight/volume: oz, lb, g, cup, tbsp, ml, qt, gal, ...)
+       scale by package size automatically. The server reads each result's
+       package size and adds enough packages to cover the amount with the least
+       waste. Example: "16 oz spinach" with only 5 oz bags on the shelf adds 4
+       bags; if a 1 lb bag exists it adds that single bag instead. You do NOT
+       pass `quantity` for these — keep the amount in the item string.
+
+    2. WHOLE-ITEM COUNTS (e.g. 2 onions, 3 limes, 4 avocados) are NOT inferred
+       from the text — a leading number with no unit is ignored. To buy several
+       of a whole item, pass `quantity` with the count.
+
+    USING `quantity`
+    ----------------
+    `quantity` multiplies EVERY item in the same call. So group items that share
+    the same count, and make a SEPARATE call for each distinct count:
+      * 2 onions and 3 limes ->
+          add_groceries(["onion"], quantity=2)
+          add_groceries(["lime"], quantity=3)
+      * 1 each of many things -> a single call with the default quantity=1.
+    Do not put differently-counted items in one call expecting per-item counts.
+
+    Args:
+        items: Grocery item descriptions to add. Bare names or name+amount.
+        clear_first: If True, empty the cart before adding.
+        quantity: How many of EACH item in `items` to add (applies to all of
+            them; default 1). Use this for whole-item counts, not for measured
+            amounts (put those in the item string instead).
+
+    Returns:
+        A summary dict with `added` (ingredient, product, size, price, quantity),
+        `failed`, and their counts.
+    """
+    if not _ensure_authed():
+        return _NOT_AUTHED
+    IL = _ingredient_list_from_items(items)
+    report = graphql_cart_sync(IL, _store_id(), do_clear=clear_first, quantity=quantity)
+    return _summarize(report)
+
+
+@mcp.tool()
+def add_products_by_id(products: list[dict], clear_first: bool = False) -> dict:
+    """
+    Add EXACT products to the cart by product id + sku, with NO search step.
+
+    Use this after search_products (or get_product_details) has already found the
+    right product, so the precise item you chose is added instead of a
+    re-searched guess. This is the reliable way to add a specific
+    replacement/substitute you have already picked — prefer it over add_groceries
+    once you know the product_id.
+
+    Args:
+        products: List of product entries. Each entry is a dict with:
+            - product_id (str, required): from a search_products result.
+            - sku (str, required): the matching sku from that same result.
+            - quantity (int, optional): how many to add (default 1).
+            - name (str, optional): display name, used only in the response.
+            Example: [{"product_id": "8075021", "sku": "4122031137",
+                       "quantity": 1, "name": "Mi Tienda Fresh Garlic, 3 ct"}]
+        clear_first: If True, empty the cart before adding.
+
+    Returns:
+        A summary dict with `added` (product_id, sku, name, quantity), `failed`
+        (with a status/detail), and their counts.
+    """
+    if not _ensure_authed():
+        return _NOT_AUTHED
+    if clear_first:
+        graphql_cart_sync(IngredientList(), _store_id(), do_clear=True)
+    return _add_by_id_sync(products or [])
+
+
+@mcp.tool()
+def add_recipe_ingredients(
+    request: str, clear_first: bool = False, exclude: list[str] | None = None
+) -> dict:
+    """
+    Match a natural-language meal request against recipes in the DATABASE and add
+    those recipes' real ingredients to the cart via GraphQL.
+
+    THIS IS THE ONLY CORRECT WAY TO ADD A NAMED DISH. When the user names a dish
+    ("palak paneer", "dal makhani", "penne alla vodka"), call this tool — or
+    `find_recipes` first if you want to preview. NEVER write the ingredient list
+    yourself from general knowledge and pass it to `add_groceries`: the saved
+    recipe is the user's actual recipe, and an invented one will be wrong.
+
+    If a dish comes back in `unmatched`, it is NOT in the database. Tell the user
+    it isn't saved and ask whether to seed it (`seed_recipes`) or add a
+    user-supplied ingredient list — do not invent one.
+
+    PANTRY STAPLES / OMISSIONS
+    --------------------------
+    If the user already has some ingredients ("skip the oil, ghee, and spices"),
+    call `find_recipes` first to see the recipe's actual ingredient names, decide
+    yourself which of them the user meant, and pass those EXACT names in
+    `exclude`. No fuzzy matching happens here — you interpret the request, this
+    tool just drops the names you list. Skipped names come back in `excluded`.
+
+    Args:
+        request: Natural-language description of the meals/recipes you want.
+        clear_first: If True, empty the cart before adding.
+        exclude: Exact ingredient names to skip, spelled as they appear on the
+            recipe (case-insensitive), e.g. ["olive oil", "garam masala",
+            "ground cumin"]. A name that doesn't appear on the recipe is
+            ignored, so use `find_recipes` to get the real names first.
+
+    Returns:
+        The add summary plus `matched_recipes`, `unmatched`, and `excluded`.
+    """
+    if not _ensure_authed():
+        return _NOT_AUTHED
+
+    from auto_grocer.database.db_connection import get_db_session
+    from auto_grocer.database.ingredient_repository import IngredientRepository
+    from auto_grocer.database.recipe_repository import RecipeRepository
+    from auto_grocer.utility.recipe_matcher import build_ingredient_list, parse_and_match
+
+    db = get_db_session()
+    try:
+        matched, unmatched = parse_and_match(request, RecipeRepository(db))
+        IL, excluded = build_ingredient_list(matched, IngredientRepository(db), exclude=exclude)
+        matched_titles = [r.title or r.url for r in matched]
+    finally:
+        db.close()
+
+    if not IL.get_ingredients():
+        return {
+            "matched_recipes": matched_titles,
+            "unmatched": unmatched,
+            "excluded": excluded,
+            "added": [],
+            "failed": [],
+            "message": (
+                "No ingredients found for the matched recipes. Do NOT substitute an "
+                "invented ingredient list — ask the user to seed the recipe instead."
+                if matched_titles
+                else "No database recipe matched this request. Do NOT invent the "
+                "ingredients — tell the user the recipe is not saved and offer to "
+                "seed it with seed_recipes."
+            ),
+        }
+
+    summary = _summarize(graphql_cart_sync(IL, _store_id(), do_clear=clear_first))
+    summary["matched_recipes"] = matched_titles
+    summary["unmatched"] = unmatched
+    summary["excluded"] = excluded
+    return summary
+
+
+@mcp.tool()
+def find_recipes(request: str, include_ingredients: bool = True) -> dict:
+    """
+    Preview which DATABASE recipes match a natural-language request WITHOUT adding
+    anything to the cart.
+
+    Call this FIRST whenever the user names a dish, so the cart is built from the
+    user's saved recipe rather than a recipe you recall. Anything returned in
+    `unmatched` is not in the database — say so instead of inventing ingredients.
+
+    Args:
+        request: Natural-language description of the meals/recipes you want.
+        include_ingredients: Include each matched recipe's real ingredient list
+            (default True) so you can see exactly what would be added.
+    """
+    from auto_grocer.database.db_connection import get_db_session
+    from auto_grocer.database.ingredient_repository import IngredientRepository
+    from auto_grocer.database.recipe_repository import RecipeRepository
+    from auto_grocer.utility.recipe_matcher import parse_and_match
+
+    db = get_db_session()
+    try:
+        matched, unmatched = parse_and_match(request, RecipeRepository(db))
+        ingredients_repo = IngredientRepository(db)
+        results = []
+        for r in matched:
+            entry = {"id": r.id, "title": r.title, "description": r.description}
+            if include_ingredients:
+                entry["ingredients"] = [
+                    ing.to_dict() for ing in ingredients_repo.get_by_recipe(r.id)
+                ]
+            results.append(entry)
+        return {
+            "matched_recipes": results,
+            "unmatched": unmatched,
+        }
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def query_recipes(
+    search: str = "",
+    recipe_id: int = 0,
+    domain: str = "",
+    include_ingredients: bool = False,
+    limit: int = 50,
+) -> dict:
+    """
+    Browse and query the recipe database directly (no AI matching, no HEB login
+    required). Use this to list, search, or inspect saved recipes.
+
+    Resolution order (first non-empty wins):
+      * recipe_id > 0  -> return that single recipe (ingredients always included)
+      * search         -> case-insensitive match on title OR description
+      * domain         -> recipes from a source domain (e.g. "cookingclassy.com")
+      * otherwise      -> the most recent recipes (up to `limit`)
+
+    Args:
+        search: Text to match against recipe title/description.
+        recipe_id: Fetch one recipe by its database id.
+        domain: Filter recipes by source domain.
+        include_ingredients: Include each recipe's ingredient list in the result.
+        limit: Max recipes to return when listing (default 50).
+    """
+    from auto_grocer.database.db_connection import get_db_session
+    from auto_grocer.database.ingredient_repository import IngredientRepository
+    from auto_grocer.database.recipe_repository import RecipeRepository
+
+    try:
+        db = get_db_session()
+    except Exception as e:
+        return {
+            "error": True,
+            "code": "DATABASE_UNAVAILABLE",
+            "message": f"Could not open the recipe database: {e}",
+        }
+
+    try:
+        recipes_repo = RecipeRepository(db)
+        ingredients_repo = IngredientRepository(db)
+
+        if recipe_id and int(recipe_id) > 0:
+            recipe = recipes_repo.get_by_id(int(recipe_id))
+            if recipe is None:
+                return {"recipes": [], "count": 0, "message": f"No recipe with id {recipe_id}."}
+            recipes = [recipe]
+            include_ingredients = True
+            mode = "by_id"
+        elif search.strip():
+            recipes = recipes_repo.search_recipes(search.strip())
+            mode = "search"
+        elif domain.strip():
+            recipes = recipes_repo.get_by_domain(domain.strip())
+            mode = "domain"
+        else:
+            recipes = recipes_repo.get_all(limit=int(limit) if limit else None)
+            mode = "list"
+
+        results = []
+        for r in recipes:
+            entry = r.to_dict()
+            if include_ingredients:
+                entry["ingredients"] = [
+                    ing.to_dict() for ing in ingredients_repo.get_by_recipe(r.id)
+                ]
+            results.append(entry)
+
+        return {
+            "mode": mode,
+            "count": len(results),
+            "total_recipes": recipes_repo.count(),
+            "recipes": results,
+        }
+    except Exception as e:
+        return {"error": True, "code": "QUERY_FAILED", "message": str(e)}
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def list_all_recipes(page: int = 1) -> dict:
+    """
+    List every recipe in the database, paginated 10 per page (no AI matching, no
+    HEB login required).
+
+    Call with page=1 to get the first ten recipes, page=2 for the next ten, and
+    so on. Use the returned `has_next`/`next_page` fields to keep requesting more
+    until `has_next` is false.
+
+    Each recipe entry contains:
+      * name             -> the recipe title
+      * url              -> the source URL
+      * ingredient_count -> number of ingredients on the recipe
+      * cook_time        -> cook time in minutes (null if not recorded)
+
+    Args:
+        page: 1-indexed page number (10 recipes per page). Defaults to 1.
+    """
+    from auto_grocer.database.db_connection import get_db_session
+    from auto_grocer.database.recipe_repository import RecipeRepository
+
+    PAGE_SIZE = 10
+
+    try:
+        page_num = int(page)
+    except (TypeError, ValueError):
+        page_num = 1
+    if page_num < 1:
+        page_num = 1
+
+    try:
+        db = get_db_session()
+    except Exception as e:
+        return {
+            "error": True,
+            "code": "DATABASE_UNAVAILABLE",
+            "message": f"Could not open the recipe database: {e}",
+        }
+
+    try:
+        recipes_repo = RecipeRepository(db)
+        total = recipes_repo.count()
+        total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE if total else 0
+        offset = (page_num - 1) * PAGE_SIZE
+
+        recipes = recipes_repo.get_all(limit=PAGE_SIZE, offset=offset)
+        results = [
+            {
+                "name": r.title,
+                "url": r.url,
+                "ingredient_count": len(r.ingredients) if r.ingredients else 0,
+                "cook_time": r.cook_time,
+            }
+            for r in recipes
+        ]
+
+        has_next = (offset + len(results)) < total
+        return {
+            "page": page_num,
+            "page_size": PAGE_SIZE,
+            "count": len(results),
+            "total_recipes": total,
+            "total_pages": total_pages,
+            "has_next": has_next,
+            "next_page": page_num + 1 if has_next else None,
+            "recipes": results,
+        }
+    except Exception as e:
+        return {"error": True, "code": "QUERY_FAILED", "message": str(e)}
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def seed_recipes(
+    title: str = "",
+    url: str = "",
+    ingredients: list | None = None,
+    description: str = "",
+    cook_time: int = 0,
+) -> dict:
+    """
+    Insert ONE recipe (with its ingredients) into the recipe database. No HEB
+    login required - this is a pure database write.
+
+    Intended workflow: when the user pastes a list of recipes
+    ("add these recipes to my database: ..."), the assistant visits each recipe
+    link, extracts EVERY ingredient (name, quantity, unit), shows the full list
+    in chat, then calls this tool ONCE PER RECIPE to persist it.
+
+    YOUTUBE SUPPORT: if `url` is a YouTube video or Short and no `ingredients`
+    are supplied, this tool automatically fetches the video's description
+    (assumed to contain the full recipe + ingredient list), parses the
+    ingredients with Claude, and derives the title/description when they aren't
+    given. Just pass the YouTube URL with an empty `ingredients` list.
+
+    Ingredients are auto-tagged (vegetable, fruit, meat, fish, cheese, pasta,
+    oil, spice, wine, tree_nut, eggs, milk) using the project's word
+    dictionaries so downstream cart/organic logic works. Re-seeding the same URL
+    updates the existing recipe and replaces its ingredients instead of creating
+    a duplicate.
+
+    Args:
+        title: Recipe name/title (e.g. "Palak Paneer"). Optional for YouTube
+            URLs (derived from the description when blank).
+        url: Source URL. Used as the unique key; required. May be a recipe page
+            or a YouTube video/Short URL.
+        ingredients: List of ingredient dicts. Each item supports:
+            - name (str, required) e.g. "spinach"
+            - amount (number, default 1) e.g. 2
+            - unit (str, default "none") e.g. "cup", "tablespoon", "lb"
+            - tags (list[str], optional; auto-derived from name if omitted)
+            Optional/empty for YouTube URLs (parsed from the description).
+        description: Optional short description for natural-language matching.
+            Derived from the video for YouTube URLs when blank.
+        cook_time: Optional cook time in minutes (0 or omit if unknown).
+    """
+    from auto_grocer.database.db_connection import get_db_session
+    from auto_grocer.database.ingredient_repository import IngredientRepository
+    from auto_grocer.database.recipe_repository import RecipeRepository
+
+    if not url or not str(url).strip():
+        return {"error": True, "code": "INVALID_INPUT", "message": "A recipe 'url' is required."}
+
+    if ingredients is None:
+        ingredients = []
+
+    # YouTube auto-detection: when a video/Short URL is given without explicit
+    # ingredients, fetch + parse the description into ingredients.
+    youtube_source = False
+    is_youtube_url: Callable[[str], bool] | None
+    try:
+        from auto_grocer.utility.youtube import is_youtube_url, youtube_recipe_from_url
+    except Exception:  # noqa: BLE001 - module optional at import time
+        is_youtube_url = None
+
+    if is_youtube_url and is_youtube_url(url) and not ingredients:
+        try:
+            parsed = youtube_recipe_from_url(url)
+        except ValueError as e:
+            return {
+                "error": True,
+                "code": "YOUTUBE_FETCH_FAILED",
+                "message": str(e),
+            }
+        except Exception as e:  # noqa: BLE001
+            return {
+                "error": True,
+                "code": "YOUTUBE_FETCH_FAILED",
+                "message": f"Could not process YouTube URL: {e}",
+            }
+
+        ingredients = parsed.get("ingredients") or []
+        if not str(title).strip():
+            title = parsed.get("title", "")
+        if not str(description).strip():
+            description = parsed.get("description", "")
+        youtube_source = True
+
+    if not isinstance(ingredients, list) or not ingredients:
+        return {"error": True, "code": "INVALID_INPUT", "message": "'ingredients' must be a non-empty list."}
+
+    try:
+        db = get_db_session()
+    except Exception as e:
+        return {
+            "error": True,
+            "code": "DATABASE_UNAVAILABLE",
+            "message": f"Could not open the recipe database: {e}",
+        }
+
+    try:
+        recipe_repo = RecipeRepository(db)
+        ingredient_repo = IngredientRepository(db)
+
+        # Tagger reused for every ingredient (loads the word dictionaries once).
+        tagger = IngredientList()
+
+        recipe = recipe_repo.get_or_create(
+            url=str(url).strip(),
+            title=(title or "").strip() or None,
+            description=(description or "").strip() or None,
+        )
+
+        # Update cook_time if provided (works for both new and re-seeded recipes).
+        try:
+            cook_time_minutes = int(cook_time)
+        except (TypeError, ValueError):
+            cook_time_minutes = 0
+        if cook_time_minutes > 0 and recipe.cook_time != cook_time_minutes:
+            recipe_repo.update(recipe.id, cook_time=cook_time_minutes)
+
+        # Replace any existing ingredients so re-seeding is idempotent.
+        existing = ingredient_repo.get_by_recipe(recipe.id)
+        for ing in existing:
+            ingredient_repo.delete(ing.id)
+
+        added = []
+        skipped = []
+        for raw in ingredients:
+            if not isinstance(raw, dict):
+                skipped.append({"ingredient": raw, "reason": "not an object"})
+                continue
+            name = str(raw.get("name", "")).strip()
+            if not name:
+                skipped.append({"ingredient": raw, "reason": "missing name"})
+                continue
+
+            try:
+                amount = float(raw.get("amount", 1) or 1)
+            except (TypeError, ValueError):
+                amount = 1.0
+            unit = str(raw.get("unit", "none") or "none").strip() or "none"
+
+            tags = raw.get("tags")
+            if not tags:
+                derived = tagger.get_tag(name)
+                tags = [derived] if derived else []
+
+            created = ingredient_repo.create(
+                name=name,
+                amount=amount,
+                unit=unit,
+                tag_names=tags,
+                recipe_id=recipe.id,
+            )
+            added.append(created.to_dict())
+
+        return {
+            "success": True,
+            "source": "youtube" if youtube_source else "manual",
+            "recipe": recipe.to_dict(),
+            "ingredients_added": len(added),
+            "ingredients_skipped": len(skipped),
+            "ingredients": added,
+            "skipped": skipped,
+        }
+    except Exception as e:
+        return {"error": True, "code": "SEED_FAILED", "message": str(e)}
+    finally:
+        db.close()
+
+
+@mcp.tool()
+def get_cart() -> dict:
+    """Return the current cart contents (items, quantities, totals) via GraphQL."""
+    if not _ensure_authed():
+        return _NOT_AUTHED
+    # A WAF challenge makes /graphql return HTML, so the JSON decode blows up.
+    # Surface that as a structured error instead of letting a raw traceback
+    # escape the tool (which tells the caller nothing actionable).
+    try:
+        return _graphql_get_cart_sync()
+    except Exception as e:  # noqa: BLE001 - report, never raise out of a tool
+        return {
+            "error": True,
+            "code": "CART_FETCH_FAILED",
+            "message": f"Could not read the cart: {e}",
+        }
+
+
+@mcp.tool()
+def clear_cart() -> dict:
+    """Empty all items from the cart via GraphQL."""
+    if not _ensure_authed():
+        return _NOT_AUTHED
+    try:
+        report = graphql_cart_sync(IngredientList(), _store_id(), do_clear=True)
+    except Exception as e:  # noqa: BLE001 - report, never raise out of a tool
+        return {
+            "error": True,
+            "code": "CART_CLEAR_FAILED",
+            "message": f"Could not clear the cart: {e}",
+        }
+
+    cart = report.get("cart")
+    # Never report "cleared" on a failed call: the caller would go on to add
+    # items believing it started from an empty cart.
+    if isinstance(cart, dict) and cart.get("error"):
+        return {
+            "error": True,
+            "code": "CART_CLEAR_FAILED",
+            "message": f"Could not clear the cart: {cart.get('message')}",
+            "cart": cart,
+        }
+    return {"status": "cleared", "cart": cart}
+
+
+@mcp.tool()
+def remove_from_cart(items: list[str]) -> dict:
+    """
+    Remove specific items from the cart via GraphQL (without emptying it).
+
+    Each item is an identifier matched against the cart's products: a product id,
+    a sku id, or a case-insensitive substring of the product name (e.g.
+    "Friskies" or "cat food"). Matching items have their quantity set to 0.
+
+    Args:
+        items: List of product identifiers / name fragments to remove.
+    """
+    if not _ensure_authed():
+        return _NOT_AUTHED
+    return _remove_from_cart_sync(items)
+
+
+@mcp.tool()
+def set_store(store_id: str) -> dict:
+    """
+    Set the active pickup store for GraphQL operations.
+
+    Args:
+        store_id: HEB store id to make active.
+    """
+    if not _ensure_authed():
+        return _NOT_AUTHED
+
+    store_id = str(store_id).strip()
+
+    # Enrich the response with a name/address if this store was seen via a
+    # prior search_stores call (mirrors texas-grocery-mcp's store_change,
+    # which reports the same in both its error and success payloads).
+    cached = get_cached_store(store_id)
+    store_name = getattr(cached, "name", None) if cached is not None else None
+    store_address = getattr(cached, "address", None) if cached is not None else None
+
+    # select_store (auto_grocer.utility.graphql_store) is already a SYNC wrapper
+    # that runs its own event loop internally and returns a plain dict/model —
+    # do NOT wrap it in asyncio.run() again (see comment history / repo memory:
+    # double-wrapping raises "a coroutine was expected, got {...}" on every call).
+    result = select_store(store_id)
+
+    if isinstance(result, dict) and result.get("error"):
+        error_response = {
+            "error": True,
+            "code": result.get("code", "STORE_CHANGE_FAILED"),
+            "message": result.get("message", "Failed to change store"),
+            "store_id": store_id,
+            "store_name": store_name,
+        }
+        for key in ("expected_store", "actual_store", "suggestion"):
+            if result.get(key):
+                error_response[key] = result[key]
+        if result.get("code") == "CART_CONFLICT":
+            error_response["help"] = (
+                "Your cart has items that may be unavailable or priced "
+                "differently at the new store. Options: (1) call set_store "
+                "again once the underlying client supports ignore_conflicts, "
+                "(2) clear your cart first, or (3) keep your current store."
+            )
+        return error_response
+
+    return {
+        "success": True,
+        "store_id": store_id,
+        "store_name": store_name,
+        "store_address": store_address,
+        "message": f"Store changed to {store_name or store_id}",
+        "verified": result.get("verified", False) if isinstance(result, dict) else False,
+    }
+
+
+@mcp.tool()
+def search_stores(address: str, radius_miles: int = 25) -> dict:
+    """
+    Find HEB stores near an address, zip code, neighborhood, or landmark via
+    GraphQL (geocoding-backed). Use this to discover a store id you can pass to
+    set_store.
+
+    Args:
+        address: Address, zip code, neighborhood, or landmark to search near.
+        radius_miles: Search radius in miles (default 25).
+    """
+    return _search_stores_sync(address, radius_miles)
+
+
+@mcp.tool()
+def list_coupons(search: str = "", category_id: int = 0, limit: int = 60) -> dict:
+    """
+    List or search available HEB digital coupons via GraphQL. Requires a valid
+    session. Use clip_coupon to clip one to your account before checkout.
+
+    Args:
+        search: Optional keyword to filter coupons (e.g. "cereal").
+        category_id: Optional category id to filter by (see result `categories`).
+        limit: Maximum coupons to return (max 60).
+    """
+    if not _ensure_authed():
+        return _NOT_AUTHED
+    return _get_coupons_sync(search, category_id, limit)
+
+
+@mcp.tool()
+def list_clipped_coupons(limit: int = 60) -> dict:
+    """
+    List the coupons already clipped to your HEB account via GraphQL.
+
+    Args:
+        limit: Maximum coupons to return (max 60).
+    """
+    if not _ensure_authed():
+        return _NOT_AUTHED
+    return _clipped_coupons_sync(limit)
+
+
+@mcp.tool()
+def clip_coupon(coupon_id: int) -> dict:
+    """
+    Clip a digital coupon to your HEB account via GraphQL so its discount applies
+    at checkout. Use list_coupons to find a coupon_id.
+
+    Args:
+        coupon_id: The coupon id to clip (from list_coupons).
+    """
+    if not _ensure_authed():
+        return _NOT_AUTHED
+    return _clip_coupon_sync(coupon_id)
+
+
+@mcp.tool()
+def list_timeslots(store_id: str = "") -> dict:
+    """
+    List available curbside pickup time slots via GraphQL.
+
+    Returns OPERATION_NOT_CAPTURED if the timeslot operation hasn't been
+    captured yet - run the maintenance workflow and refresh_session.
+
+    Args:
+        store_id: Optional HEB store id. Defaults to STORE_ID in .env.
+    """
+    if not _ensure_authed():
+        return _NOT_AUTHED
+    return list_timeslots_sync(_store_id(store_id))
+
+
+@mcp.tool()
+def reserve_timeslot(slot_id: str, store_id: str = "") -> dict:
+    """
+    Reserve a curbside pickup time slot via GraphQL.
+
+    Use list_timeslots first to get a slot id. Returns OPERATION_NOT_CAPTURED
+    if the reserve operation hasn't been captured yet.
+
+    Args:
+        slot_id: The time slot id to reserve (from list_timeslots).
+        store_id: Optional HEB store id. Defaults to STORE_ID in .env.
+    """
+    if not _ensure_authed():
+        return _NOT_AUTHED
+    return reserve_timeslot_sync(slot_id, _store_id(store_id))
+
+
+@mcp.tool()
+def checkout() -> dict:
+    """
+    Advance to the order-review stage via GraphQL. This DOES NOT place the order
+    and never charges. Reserve a timeslot first. Use place_order to actually
+    submit the paid order.
+    """
+    if not _ensure_authed():
+        return _NOT_AUTHED
+    return checkout_sync(place_order=False)
+
+
+@mcp.tool()
+def place_order() -> dict:
+    """
+    Submit the final paid order via GraphQL. THIS CHARGES YOUR PAYMENT METHOD.
+
+    Disabled by default for safety; enable by setting the environment variable
+    AUTO_GROCER_ALLOW_PLACE_ORDER=1 before starting the server. Run checkout
+    (review) first.
+    """
+    if not _ensure_authed():
+        return _NOT_AUTHED
+    if not _ALLOW_PLACE_ORDER:
+        return {
+            "error": True,
+            "code": "PLACE_ORDER_DISABLED",
+            "message": (
+                "place_order is disabled. Set AUTO_GROCER_ALLOW_PLACE_ORDER=1 "
+                "in the server environment to enable submitting a paid order."
+            ),
+        }
+    return checkout_sync(place_order=True)
+
+
+def main() -> None:
+    # Keep the stdio server's stderr free of decoration: the ASCII banner and
+    # the "Update available" panel are noise in an MCP client log, and the
+    # update check fires a PyPI request on every single server start.
+    try:
+        from fastmcp import settings as _fastmcp_settings
+
+        _fastmcp_settings.check_for_updates = "off"
+    except Exception:  # noqa: BLE001 - never let cosmetics break startup
+        pass
+    mcp.run(show_banner=False)
+
+
+if __name__ == "__main__":
+    main()

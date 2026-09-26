@@ -1,0 +1,96 @@
+# auto_grocer — Agent Instructions
+
+This repo automates HEB grocery ordering through the `auto-grocer` MCP server,
+which reuses an exported HEB session and persisted GraphQL hashes.
+
+## Custom Agent
+
+For **grocery ordering tasks** (adding items, managing cart, checking out), use the
+**Grocery Ordering** agent (`.github/agents/grocery-ordering.agent.md`). It has:
+- Full access to all `auto-grocer` MCP tools
+- Session validation via a `SessionStart` hook
+- Detailed knowledge of the ordering workflow
+- Safety constraints around payment
+
+## Startup Check (ALWAYS DO THIS FIRST — ALL AGENTS)
+
+Before using any HEB cart / timeslot / checkout / search tool, verify the session
+and recover automatically:
+
+1. Call `mcp_auto-grocer_auth_status`. If `authenticated:false` (or any tool
+   returns `NOT_AUTHENTICATED`), run the **refresh-heb-login** skill.
+2. If any tool returns `OPERATION_NOT_CAPTURED` or a persisted-query/hash error,
+   run the **refresh-graphql-hashes** skill.
+3. Re-run `mcp_auto-grocer_auth_status` and proceed once it returns
+   `authenticated:true`.
+
+Both skills run `auto_grocer.session_maintenance.run` inside the Docker container (which writes
+straight into the `auto_grocer_session` volume) and then call
+`mcp_auto-grocer_refresh_session`. Never hammer heb.com — repeated hits trigger
+WAF 401s and email verification.
+
+### Never truncate session-maintenance output
+
+When a session/hash refresh is needed, **run `auto_grocer.session_maintenance.run` with its full
+output — never pipe it to `tail`, `head`, or `grep`.** A stale session or stale
+hashes means session maintenance itself is suspect, so truncating the log hides the
+actual failure. Also pass `--env-file .env` to `docker compose`, or interpolation
+fails on `DATABASE_PASSWORD`:
+
+```bash
+docker compose --env-file .env -f docker/docker-compose.yml run --rm -T \
+  -e MODE=nodriver -e OPERATION=capture_hashes mcp python -m auto_grocer.session_maintenance.run
+```
+
+Filtering with `tail` is fine for unrelated commands (builds, test suites).
+
+## MCP Tool Quick Reference
+
+### Session
+- `auth_status` — Check session validity
+- `refresh_session` — Reload session after refresh skills
+
+### Products & Cart
+- `search_products(query)` — Search HEB products
+- `add_groceries(items)` — Add items to cart
+- `get_cart` / `clear_cart` / `remove_from_cart(items)`
+
+### Recipes
+- `add_recipe_ingredients(request, exclude=[])` — Add recipe ingredients from the DB
+- `find_recipes(request)` — Preview recipe matches (includes ingredients)
+- `query_recipes(...)` / `list_all_recipes(page)` / `seed_recipes(...)`
+
+> **⚠️ Recipe database first — never invent a recipe.** When the user names a dish,
+> ALWAYS call `find_recipes` / `add_recipe_ingredients` BEFORE any `add_groceries`
+> call. The saved recipe is the source of truth; do not write out ingredients from
+> your own knowledge of the dish. To skip ingredients the user already has, read
+> the real names from `find_recipes` and pass those exact names in `exclude`. If a
+> dish comes back `unmatched`, tell the user it isn't saved and offer to seed it —
+> do NOT make up its ingredients.
+
+> **Adding a recipe from a URL:** ALWAYS use the **seed-recipe-from-url** skill.
+> Fetch the actual page and extract EVERY ingredient — never author the list from
+> memory. For YouTube URLs, pass the URL with empty `ingredients` (auto-parsed).
+
+### Checkout
+- `list_timeslots` / `reserve_timeslot(slot_id)`
+- `checkout` — Review only (NO CHARGE)
+- `place_order` — **⚠️ CHARGES CARD** (disabled by default)
+
+### Store & Coupons
+- `search_stores(query)` / `set_store(store_id)`
+- `list_coupons` / `clip_coupon(coupon_id)`
+
+## Error Recovery
+
+| Error | Skill to Run |
+|-------|--------------|
+| `NOT_AUTHENTICATED` | **refresh-heb-login** |
+| `OPERATION_NOT_CAPTURED` | **refresh-graphql-hashes** |
+| WAF 401 / Email verification | Wait, retry manually |
+
+## Development Reference
+
+- **README.md** — Quick start, Docker setup, tool reference
+- **CLAUDE.md** — MCP usage guide + browser automation (maintenance)
+- **docs/** — Architecture, database, debugging guides
