@@ -940,6 +940,16 @@ def add_groceries(items: list[str], clear_first: bool = False, quantity: int = 1
     """
     Search HEB for each item and add the best match to the cart via GraphQL (fast).
 
+    USE THIS ONLY FOR STANDALONE ITEMS the user actually named ("basmati rice",
+    "2 lb chicken breast", "milk").
+
+    DO NOT USE THIS FOR A NAMED DISH. If the user asks for a recipe/dish by name
+    ("palak paneer", "dal makhani"), you MUST call `find_recipes` /
+    `add_recipe_ingredients` first — those read the user's saved recipe from the
+    database. Never write out a dish's ingredient list from your own knowledge and
+    pass it here; if the dish is not in the database, say so and offer to seed it
+    rather than inventing ingredients.
+
     Each item is a free-form string: a bare name ("spinach") or a name with a
     measured amount ("16 oz spinach", "2 lb chicken breast", "1 cup heavy cream").
     Produce (fruit/vegetables) is automatically searched as organic.
@@ -1018,17 +1028,41 @@ def add_products_by_id(products: list[dict], clear_first: bool = False) -> dict:
 
 
 @mcp.tool()
-def add_recipe_ingredients(request: str, clear_first: bool = False) -> dict:
+def add_recipe_ingredients(
+    request: str, clear_first: bool = False, exclude: list[str] | None = None
+) -> dict:
     """
-    Match a natural-language meal request against recipes in the database and add
-    all matched recipes' ingredients to the cart via GraphQL.
+    Match a natural-language meal request against recipes in the DATABASE and add
+    those recipes' real ingredients to the cart via GraphQL.
 
-    Example request: "I want palak paneer, chicken buffalo wraps, and penne alla vodka".
-    Requires recipes seeded via database/seed_recipes.py.
+    THIS IS THE ONLY CORRECT WAY TO ADD A NAMED DISH. When the user names a dish
+    ("palak paneer", "dal makhani", "penne alla vodka"), call this tool — or
+    `find_recipes` first if you want to preview. NEVER write the ingredient list
+    yourself from general knowledge and pass it to `add_groceries`: the saved
+    recipe is the user's actual recipe, and an invented one will be wrong.
+
+    If a dish comes back in `unmatched`, it is NOT in the database. Tell the user
+    it isn't saved and ask whether to seed it (`seed_recipes`) or add a
+    user-supplied ingredient list — do not invent one.
+
+    PANTRY STAPLES / OMISSIONS
+    --------------------------
+    If the user already has some ingredients ("skip the oil, ghee, and spices"),
+    call `find_recipes` first to see the recipe's actual ingredient names, decide
+    yourself which of them the user meant, and pass those EXACT names in
+    `exclude`. No fuzzy matching happens here — you interpret the request, this
+    tool just drops the names you list. Skipped names come back in `excluded`.
 
     Args:
         request: Natural-language description of the meals/recipes you want.
         clear_first: If True, empty the cart before adding.
+        exclude: Exact ingredient names to skip, spelled as they appear on the
+            recipe (case-insensitive), e.g. ["olive oil", "garam masala",
+            "ground cumin"]. A name that doesn't appear on the recipe is
+            ignored, so use `find_recipes` to get the real names first.
+
+    Returns:
+        The add summary plus `matched_recipes`, `unmatched`, and `excluded`.
     """
     if not _ensure_authed():
         return _NOT_AUTHED
@@ -1041,7 +1075,7 @@ def add_recipe_ingredients(request: str, clear_first: bool = False) -> dict:
     db = get_db_session()
     try:
         matched, unmatched = parse_and_match(request, RecipeRepository(db))
-        IL = build_ingredient_list(matched, IngredientRepository(db))
+        IL, excluded = build_ingredient_list(matched, IngredientRepository(db), exclude=exclude)
         matched_titles = [r.title or r.url for r in matched]
     finally:
         db.close()
@@ -1050,37 +1084,60 @@ def add_recipe_ingredients(request: str, clear_first: bool = False) -> dict:
         return {
             "matched_recipes": matched_titles,
             "unmatched": unmatched,
+            "excluded": excluded,
             "added": [],
             "failed": [],
-            "message": "No ingredients found for the matched recipes.",
+            "message": (
+                "No ingredients found for the matched recipes. Do NOT substitute an "
+                "invented ingredient list — ask the user to seed the recipe instead."
+                if matched_titles
+                else "No database recipe matched this request. Do NOT invent the "
+                "ingredients — tell the user the recipe is not saved and offer to "
+                "seed it with seed_recipes."
+            ),
         }
 
     summary = _summarize(graphql_cart_sync(IL, _store_id(), do_clear=clear_first))
     summary["matched_recipes"] = matched_titles
     summary["unmatched"] = unmatched
+    summary["excluded"] = excluded
     return summary
 
 
 @mcp.tool()
-def find_recipes(request: str) -> dict:
+def find_recipes(request: str, include_ingredients: bool = True) -> dict:
     """
-    Preview which database recipes match a natural-language request WITHOUT adding
+    Preview which DATABASE recipes match a natural-language request WITHOUT adding
     anything to the cart.
+
+    Call this FIRST whenever the user names a dish, so the cart is built from the
+    user's saved recipe rather than a recipe you recall. Anything returned in
+    `unmatched` is not in the database — say so instead of inventing ingredients.
 
     Args:
         request: Natural-language description of the meals/recipes you want.
+        include_ingredients: Include each matched recipe's real ingredient list
+            (default True) so you can see exactly what would be added.
     """
     from auto_grocer.database.db_connection import get_db_session
+    from auto_grocer.database.ingredient_repository import IngredientRepository
     from auto_grocer.database.recipe_repository import RecipeRepository
     from auto_grocer.utility.recipe_matcher import parse_and_match
 
     db = get_db_session()
     try:
         matched, unmatched = parse_and_match(request, RecipeRepository(db))
+        ingredients_repo = IngredientRepository(db)
+        results = []
+        for r in matched:
+            entry = {"id": r.id, "title": r.title, "description": r.description}
+            if include_ingredients:
+                entry["ingredients"] = [
+                    ing.to_dict() for ing in ingredients_repo.get_by_recipe(r.id)
+                ]
+            results.append(entry)
         return {
-            "matched_recipes": [
-                {"id": r.id, "title": r.title, "description": r.description} for r in matched
-            ],
+            "matched_recipes": results,
             "unmatched": unmatched,
         }
     finally:
@@ -1659,7 +1716,7 @@ def main() -> None:
     # the "Update available" panel are noise in an MCP client log, and the
     # update check fires a PyPI request on every single server start.
     try:
-        from fastmcp.settings import settings as _fastmcp_settings
+        from fastmcp import settings as _fastmcp_settings
 
         _fastmcp_settings.check_for_updates = "off"
     except Exception:  # noqa: BLE001 - never let cosmetics break startup

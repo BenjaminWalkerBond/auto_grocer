@@ -19,6 +19,7 @@ Before using any HEB grocery tools, validate the session:
 
 ```
 auth_status                          # Verify session
+find_recipes                         # REQUIRED first if a dish is named
 add_groceries / add_recipe_ingredients  # Add items to cart
 get_cart                             # Review cart
 list_timeslots                       # See pickup times
@@ -26,6 +27,15 @@ reserve_timeslot                     # Lock a slot
 checkout                             # Review order (NO CHARGE)
 place_order                          # OPTIONAL: Final order (CHARGES CARD)
 ```
+
+### ⚠️ Recipe database first — never invent a recipe
+
+When the user names a dish, its ingredients MUST come from the recipe database.
+Call `find_recipes` / `add_recipe_ingredients` **before** any `add_groceries` call.
+To skip ingredients the user already has, read the real ingredient names from
+`find_recipes` and pass those exact names in `add_recipe_ingredients(..., exclude=[...])`.
+If a dish is `unmatched`, tell the user it isn't saved and offer to seed it — do not
+author the ingredients yourself.
 
 ### Key Tools
 
@@ -35,7 +45,8 @@ place_order                          # OPTIONAL: Final order (CHARGES CARD)
 | `refresh_session` | Reload session after running refresh skills |
 | `search_products(query)` | Search HEB products |
 | `add_groceries(items)` | Add free-form items to cart |
-| `add_recipe_ingredients(request)` | Add recipe ingredients by natural language |
+| `add_recipe_ingredients(request, exclude=[])` | Add a saved recipe's ingredients, minus the exact names in `exclude` (DB is the source of truth) |
+| `find_recipes(request)` | Preview matching DB recipes + their ingredients |
 | `get_cart` | View cart contents |
 | `clear_cart` | Empty cart |
 | `list_timeslots` | Available pickup slots |

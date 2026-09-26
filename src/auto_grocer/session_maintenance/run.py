@@ -125,7 +125,8 @@ def _load_ingredients() -> IngredientList:
                 print("\n⚠️  Could not match:")
                 for u in unmatched:
                     print(f"   - {u}")
-            return build_ingredient_list(matched, IngredientRepository(db))
+            IL, _excluded = build_ingredient_list(matched, IngredientRepository(db))
+            return IL
         finally:
             db.close()
 

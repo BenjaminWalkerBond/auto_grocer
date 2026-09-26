@@ -118,7 +118,7 @@ def test_recipe_matcher_end_to_end(db_session):
         assert TEST_RECIPES[1]["url"] in matched_urls, "Should match Palak Paneer"
 
         # 3. build_ingredient_list.
-        ingredient_list = recipe_matcher.build_ingredient_list(matched, ingredient_repo)
+        ingredient_list, _excluded = recipe_matcher.build_ingredient_list(matched, ingredient_repo)
         names = {i.get_name() for i in ingredient_list.get_ingredients()}
         assert "penne" in names, "Ingredient list should include penne"
         assert "spinach" in names, "Ingredient list should include spinach"

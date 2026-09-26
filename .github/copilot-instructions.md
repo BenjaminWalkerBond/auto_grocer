@@ -56,9 +56,17 @@ Filtering with `tail` is fine for unrelated commands (builds, test suites).
 - `get_cart` / `clear_cart` / `remove_from_cart(items)`
 
 ### Recipes
-- `add_recipe_ingredients(request)` — Add recipe ingredients
-- `find_recipes(request)` — Preview recipe matches
+- `add_recipe_ingredients(request, exclude=[])` — Add recipe ingredients from the DB
+- `find_recipes(request)` — Preview recipe matches (includes ingredients)
 - `query_recipes(...)` / `list_all_recipes(page)` / `seed_recipes(...)`
+
+> **⚠️ Recipe database first — never invent a recipe.** When the user names a dish,
+> ALWAYS call `find_recipes` / `add_recipe_ingredients` BEFORE any `add_groceries`
+> call. The saved recipe is the source of truth; do not write out ingredients from
+> your own knowledge of the dish. To skip ingredients the user already has, read
+> the real names from `find_recipes` and pass those exact names in `exclude`. If a
+> dish comes back `unmatched`, tell the user it isn't saved and offer to seed it —
+> do NOT make up its ingredients.
 
 > **Adding a recipe from a URL:** ALWAYS use the **seed-recipe-from-url** skill.
 > Fetch the actual page and extract EVERY ingredient — never author the list from

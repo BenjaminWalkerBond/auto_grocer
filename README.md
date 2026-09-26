@@ -1,53 +1,54 @@
-# Auto Grocer
+# 🛒 Auto Grocer 🥑
 
 Talk to your **H-E-B** cart from an AI assistant. `auto_grocer` is an
 [MCP](https://modelcontextprotocol.io/) server that lets GitHub Copilot or Claude
 search products, build a cart from recipes or free-form lists, reserve a curbside
-pickup slot, and review checkout — all against **your own** H-E-B account.
+pickup slot, and review checkout — all against **your own** H-E-B account. 🌮🥕🧀
 
-Everything runs in Docker: the image bundles PostgreSQL, Chromium, and Xvfb and
+🐳 Everything runs in Docker: the image bundles PostgreSQL, Chromium, and Xvfb and
 refreshes its own H-E-B session, so there is **no host Python, database, or browser
 to install**. All you need is Docker Desktop and a filled-in `.env`.
 
-> **Not affiliated with H-E-B.** For personal, educational use with your own
-> account only. See [Disclaimer](#disclaimer).
+> ⚠️ **Not affiliated with H-E-B.** For personal, educational use with your own
+> account only. See [Disclaimer](#️-disclaimer).
 
 ---
 
-## Table of contents
+## 📚 Table of contents
 
-- [What you can do](#what-you-can-do)
-- [Prerequisites](#prerequisites)
-- [Quick start](#quick-start)
-- [Add the server to your AI client](#add-the-server-to-your-ai-client)
-- [Verify it works](#verify-it-works)
-- [MCP tools reference](#mcp-tools-reference)
-- [Typical workflow](#typical-workflow)
-- [Troubleshooting](#troubleshooting)
-- [Development](#development)
-- [Documentation](#documentation)
-- [Disclaimer](#disclaimer)
-- [Credits](#credits)
+- [✨ What you can do](#-what-you-can-do)
+- [🧰 Prerequisites](#-prerequisites)
+- [🚀 Quick start](#-quick-start)
+- [🔌 Add the server to your AI client](#-add-the-server-to-your-ai-client)
+- [✅ Verify it works](#-verify-it-works)
+- [🛠️ MCP tools reference](#️-mcp-tools-reference)
+- [🔁 Typical workflow](#-typical-workflow)
+- [🩺 Troubleshooting](#-troubleshooting)
+- [👩‍💻 Development](#-development)
+- [📖 Documentation](#-documentation)
+- [⚖️ Disclaimer](#️-disclaimer)
+- [💖 Credits](#-credits)
 
 ---
 
-## What you can do
+## ✨ What you can do
 
 Once connected, ask your assistant to:
 
-- **Search products** — "find organic chicken breast at my store"
-- **Build a cart** — "add 2 lb ground beef, a dozen eggs, and tortillas"
-- **Cook from recipes** — "add everything for taco night" (matches your recipe DB)
-- **Add a recipe from a URL** — including YouTube videos/Shorts
-- **Reserve pickup** — list and lock a curbside timeslot
-- **Review checkout** — advance to order review **without charging your card**
+- 🔍 **Search products** — "find organic chicken breast at my store"
+- 🛒 **Build a cart** — "add 2 lb ground beef, a dozen eggs, and tortillas"
+- 🍳 **Cook from recipes** — "add everything for taco night" (matches your recipe DB)
+- 📺 **Add a recipe from a URL** — including YouTube videos/Shorts
+- 🎟️ **Clip coupons** — find and clip H-E-B digital coupons
+- 🚗 **Reserve pickup** — list and lock a curbside timeslot
+- 🧾 **Review checkout** — advance to order review **without charging your card**
 
 Placing a **paid** order is possible but **disabled by default** and must be
-explicitly enabled (see [`place_order`](#mcp-tools-reference)).
+explicitly enabled (see [`place_order`](#-checkout)). 💳
 
 ---
 
-## Prerequisites
+## 🧰 Prerequisites
 
 | Requirement | Why |
 |-------------|-----|
@@ -56,22 +57,22 @@ explicitly enabled (see [`place_order`](#mcp-tools-reference)).
 | **A Gmail account + [app password](https://myaccount.google.com/apppasswords)** | H-E-B emails verification codes; the app reads them over IMAP. |
 | **An [Anthropic / Claude API key](https://console.anthropic.com/)** (`sk-ant-…`) | Parses recipes and ingredient lists. |
 
-That's it. No host Python, PostgreSQL, or Chrome install is required for normal use.
+That's it! 🎉 No host Python, PostgreSQL, or Chrome install is required for normal use.
 
 ---
 
-## Quick start
+## 🚀 Quick start
 
 Four steps: clone → configure → build → connect.
 
-### 1. Clone the repo
+### 1. 📥 Clone the repo
 
 ```bash
 git clone https://github.com/BenjaminWalkerBond/auto_grocer.git
 cd auto_grocer
 ```
 
-### 2. Configure your credentials
+### 2. 🔑 Configure your credentials
 
 Copy the template and fill in your values:
 
@@ -102,7 +103,7 @@ STORE_ID=737
 
 > 🔒 **`.env` holds secrets and is gitignored — never commit it.**
 
-### 3. Build the Docker image
+### 3. 🐳 Build the Docker image
 
 Build the MCP image once before connecting a client (Python 3.12 + Chromium + Xvfb,
 ~1 GB). This also makes the first client launch fast:
@@ -113,13 +114,13 @@ docker compose -f docker/docker-compose.yml build mcp
 
 The database image is pulled automatically the first time the server starts.
 
-### 4. Connect your AI client
+### 4. 🤖 Connect your AI client
 
 Use a helper script (recommended) or configure manually — see the next section.
 
 ---
 
-## Add the server to your AI client
+## 🔌 Add the server to your AI client
 
 The server id is **`auto-grocer`** and it runs over **stdio** — your client launches
 it on demand with:
@@ -128,7 +129,7 @@ it on demand with:
 docker compose -f docker/docker-compose.yml run --rm -T mcp
 ```
 
-### Claude Desktop — one-command setup (recommended)
+### 🪄 Claude Desktop — one-command setup (recommended)
 
 The helper scripts compute the absolute path to `docker/docker-compose.yml`, back up
 your existing config, and merge in the `auto-grocer` entry **without touching your
@@ -146,10 +147,10 @@ other MCP servers**. Run the one for your shell **from the repo root**:
 ./scripts/add-to-claude.sh
 ```
 
-Then **restart Claude Desktop**. Done.
+Then **restart Claude Desktop**. Done! 🥳
 
 <details>
-<summary><strong>Claude Desktop — manual setup</strong></summary>
+<summary><strong>🧩 Claude Desktop — manual setup</strong></summary>
 
 Open **Settings → Developer → Edit Config** and add the block below. The key is
 **`mcpServers`**, and because Claude Desktop runs from its own working directory the
@@ -183,7 +184,7 @@ Replace the path with your real clone location, then restart Claude Desktop.
 </details>
 
 <details>
-<summary><strong>GitHub Copilot (VS Code)</strong></summary>
+<summary><strong>🐙 GitHub Copilot (VS Code)</strong></summary>
 
 **Workspace (easiest).** The repo ships [.vscode/mcp.json](.vscode/mcp.json). Open the
 `auto_grocer` folder in VS Code and Copilot auto-detects the server — no config to
@@ -213,87 +214,147 @@ the `auto_grocer` folder for it to resolve.
 
 ---
 
-## Verify it works
+## ✅ Verify it works
 
 Open your assistant (Copilot **Agent mode**, or Claude Desktop after restarting) and
 ask it to call **`auth_status`**. It should report whether a valid H-E-B session is
 available.
 
-**First authenticated call takes up to a minute.** When no session exists yet, the
+⏳ **First authenticated call takes up to a minute.** When no session exists yet, the
 container logs itself into H-E-B by driving Chromium under Xvfb (completing H-E-B's
 normal sign-in, including its verification-code step via your Gmail app password).
 After that the session is cached in a Docker volume and subsequent calls are fast.
 
 ---
 
-## MCP tools reference
+## 🛠️ MCP tools reference
+
+Tools are grouped by what they do. 🔐 = needs a logged-in H-E-B session (the server
+logs in automatically if needed).
+
+| Group | Tools |
+|-------|-------|
+| [🔐 Session](#-session) | `auth_status`, `refresh_session`, `login`, `capture_hashes` |
+| [🔍 Products](#-products) | `search_products`, `get_product_details` |
+| [🛒 Cart](#-cart) | `add_groceries`, `add_products_by_id`, `get_cart`, `remove_from_cart`, `clear_cart` |
+| [🍳 Recipes](#-recipes) | `find_recipes`, `add_recipe_ingredients`, `query_recipes`, `list_all_recipes`, `seed_recipes` |
+| [🏪 Stores](#-stores) | `search_stores`, `set_store` |
+| [🎟️ Coupons](#️-coupons) | `list_coupons`, `list_clipped_coupons`, `clip_coupon` |
+| [🚗 Pickup](#-pickup) | `list_timeslots`, `reserve_timeslot` |
+| [🧾 Checkout](#-checkout) | `checkout`, `place_order` |
+
+### 🔐 Session
 
 | Tool | Auth | Description |
 |------|:---:|-------------|
-| `auth_status()` | No | Report whether a valid H-E-B session exists, the active store, and whether `place_order` is enabled. Does not open a browser. |
-| `refresh_session()` | No | Reload the exported session and latest GraphQL hashes. Call this if tools start reporting `NOT_AUTHENTICATED` or `OPERATION_NOT_CAPTURED`. |
-| `search_products(query, limit=10, store_id="")` | Yes | Search H-E-B products via GraphQL without adding anything. |
-| `add_groceries(items, clear_first=False)` | Yes | Add free-form items (e.g. `"2 lb chicken breast"`) to the cart. Produce is searched as organic automatically. |
-| `add_recipe_ingredients(request, clear_first=False)` | Yes | Match a natural-language meal request against your recipe DB and add all matched ingredients. |
-| `find_recipes(request)` | No | Preview which recipes match a request **without** adding to the cart. |
-| `query_recipes(search="", recipe_id=0, domain="", include_ingredients=False, limit=50)` | No | Browse/search/inspect the recipe DB directly. |
-| `list_all_recipes(page=1)` | No | List every recipe, paginated 10 per page. |
-| `seed_recipes(title, url, ingredients, description="")` | No | Insert a recipe (auto-tagged). Re-seeding the same URL updates it. **YouTube URLs** auto-parse ingredients from the video description. |
-| `get_cart()` | Yes | Return current cart contents. |
-| `clear_cart()` | Yes | Empty the cart. |
-| `remove_from_cart(items)` | Yes | Remove specific items by id, sku, or name fragment. |
-| `set_store(store_id)` | Yes | Set the active pickup store. |
-| `list_timeslots(store_id="")` | Yes | List available curbside pickup slots. |
-| `reserve_timeslot(slot_id, store_id="")` | Yes | Reserve a pickup slot (use `list_timeslots` first). |
-| `checkout()` | Yes | Advance to order review. **Never charges.** Reserve a timeslot first. |
-| `place_order()` | Yes | Submit the final **paid** order. ⚠️ **Charges your card.** Disabled unless `AUTO_GROCER_ALLOW_PLACE_ORDER=1`. |
+| `auth_status()` | — | Report whether a valid H-E-B session exists, the active store, whether GraphQL hashes work, and whether `place_order` is enabled. Does not open a browser. |
+| `refresh_session()` | — | Reload the exported session and latest GraphQL hashes. Call this if tools start reporting `NOT_AUTHENTICATED` or `OPERATION_NOT_CAPTURED`. |
+| `login(force=False)` | — | Log in to H-E-B in the browser and export a fresh session. `force=True` re-logs in even if the session is still valid. |
+| `capture_hashes(wait_seconds=0)` | — | Re-capture H-E-B's rotating GraphQL hashes (fixes `hashes_ok: false`). Runs in the background — call again if it reports `running`. |
 
-> **Safety:** `place_order` is the only tool that spends money and is disabled by
+### 🔍 Products
+
+| Tool | Auth | Description |
+|------|:---:|-------------|
+| `search_products(query, limit=10, store_id="")` | 🔐 | Search H-E-B products without adding anything. |
+| `get_product_details(product_id, store_id="")` | 🔐 | Ingredients, nutrition, allergens, dietary attributes, size, and aisle location for one product. |
+
+### 🛒 Cart
+
+| Tool | Auth | Description |
+|------|:---:|-------------|
+| `add_groceries(items, clear_first=False, quantity=1)` | 🔐 | Add free-form items (e.g. `"2 lb chicken breast"`). Measured amounts scale by package size; `quantity` applies to every item in the call. Produce is searched as organic. 🥬 |
+| `add_products_by_id(products, clear_first=False)` | 🔐 | Add exact products by `product_id` + `sku` (from `search_products`) with no re-search. |
+| `get_cart()` | 🔐 | Return current cart contents. |
+| `remove_from_cart(items)` | 🔐 | Remove specific items by id, sku, or name fragment. |
+| `clear_cart()` | 🔐 | Empty the cart. 🧹 |
+
+### 🍳 Recipes
+
+| Tool | Auth | Description |
+|------|:---:|-------------|
+| `find_recipes(request, include_ingredients=True)` | — | Preview which recipes match a request, and their ingredients, **without** adding to the cart. |
+| `add_recipe_ingredients(request, clear_first=False, exclude=[])` | 🔐 | Match a meal request against your recipe DB and add all matched ingredients. `exclude` skips ingredients by their exact recipe name. **Use this for named dishes — never hand-write a recipe's ingredients into `add_groceries`.** |
+| `query_recipes(search="", recipe_id=0, domain="", include_ingredients=False, limit=50)` | — | Browse/search/inspect the recipe DB directly. |
+| `list_all_recipes(page=1)` | — | List every recipe, paginated 10 per page. 📋 |
+| `seed_recipes(title, url, ingredients, description="", cook_time=0)` | — | Insert a recipe (auto-tagged). Re-seeding the same URL updates it. 📺 **YouTube URLs** auto-parse ingredients from the video description. |
+
+### 🏪 Stores
+
+| Tool | Auth | Description |
+|------|:---:|-------------|
+| `search_stores(address, radius_miles=25)` | — | Find H-E-B stores near an address, zip, or landmark to get a store id. 📍 |
+| `set_store(store_id)` | 🔐 | Set the active pickup store. |
+
+### 🎟️ Coupons
+
+| Tool | Auth | Description |
+|------|:---:|-------------|
+| `list_coupons(search="", category_id=0, limit=60)` | 🔐 | List or search available digital coupons. |
+| `list_clipped_coupons(limit=60)` | 🔐 | List coupons already clipped to your account. |
+| `clip_coupon(coupon_id)` | 🔐 | Clip a coupon so its discount applies at checkout. ✂️ |
+
+### 🚗 Pickup
+
+| Tool | Auth | Description |
+|------|:---:|-------------|
+| `list_timeslots(store_id="")` | 🔐 | List available curbside pickup slots. 📅 |
+| `reserve_timeslot(slot_id, store_id="")` | 🔐 | Reserve a pickup slot (use `list_timeslots` first). |
+
+### 🧾 Checkout
+
+| Tool | Auth | Description |
+|------|:---:|-------------|
+| `checkout()` | 🔐 | Advance to order review. **Never charges.** Reserve a timeslot first. |
+| `place_order()` | 🔐 | Submit the final **paid** order. ⚠️ **Charges your card.** Disabled unless `AUTO_GROCER_ALLOW_PLACE_ORDER=1`. 💳 |
+
+> 🛡️ **Safety:** `place_order` is the only tool that spends money and is disabled by
 > default. `checkout` only advances to order review and never charges.
 
 ---
 
-## Typical workflow
+## 🔁 Typical workflow
 
 ```
-auth_status                             # confirm you're logged in
-add_groceries / add_recipe_ingredients  # build the cart
-get_cart                                # review what was added
-list_timeslots
-reserve_timeslot
-checkout                                # review only — no charge
-place_order                             # optional, guarded — CHARGES your card
+auth_status                             # 🔐 confirm you're logged in
+find_recipes                            # 🍳 preview a named dish first
+add_groceries / add_recipe_ingredients  # 🛒 build the cart
+get_cart                                # 👀 review what was added
+list_timeslots                          # 📅 see pickup times
+reserve_timeslot                        # 🚗 lock a slot
+checkout                                # 🧾 review only — no charge
+place_order                             # 💳 optional, guarded — CHARGES your card
 ```
 
 ---
 
-## Troubleshooting
+## 🩺 Troubleshooting
 
 | Symptom | Fix |
 |---------|-----|
 | Client shows **0 tools** / server won't start | Make sure Docker Desktop is running and you built the image: `docker compose -f docker/docker-compose.yml build mcp`. |
 | **Claude Desktop can't find the server** | The compose `-f` path must be **absolute** with forward slashes. Re-run `scripts/add-to-claude.ps1` / `.sh`, then restart Claude. |
 | `NOT_AUTHENTICATED` | Session expired. Call `refresh_session`, or let auto-login run on the next authenticated call. |
-| `OPERATION_NOT_CAPTURED` / hash errors | H-E-B changed its API. Refresh the GraphQL hashes (see [Development](#development)), then call `refresh_session`. |
+| `OPERATION_NOT_CAPTURED` / hash errors | H-E-B changed its API. Call `capture_hashes`, or refresh them manually (see [Development](#-development)), then call `refresh_session`. |
 | First call **hangs ~1 min** | Expected — the container is logging into H-E-B under Xvfb. Subsequent calls are fast. |
 | **WAF 401 / email-verification loop** | You've hit H-E-B's bot protection. Wait a few minutes and retry; avoid rapid repeated logins. |
 | `DATABASE_PASSWORD must be set` | `DATABASE_PASSWORD` is missing from `.env`, or you ran compose without the repo-root `.env` as the interpolation source. Pass `--env-file .env`. |
 
 ---
 
-## Development
+## 👩‍💻 Development
 
 This section covers running the automation and MCP server from a **host checkout**
 (outside Docker), plus tests and project layout. For normal use, the Docker
-[Quick start](#quick-start) is all you need.
+[Quick start](#-quick-start) is all you need.
 
-### Host prerequisites
+### 🧰 Host prerequisites
 
 - **Python 3.12** — for the host `main.py` / MCP server path.
 - **PostgreSQL** — only if running against a host DB instead of the compose one.
 - **Chromium / Chrome** — only for the host login path (Docker bundles it).
 
-### Local setup (uv)
+### 📦 Local setup (uv)
 
 [uv](https://docs.astral.sh/uv/) manages the virtualenv and dependencies:
 
@@ -304,7 +365,7 @@ uv sync                  # create .venv and install all deps (incl. dev tools)
 
 Prefix commands with `uv run` to run inside the environment.
 
-### Run the automation on the host
+### 🏃 Run the automation on the host
 
 ```bash
 uv run python main.py
@@ -324,13 +385,13 @@ MODE=nodriver OPERATION=shop uv run python -m auto_grocer.session_maintenance.ru
 
 `CHECKOUT` never places a paid order; it only advances to H-E-B's checkout page.
 
-### Run the MCP server on the host
+### 🖥️ Run the MCP server on the host
 
 ```bash
 uv run python -m auto_grocer.mcp_server
 ```
 
-### Run everything in Docker
+### 🐳 Run everything in Docker
 
 ```bash
 # Build the MCP image (Python 3.12 + Chromium + Xvfb)
@@ -359,7 +420,7 @@ docker compose -f docker/docker-compose.yml down -v
 - **Mounts** — `.env` is mounted read-only (never baked into the image); debug
   snapshots and self-healing rewrites are bind-mounted back to the working tree.
 
-### Refresh the H-E-B session / GraphQL hashes
+### 🔄 Refresh the H-E-B session / GraphQL hashes
 
 Run inside the container so results land in the session volume (do **not** truncate
 the output):
@@ -372,14 +433,14 @@ docker compose --env-file .env -f docker/docker-compose.yml run --rm -T \
 
 Then call `refresh_session` from your client.
 
-### Tests
+### 🧪 Tests
 
 ```bash
 uv run pytest tests/unit            # fast, offline
 uv run pytest --run-integration     # live H-E-B API / Postgres
 ```
 
-### Project structure
+### 🗂️ Project structure
 
 ```
 auto_grocer/
@@ -400,7 +461,7 @@ auto_grocer/
 
 ---
 
-## Documentation
+## 📖 Documentation
 
 - **[Architecture](docs/ARCHITECTURE.md)** — system overview
 - **[Browser automation (nodriver)](src/auto_grocer/session_maintenance/README.md)** — the async browser layer
@@ -410,7 +471,7 @@ auto_grocer/
 
 ---
 
-## Disclaimer
+## ⚖️ Disclaimer
 
 This project is **not affiliated with or endorsed by H-E-B** (and is not sponsored by
 H-E-B). "H-E-B" and all related names, logos, and marks are trademarks of their
@@ -426,7 +487,7 @@ See [LICENSE](LICENSE) for the full terms.
 
 ---
 
-## Credits
+## 💖 Credits
 
 `auto_grocer` vendors and builds on **texas-grocery-mcp** by Michael Walker, used
 under the MIT License:
@@ -436,4 +497,4 @@ under the MIT License:
 The vendored code lives in `src/auto_grocer_mcp/` (formerly imported as
 `texas_grocery_mcp`) and has been modified from the original — see [NOTICE](NOTICE)
 and `src/auto_grocer_mcp/LICENSE` for attribution and a summary of the changes.
-Thanks to Michael Walker for the original work.
+Thanks to Michael Walker for the original work. 🙏

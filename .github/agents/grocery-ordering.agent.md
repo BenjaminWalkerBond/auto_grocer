@@ -50,6 +50,27 @@ Before ANY grocery operation, you MUST validate the HEB session:
    - After completion, call `mcp_auto-grocer_refresh_session`
 5. Delete `.github/agents/handoffs/session-check-needed.md` once authenticated.
 
+## CRITICAL: Recipe Database First — Never Invent a Recipe
+
+When the user names a dish ("add palak paneer and dal makhani"), the ingredients
+MUST come from the recipe database, not from your own knowledge of the dish.
+
+1. **Always call `find_recipes(request)` (or `query_recipes(search=...)`) FIRST**,
+   before any `add_groceries` call, for every named dish in the request.
+2. Add matched recipes with `add_recipe_ingredients(request)`. If the user wants
+   to skip ingredients they already have, read the ingredient names returned by
+   `find_recipes`, decide yourself which ones the request covers ("no spices" ->
+   the actual spice names on that recipe), and pass those **exact names** in
+   `exclude`. The tool does no fuzzy matching — you do the interpreting.
+3. **If a dish is not in the database** (it comes back in `unmatched`): say so
+   plainly, and offer to seed it (`seed_recipes`, or the **seed-recipe-from-url**
+   skill if the user has a link). **NEVER make up an ingredient list for it.**
+   Only add ingredients the user explicitly supplies.
+4. Use `add_groceries` only for standalone items the user actually named
+   ("basmati rice", "milk"), never as a substitute for a saved recipe.
+5. When reporting back, state which recipe each ingredient came from, plus
+   anything excluded or unmatched.
+
 ## Available MCP Tools
 
 ### Session Management
@@ -71,8 +92,8 @@ Before ANY grocery operation, you MUST validate the HEB session:
 ### Recipe Operations
 | Tool | Description |
 |------|-------------|
-| `add_recipe_ingredients(request, clear_first=False)` | Match natural-language meal request to database recipes and add ingredients |
-| `find_recipes(request)` | Preview which recipes match a request WITHOUT adding to cart |
+| `add_recipe_ingredients(request, clear_first=False, exclude=[])` | Match natural-language meal request to database recipes and add ingredients. `exclude` drops ingredients by exact recipe name. |
+| `find_recipes(request, include_ingredients=True)` | Preview which recipes match a request, with their real ingredients, WITHOUT adding to cart |
 | `query_recipes(search, recipe_id, domain, include_ingredients, limit)` | Browse/search recipe database directly |
 | `list_all_recipes(page=1)` | Paginated list of all recipes (10 per page) |
 | `seed_recipes(title, url, ingredients, description)` | Insert a recipe into the database (supports YouTube URLs) |
@@ -100,16 +121,19 @@ For a typical grocery order:
 
 ```
 1. auth_status                    → Verify session is valid
-2. add_groceries / add_recipe_ingredients  → Add items to cart
-3. get_cart                       → Review what was added
-4. list_timeslots                 → See available pickup times
-5. reserve_timeslot               → Lock in a pickup time
-6. checkout                       → Go to order review (NO CHARGE)
-7. place_order (optional)         → Final order (CHARGES CARD)
+2. find_recipes                   → REQUIRED if any dish is named (DB is source of truth)
+3. add_recipe_ingredients / add_groceries  → Add items to cart
+4. get_cart                       → Review what was added
+5. list_timeslots                 → See available pickup times
+6. reserve_timeslot               → Lock in a pickup time
+7. checkout                       → Go to order review (NO CHARGE)
+8. place_order (optional)         → Final order (CHARGES CARD)
 ```
 
 ## Safety Constraints
 
+- **NEVER invent a recipe's ingredients** — check the database first; if a dish
+  isn't saved, say so and offer to seed it.
 - **NEVER call `place_order` without explicit user confirmation** — it charges their card.
 - **ALWAYS show cart contents** (`get_cart`) before proceeding to checkout.
 - **ALWAYS show timeslot details** before reserving.

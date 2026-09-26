@@ -94,21 +94,37 @@ def _to_amount(amount):
         return [str(1)]
 
 
-def build_ingredient_list(recipes, ingredient_repo):
+def _normalize(name):
+    """Lowercase/trim an ingredient name for exclusion comparison."""
+    return " ".join(str(name or "").lower().split())
+
+
+def build_ingredient_list(recipes, ingredient_repo, exclude=None):
     """
     Build an IngredientList from the ingredients of the given recipes.
 
     Args:
         recipes: list of Recipe ORM objects.
         ingredient_repo: An IngredientRepository instance.
+        exclude: Optional list of exact ingredient names to skip, as they appear
+            on the recipe (compared case-insensitively after whitespace
+            trimming). The caller decides what to exclude; no fuzzy matching is
+            done here.
 
     Returns:
-        An IngredientList populated with classes.Ingredient objects.
+        (IngredientList, excluded_names) — the populated list plus the names of
+        ingredients that were skipped because of `exclude`.
     """
+    skip = {_normalize(term) for term in (exclude or []) if _normalize(term)}
     IL = IngredientList()
+    excluded_names = []
     for recipe in recipes:
         for db_ing in ingredient_repo.get_by_recipe(recipe.id):
+            name = db_ing.name or ""
+            if _normalize(name) in skip:
+                excluded_names.append(name)
+                continue
             unit = db_ing.unit or "none"
-            ingredient = Ingredient(db_ing.name, _to_amount(db_ing.amount), [unit])
+            ingredient = Ingredient(name, _to_amount(db_ing.amount), [unit])
             IL.add_ingredient(ingredient)
-    return IL
+    return IL, excluded_names

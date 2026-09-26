@@ -9,6 +9,7 @@ must resolve.
 """
 
 import pytest
+from fastmcp import settings as fastmcp_settings
 
 from auto_grocer import mcp_server as m
 
@@ -24,6 +25,17 @@ def test_ensure_authed_returns_false_without_session(monkeypatch):
     monkeypatch.setattr(m, "_is_authed", lambda: False)
     monkeypatch.setattr(m, "_AUTO_LOGIN", False)
     assert m._ensure_authed() is False
+
+
+def test_main_disables_fastmcp_update_check(monkeypatch):
+    monkeypatch.setattr(fastmcp_settings, "check_for_updates", "stable")
+    run_calls = []
+    monkeypatch.setattr(m.mcp, "run", lambda **kwargs: run_calls.append(kwargs))
+
+    m.main()
+
+    assert fastmcp_settings.check_for_updates == "off"
+    assert run_calls == [{"show_banner": False}]
 
 
 # Auth-gated tools that short-circuit to NOT_AUTHENTICATED. Each entry is
