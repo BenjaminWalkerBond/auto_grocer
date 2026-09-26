@@ -12,7 +12,7 @@ Rules:
 - The Orchestrator owns creating this file (copy of this template) and updating
   routing fields (status, next_agent, attempt counters) between subagent calls.
 
-Copy this template to .github/agents/handoffs/<slug>.md for each run.
+Copy this template to .github/agents/handoffs/<slug>.md (gitignored) for each run.
 -->
 
 topic: <short slug>

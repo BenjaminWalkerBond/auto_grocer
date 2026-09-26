@@ -4,7 +4,7 @@
 # Orchestrator can detect the failure and recover or escalate.
 set -euo pipefail
 
-handoffs="$(cd "$(dirname "${BASH_SOURCE[0]}")/../handoffs" && pwd)"
+handoffs="$(cd "$(dirname "${BASH_SOURCE[0]}")/../handoffs" 2>/dev/null && pwd)" || exit 0
 start_file="$handoffs/.subagent_start"
 
 # Active status file = newest *.md excluding the template. None => nothing to do.

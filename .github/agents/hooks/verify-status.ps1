@@ -2,7 +2,9 @@
 # file (e.g. it crashed or hard-errored), inject an ERROR record so the
 # Orchestrator can detect the failure and recover or escalate.
 $ErrorActionPreference = 'Stop'
-$handoffs = (Resolve-Path (Join-Path $PSScriptRoot '..\handoffs')).Path
+$handoffsPath = Join-Path $PSScriptRoot '..\handoffs'
+if (-not (Test-Path $handoffsPath)) { exit 0 }
+$handoffs = (Resolve-Path $handoffsPath).Path
 $startFile = Join-Path $handoffs '.subagent_start'
 
 # Active status file = newest *.md excluding the template. None => nothing to do.

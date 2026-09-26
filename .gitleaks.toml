@@ -17,9 +17,6 @@ useDefault = true
 description = "Redacted example identifiers and template placeholders"
 
 paths = [
-  # Multi-agent handoff notes intentionally contain redacted example account
-  # ids / order ids for context. They are not live secrets.
-  '''\.github/agents/handoffs/.*''',
   # .env.example ships placeholder values (e.g. sk-ant-your-key-here) by design.
   '''\.env\.example''',
 ]

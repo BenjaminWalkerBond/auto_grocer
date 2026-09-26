@@ -41,7 +41,7 @@ You are the only router:
 
 ## Phase 1 — Confirm
 3. After the user picks and confirms, create the active status file: copy
-   `.github/agents/handoffs/STATUS-template.md` to `.github/agents/handoffs/<slug>.md`,
+   `.github/agents/templates/STATUS-template.md` to `.github/agents/handoffs/<slug>.md` (gitignored),
    fill in `topic` and `chosen_idea`, and reset the attempt counters to 0.
 
 ## Phase 2 — Automated loop (only after confirmation)
