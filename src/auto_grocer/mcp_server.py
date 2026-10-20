@@ -1576,6 +1576,11 @@ def set_store(store_id: str) -> dict:
             )
         return error_response
 
+    # Make the new store the active one for this process too: search, pricing
+    # and adds resolve the store via _store_id() (STORE_ID), which would
+    # otherwise keep pointing at the .env store while the cart moved.
+    os.environ["STORE_ID"] = store_id
+
     return {
         "success": True,
         "store_id": store_id,
