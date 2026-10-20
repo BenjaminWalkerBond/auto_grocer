@@ -4,6 +4,7 @@ Supports both unauthenticated (typeahead) and authenticated (full product search
 modes. Authenticated mode uses browser session cookies for faster API access.
 """
 
+import hashlib
 import json
 import os
 import re
@@ -129,7 +130,33 @@ _load_persisted_query_overrides()
 # The capture flow now records the full query text (sniffed on the browser's APQ
 # registration MISS) into ``captured_operations.json``; this loads those docs so
 # the client can perform the registration round-trip itself.
-PERSISTED_QUERY_DOCUMENTS: dict[str, str] = {}
+#
+# Some operations are never seen as a browser MISS (the capture records only the
+# hash), yet HEB still answers PersistedQueryNotFound for them -- and it does not
+# keep a registration, so every later hash-only request misses again. For those
+# we ship a minimal hand-written document. It is NOT the browser's exact text, so
+# its hash is computed from the document itself (see _persisted_query_payload).
+# Verified live against HEB (2026-10): hash-only cartItemV2 misses for every hash,
+# while this document executes and returns the typed result union.
+_BUILTIN_QUERY_DOCUMENTS: dict[str, str] = {
+    "cartItemV2": (
+        "mutation cartItemV2($productId: String!, $skuId: String!, $quantity: Int) {\n"
+        "  addItemToCartV2(productId: $productId, skuId: $skuId, quantity: $quantity) {\n"
+        "    __typename\n"
+        "    ... on Cart { id }\n"
+        "    ... on AddOnsCart { id }\n"
+        "    ... on AddItemToCartV2Error { message title code }\n"
+        "    ... on AddItemToCartV2TimeslotError { message title errorCode: code }\n"
+        "  }\n"
+        "}"
+    ),
+}
+
+PERSISTED_QUERY_DOCUMENTS: dict[str, str] = dict(_BUILTIN_QUERY_DOCUMENTS)
+
+# Operations whose hash-only request already missed once this process: send the
+# full query up front instead of paying a guaranteed PersistedQueryNotFound.
+_FULL_QUERY_OPERATIONS: set[str] = set()
 
 # Operations for which an automatic browser hash-refresh cannot help: the failure
 # is APQ registration (evicted query), not a rotated hash. For these we fail fast
@@ -177,6 +204,25 @@ def _load_persisted_query_documents() -> None:
 
 # Apply any captured query documents at import time.
 _load_persisted_query_documents()
+
+
+def _persisted_query_payload(
+    operation_name: str, variables: dict[str, Any], include_query: bool
+) -> dict[str, Any]:
+    """Build a persisted-query request body, optionally carrying the full query.
+
+    With the full query, the hash is derived from that exact text: Apollo
+    rejects a registration whose sha256 does not match the document, and a
+    built-in document differs from the browser's (whose hash we captured).
+    """
+    sha = PERSISTED_QUERIES[operation_name]
+    payload: dict[str, Any] = {"operationName": operation_name, "variables": variables}
+    if include_query and operation_name in PERSISTED_QUERY_DOCUMENTS:
+        query = PERSISTED_QUERY_DOCUMENTS[operation_name]
+        payload["query"] = query
+        sha = hashlib.sha256(query.encode("utf-8")).hexdigest()
+    payload["extensions"] = {"persistedQuery": {"version": 1, "sha256Hash": sha}}
+    return payload
 
 
 def reload_persisted_query_overrides() -> None:
@@ -533,22 +579,14 @@ class HEBGraphQLClient:
             client = await self._get_client()
 
             refreshed = False
-            apq_tried = False
+            apq_tried = (
+                operation_name in _FULL_QUERY_OPERATIONS
+                and operation_name in PERSISTED_QUERY_DOCUMENTS
+            )
             while True:
-                payload = {
-                    "operationName": operation_name,
-                    "variables": variables,
-                    "extensions": {
-                        "persistedQuery": {
-                            "version": 1,
-                            "sha256Hash": PERSISTED_QUERIES[operation_name],
-                        }
-                    },
-                }
                 # APQ registration round-trip: include the full query text so HEB
                 # re-registers + executes an operation evicted from its APQ cache.
-                if apq_tried and operation_name in PERSISTED_QUERY_DOCUMENTS:
-                    payload["query"] = PERSISTED_QUERY_DOCUMENTS[operation_name]
+                payload = _persisted_query_payload(operation_name, variables, apq_tried)
 
                 try:
                     response = await client.post(self.base_url, json=payload)
@@ -567,6 +605,8 @@ class HEBGraphQLClient:
                         raise GraphQLError(data["errors"])
 
                     self.circuit_breaker.record_success()
+                    if apq_tried:
+                        _FULL_QUERY_OPERATIONS.add(operation_name)
 
                     if isinstance(data, dict):
                         payload_data = data.get("data")
@@ -2117,7 +2157,7 @@ class HEBGraphQLClient:
         if not auth_client:
             return {"error": True, "code": "NOT_AUTHENTICATED", "message": "Login required"}
 
-        return await self._execute_persisted_query_with_client(
+        data = await self._execute_persisted_query_with_client(
             auth_client,
             "cartItemV2",
             {
@@ -2127,6 +2167,20 @@ class HEBGraphQLClient:
                 "quantity": quantity,
             },
         )
+
+        # HEB reports a rejected add (unavailable product, timeslot problem) as a
+        # typed member of the result union, not as a GraphQL error.
+        result = data.get("addItemToCartV2")
+        if isinstance(result, dict) and result.get("__typename") in (
+            "AddItemToCartV2Error",
+            "AddItemToCartV2TimeslotError",
+        ):
+            return {
+                "error": True,
+                "code": result.get("code") or result.get("errorCode") or "ADD_TO_CART_REJECTED",
+                "message": result.get("message") or result.get("title") or "HEB rejected the item",
+            }
+        return data
 
     async def get_cart(self) -> dict[str, Any]:
         """Get current cart contents using authenticated GraphQL.
@@ -2169,22 +2223,14 @@ class HEBGraphQLClient:
             raise ValueError(f"Unknown operation: {operation_name}")
 
         refreshed = False
-        apq_tried = False
+        apq_tried = (
+            operation_name in _FULL_QUERY_OPERATIONS
+            and operation_name in PERSISTED_QUERY_DOCUMENTS
+        )
         while True:
-            payload = {
-                "operationName": operation_name,
-                "variables": variables,
-                "extensions": {
-                    "persistedQuery": {
-                        "version": 1,
-                        "sha256Hash": PERSISTED_QUERIES[operation_name],
-                    }
-                },
-            }
             # APQ registration round-trip: include the full query text so HEB
             # re-registers + executes an operation it evicted from its APQ cache.
-            if apq_tried and operation_name in PERSISTED_QUERY_DOCUMENTS:
-                payload["query"] = PERSISTED_QUERY_DOCUMENTS[operation_name]
+            payload = _persisted_query_payload(operation_name, variables, apq_tried)
 
             try:
                 response = await client.post(
@@ -2205,6 +2251,8 @@ class HEBGraphQLClient:
                     raise GraphQLError(data["errors"])
 
                 self.circuit_breaker.record_success()
+                if apq_tried:
+                    _FULL_QUERY_OPERATIONS.add(operation_name)
 
                 if isinstance(data, dict):
                     payload_data = data.get("data")
