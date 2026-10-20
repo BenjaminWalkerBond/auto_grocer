@@ -316,3 +316,30 @@ def test_get_cart_returns_structured_error_instead_of_raising(monkeypatch):
     assert result.get("error") is True
     assert result.get("code") == "CART_FETCH_FAILED"
     assert "Expecting value" in str(result.get("message"))
+
+
+def test_set_store_success_makes_store_active(monkeypatch):
+    """After a successful set_store, search/pricing must use the new store,
+    not the STORE_ID the process started with from .env."""
+    monkeypatch.setattr(m, "_is_authed", lambda: True)
+    monkeypatch.setattr(m, "get_cached_store", lambda store_id: None)
+    monkeypatch.setattr(m, "select_store", lambda store_id: {"verified": True})
+    monkeypatch.setenv("STORE_ID", "243")
+
+    result = m.set_store("822")
+
+    assert result["success"] is True
+    assert m._store_id() == "822"
+
+
+def test_set_store_failure_keeps_active_store(monkeypatch):
+    monkeypatch.setattr(m, "_is_authed", lambda: True)
+    monkeypatch.setattr(m, "get_cached_store", lambda store_id: None)
+    monkeypatch.setattr(
+        m, "select_store", lambda store_id: {"error": True, "code": "STORE_CHANGE_FAILED"}
+    )
+    monkeypatch.setenv("STORE_ID", "243")
+
+    m.set_store("822")
+
+    assert m._store_id() == "243"
