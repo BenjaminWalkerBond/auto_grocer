@@ -30,6 +30,7 @@ def _reset(monkeypatch):
     graphql._last_hash_refresh_monotonic = 0.0
     graphql._hash_refresh_in_progress = False
     monkeypatch.setattr(graphql, "PERSISTED_QUERY_DOCUMENTS", {})
+    monkeypatch.setattr(graphql, "_FULL_QUERY_OPERATIONS", set())
     yield
     graphql.register_hash_refresh_callback(None)
 
@@ -172,3 +173,107 @@ async def test_non_apq_op_still_uses_background_refresh(monkeypatch):
 
     assert seen == [op]  # refresh path was used
     assert "60-90 seconds" in str(ei.value)
+
+
+# ---------------------------------------------------------------------------
+# Built-in documents (cartItemV2)
+# ---------------------------------------------------------------------------
+# HEB answers hash-only cartItemV2 with PersistedQueryNotFound for every hash and
+# does not keep a registration, while the browser capture records only the hash.
+# The client therefore ships its own document and sends it on every request.
+def test_cart_item_has_builtin_document():
+    assert "cartItemV2" in graphql._BUILTIN_QUERY_DOCUMENTS
+    assert "addItemToCartV2" in graphql._BUILTIN_QUERY_DOCUMENTS["cartItemV2"]
+
+
+def test_payload_hash_matches_included_query(monkeypatch):
+    """Apollo rejects a registration whose hash differs from the document."""
+    import hashlib
+
+    query = graphql._BUILTIN_QUERY_DOCUMENTS["cartItemV2"]
+    monkeypatch.setitem(graphql.PERSISTED_QUERY_DOCUMENTS, "cartItemV2", query)
+
+    hash_only = graphql._persisted_query_payload("cartItemV2", {}, include_query=False)
+    with_query = graphql._persisted_query_payload("cartItemV2", {}, include_query=True)
+
+    assert "query" not in hash_only
+    assert hash_only["extensions"]["persistedQuery"]["sha256Hash"] == (
+        graphql.PERSISTED_QUERIES["cartItemV2"]
+    )
+    assert with_query["query"] == query
+    assert with_query["extensions"]["persistedQuery"]["sha256Hash"] == (
+        hashlib.sha256(query.encode("utf-8")).hexdigest()
+    )
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_full_query_sent_up_front_after_first_miss(monkeypatch):
+    """After one miss, later calls skip the doomed hash-only request."""
+    op = "cartItemV2"
+    monkeypatch.setitem(
+        graphql.PERSISTED_QUERY_DOCUMENTS, op, graphql._BUILTIN_QUERY_DOCUMENTS[op]
+    )
+    ok = {"data": {"addItemToCartV2": {"__typename": "Cart", "id": "c1"}}}
+    route = respx.post(_URL).mock(
+        side_effect=[
+            Response(200, json=_STALE),  # call 1: hash-only miss
+            Response(200, json=ok),  # call 1: full query
+            Response(200, json=ok),  # call 2: full query straight away
+        ]
+    )
+
+    client = graphql.HEBGraphQLClient()
+    try:
+        c = await client._get_client()
+        await client._execute_persisted_query_with_client(c, op, {"productId": "1"})
+        await client._execute_persisted_query_with_client(c, op, {"productId": "2"})
+    finally:
+        await client.close()
+
+    assert route.call_count == 3
+    third = json.loads(route.calls[2].request.content)
+    assert "query" in third
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_add_to_cart_maps_error_union_to_error(monkeypatch):
+    """A rejected add comes back as data, not errors; surface it as an error."""
+    monkeypatch.setitem(
+        graphql.PERSISTED_QUERY_DOCUMENTS,
+        "cartItemV2",
+        graphql._BUILTIN_QUERY_DOCUMENTS["cartItemV2"],
+    )
+    monkeypatch.setattr(graphql, "_FULL_QUERY_OPERATIONS", {"cartItemV2"})
+    respx.post(_URL).mock(
+        return_value=Response(
+            200,
+            json={
+                "data": {
+                    "addItemToCartV2": {
+                        "__typename": "AddItemToCartV2Error",
+                        "message": "This item is currently not available in your store.",
+                        "title": "Invalid Product",
+                        "code": "INVALID_PRODUCT_STORE",
+                    }
+                }
+            },
+        )
+    )
+
+    client = graphql.HEBGraphQLClient()
+    try:
+        c = await client._get_client()
+
+        async def _auth():
+            return c
+
+        monkeypatch.setattr(client, "_get_authenticated_client", _auth)
+        result = await client.add_to_cart("0", "0", 1)
+    finally:
+        await client.close()
+
+    assert result["error"] is True
+    assert result["code"] == "INVALID_PRODUCT_STORE"
+    assert "not available" in result["message"]
